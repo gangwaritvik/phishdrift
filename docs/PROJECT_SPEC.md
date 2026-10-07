@@ -68,11 +68,12 @@ Phishing.Database, PhishTank as secondary). Details and caveats: FEATURES_AND_DA
 2. Canonicalise URLs identically for every source; dedupe by canonical URL across all sources (conflicting
    labels → dropped).
 3. Remove every registrable domain that appears in more than one phishing source, from all sources.
-4. Enforce registrable-domain disjointness across sources and cap URLs per domain (see open question in
-   PROGRESS.md).
+4. Each registrable domain stays in one source (earliest first-seen, then source priority); at most 20
+   URLs per domain.
 5. Near-duplicate HTML removal within each label.
-6. Benign mix: PhiUSIIL legit homepages + PhreshPhish benign + inner pages crawled from PhiUSIIL-legit and
-   Tranco seeds (3–5 inner pages per domain, robots.txt and rate limits respected).
+6. Benign mix: PhiUSIIL legit and URL-Phish benign homepages + PhreshPhish benign + inner pages crawled
+   from PhiUSIIL-legit, URL-Phish and Tranco seeds (3–5 inner pages per domain, robots.txt and rate
+   limits respected). Crawled pages belong to the source that seeded them.
 7. Per-source class balance (both classes where possible) and depth balance; per-class depth report; the
    build fails if any depth bucket is >90% one class.
 8. Carve out the held-out source and the newest time slice before any fitting.

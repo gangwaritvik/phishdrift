@@ -1,0 +1,8 @@
+User-agent: *
+Disallow: /private
+Crawl-delay: 2
+Sitemap: https://example.org/sitemap_index.xml
+sitemap: https://example.org/news-sitemap.xml
+
+User-agent: BadBot
+Disallow: /

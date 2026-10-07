@@ -1,0 +1,5 @@
+# Domain-grouped (U1, public-suffix-only) splits of the training pool.
+seed: 0                                # split k uses seed + k; seeds vary the partition only
+n_splits: 10
+test_fraction: 0.2                     # share of pool rows (whole domains) in each split's test side
+cal_fraction: 0.1                      # share of each train side held for calibration/thresholds

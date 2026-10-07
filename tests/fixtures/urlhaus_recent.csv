@@ -1,0 +1,7 @@
+################################################################
+# abuse.ch URLhaus Database Dump (CSV - recent URLs only)      #
+################################################################
+#
+# id,dateadded,url,url_status,last_online,threat,tags,urlhaus_link,reporter
+"3000001","2026-10-07 09:00:00","http://198.51.100.7/bins/x.sh","online","2026-10-07 09:00:00","malware_download","elf,mirai","https://urlhaus.abuse.ch/url/3000001/","someone"
+"3000002","2026-10-07 09:05:00","https://evil-cdn.example/payload.exe","offline","","malware_download","exe","https://urlhaus.abuse.ch/url/3000002/","someone"

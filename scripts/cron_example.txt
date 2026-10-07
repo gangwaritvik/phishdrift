@@ -1,0 +1,7 @@
+# Run the collector every 12 hours, at 06:15 and 18:15 local time (crontab -e). Adjust the repo path.
+# OpenPhish's community feed updates every 12 h; running more often does not poll it faster.
+# Put PHISHTANK_APP_KEY / URLHAUS_AUTH_KEY in ~/.phishdrift.env (never commit it).
+15 6,18 * * * cd $HOME/phishdrift && set -a && . $HOME/.phishdrift.env && set +a && .venv/bin/python -m collector run >> data/collector.log 2>&1
+
+# Windows Task Scheduler equivalent (one line; trigger daily at 06:15, repeat every 12 hours):
+#   cmd /c "cd /d %USERPROFILE%\phishdrift && .venv\Scripts\python -m collector run >> data\collector.log 2>&1"
