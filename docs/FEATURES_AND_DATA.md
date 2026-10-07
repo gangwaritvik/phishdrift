@@ -1,55 +1,116 @@
 # Features and data
 
 Full research catalog with sources lives in the Claude Doc "Phishing Detection Feature Catalog".
-This file is the implementation subset.
+This file is the implementation subset. Every implemented feature is listed in
+`docs/FEATURE_DICTIONARY.md`, generated from `features/registry.py`.
 
-## Datasets
+## Sources (training and evaluation corpus)
 
-| Dataset | Use | Notes |
+Only URL, label, date and HTML are loaded from any source. Precomputed feature columns are never used.
+
+| Source | Size (published) | HTML | Dates | Notes and caveats |
+| --- | --- | --- | --- | --- |
+| PhreshPhish (`phreshphish/phreshphish`, Hugging Face) | ~119k phishing / ~253k benign | yes | yes (Jul 2024 – Mar 2025; v1.0.1 later) | Main source. Benign from real browsing telemetry. Has an official later-in-time test split. CC BY 4.0, anti-phishing research only. |
+| PhiUSIIL (UCI id 967, `ucimlrepo`) | 100,945 phishing / 134,850 legit | not used | no | URL column only. Label 1 = legitimate in the original (recode). Legit = 100% bare homepages (see rules below). Never use `URLSimilarityIndex`, `TLDLegitimateProb`, `URLCharProb` or any other column. CC BY 4.0. |
+| Phish360 | 10,748 total | yes + screenshots | 2020–23 (per-row dates to check) | Legit includes login pages (hard negatives). Parquet. Download link and license to confirm. |
+| Phish-Blitz | 5,000 phishing / 8,809 legit | yes (full page resources) | to check | Dataset and tool on GitHub. |
+| Phishpedia 30k | 30k phishing | yes + screenshots | partly | Phishing only (contributes one class). |
+| URL-Phish (Mendeley) | 16,600 phishing / 100,000 benign | no | phishing Nov 2024 – Sep 2025 | Benign from the Research Organization Registry (.edu/.gov, likely homepage-heavy): same handling as PhiUSIIL legit. |
+| PhishStorm (Aalto) | 48,009 / 48,009 | no | no (2014) | Old; URLs often stored without a scheme. |
+| Live feeds (our collector) | grows daily | via sandbox | first-seen | Only source for tier C. |
+| Benign inner-page crawl | grows | optional | crawl date | 3–5 inner pages per seed domain from PhiUSIIL-legit and Tranco seeds. |
+| Naturally browsed legitimate pages | — | — | — | Evaluation only: out-of-distribution FPR. |
+
+Data card per source: URL and domain counts, dates, class balance, depth distribution, dedup and removal
+counts, crawl success, license.
+
+### PhiUSIIL legitimate URLs (rule)
+
+They are valid benign data, but 100% are bare `https://www.<domain>` homepages. Used alone they create a
+"has a path = phishing" shortcut: the prior report's raw model flagged 100% of naturally collected
+legitimate URLs (report §13.11).
+1. Never the only benign source; always mixed with deep benign URLs (PhreshPhish benign, crawler inner
+   pages, Tranco-seeded inner pages).
+2. Balance URL path depth across classes. Report per-class depth distributions before training and fail
+   the build if any depth bucket is >90% one class.
+3. Use PhiUSIIL legit domains as crawl seeds: sample domains and fetch 3–5 inner pages each (robots.txt
+   and rate limits respected).
+4. Use all PhiUSIIL legit domains for registrable-domain-level features and to seed the allowlist and
+   brand list.
+
+## Live feeds and lists
+
+| Feed | Role | Terms / notes |
 | --- | --- | --- |
-| PhreshPhish (`phreshphish/phreshphish` on Hugging Face) | Main training set; dates enable E1/E3 | URL + HTML + date + target brand; CC BY 4.0, anti-phishing research only; v1.0.1 adds samples to Dec 2025 |
-| PhiUSIIL (UCI id 967, `ucimlrepo`) | Second training/comparison set | 134,850 legit / 100,945 phishing, 54 features, CC BY 4.0 |
-| Hannousse–Yahiouche (Mendeley, 87 features) | Comparison with prior papers only | 2020, balanced, inflated scores |
-| Phishpedia 30k | Stretch: brand/visual work | URL, HTML, screenshot, brand |
-| Live feeds: OpenPhish, PhishTank, URLhaus | Fresh phishing for time-split test, E3, real-world check | Timestamp first-seen; check each feed's terms |
-| Tranco top list | Benign seeds + allowlist | Crawl inner pages too, not only homepages |
+| OpenPhish community (`openphish.com/feed.txt`) | Main live phishing source | Poll every 12 h; non-commercial only |
+| Phishing.Database (Phishing-Database org on GitHub) | Secondary live phishing source | MIT license; use the "NEW today" lists for first-seen |
+| PhishTank | Secondary only | Registration closed since 2020; online-valid feed has survivorship bias |
+| URLhaus | Blocklist only | Free abuse.ch Auth-Key; mostly malware, not phishing training data |
+| Google Safe Browsing | Blocklist (backend) | Update API with local hash prefixes, not Lookup; non-commercial; key stays on the backend |
+| Tranco (`tranco` Python package) | Allowlist + benign crawl seeds | Rank never used as a model feature |
 
-Data card per dataset: source, collection dates, counts, class balance, dedup stats, license.
+## Feature tiers
 
-## Features — Tier 1 (in-browser URL model, must match Python exactly)
+Feature definitions are reimplemented from Hannousse–Yahiouche (87 features; their published scripts
+are the reference), PhiUSIIL (paper definitions; derived similarity scores skipped), the UCI 30-feature
+set, and the lists below.
 
-- Lengths: URL, host, domain, subdomain, path, query, TLD; longest token
-- Counts: `. - _ / @ ? & = % ~ +`, digits, letters, subdomain levels, path depth, query params
+### Tier A — URL (all samples; runs in the browser; must match Python exactly)
+
+Computed after platform-identity masking (`configs/platforms.yaml` → neutral token +
+`is_hosting_platform`).
+- Lengths: URL, host, domain, subdomain, path, query, TLD; shortest/longest/average word in URL, host, path
+- Counts: `. - _ / @ ? & = % ~ + * : , ; $ |` and spaces, digits, letters, subdomain levels, path depth,
+  query params, `www` and `com` tokens
 - Ratios: digits/letters/special chars in URL and host
-- Host form: IP as host (incl. hex/decimal), non-standard port, punycode `xn--`, `https`/`www` tokens
-  inside host or path, double slash in path
-- Randomness: Shannon entropy of domain and URL, longest repeated-char run, char-bigram likelihood
-- Words: suspicious keywords (login, verify, secure, update, account, kyc, wallet, bank, signin,
-  otp, upi), brand names in subdomain/path, dictionary-word ratio
-- Squatting: min edit distance to a brand list (include Indian banks/payment apps), confusable/homoglyph
-  normalization then compare, combosquatting (`brand-` / `-brand`)
-- TLD risk score (learned from training data only), shortener domain, redirect params, embedded email
+- Host form: IP as host (incl. hex/decimal), non-standard port, punycode `xn--`, `http`/`https`/`www`
+  tokens inside host or path, double slash in path, TLD in path or subdomain, abnormal subdomain,
+  prefix-suffix hyphen, path extension
+- Obfuscation: %-encoding count and ratio, char continuation rate, longest repeated-char run
+- Randomness: Shannon entropy of domain and URL, char-bigram likelihood (fitted on training benign
+  only), random-domain score
+- Words: suspicious keywords (login, verify, secure, update, account, kyc, wallet, bank, signin, otp,
+  upi, ...), brand names in subdomain/path, domain-in-brand
+- Squatting: min edit distance to a brand list (incl. Indian banks/payment apps), homoglyph
+  normalisation then compare, combosquatting (`brand-` / `-brand`)
+- Other: shortener domain, redirect params, embedded URL or email, suspicious TLD list, TLD risk score
+  (learned from training folds only)
+- Char n-gram TF-IDF of the masked URL (input to the TF-IDF + LR base learner, not a dictionary feature)
 
-## Features — Tier 2 (backend)
-
-- Domain: age (RDAP), days to expiry, registrar, privacy-redacted WHOIS
-- DNS: A/AAAA count, MX/SPF/DMARC present, NS count, min TTL, CNAME chain length
-- TLS: HTTPS, issuer type (free vs paid), validity period, cert age, SAN count, brand keyword in SANs
-- Hosting: ASN, country, free-hosting/platform flag (treat specially; don't let it stand in for phishing)
-- Redirects: hop count, cross-domain hops, shortener in chain
-
-## Features — Tier 3 (HTML/DOM, content script and training)
+### Tier B — HTML (samples with HTML; content script and training)
 
 - Forms: password field, credential-form count, action empty/blank/mailto/other-domain, hidden fields,
-  OTP/card/CVV/UPI PIN fields
-- Links: % external, % null/self (`#`, `javascript:`), anchor-text vs href mismatch
-- Resources: % external scripts/CSS/images, favicon from another domain
-- Text: title–URL match score, brand in title/text not matching domain, urgency words
-- Structure: iframes (hidden), meta refresh, right-click disabled, low text-to-code ratio, page size
-- Scripts: `eval`/`atob`/`unescape`/`document.write`, obfuscation entropy, exfil endpoints
-  (Telegram bot, webhooks)
+  submit button, OTP/card/CVV/UPI-PIN fields
+- Links: hyperlink count, % internal/external/null (`#`, `javascript:`), safe anchors, links in
+  meta/script/link tags, anchor-text vs href mismatch
+- Resources: % external scripts/CSS/images/media, favicon present / from another domain
+- Text: title present/empty, domain in title, domain- and URL-title match scores, description,
+  copyright (and domain in copyright), bank/pay/crypto words, urgency words, brand in title/text not
+  matching the domain, social links
+- Structure: lines of code, longest line, page size, text-to-code ratio, iframes (hidden), meta refresh,
+  right-click disabled, onmouseover tricks, popups, JS redirects, responsive viewport, robots meta
+- Scripts: `eval`/`atob`/`unescape`/`document.write`, obfuscation entropy, exfil endpoints (Telegram
+  bot API, webhooks, form relays)
 
-## Features — Tier 4 (stretch)
+### Tier C — domain / DNS / WHOIS / TLS (live-feed URLs only, captured at first-seen)
+
+- Domain: age (RDAP), days to expiry, registration length, registered or not, privacy-redacted
+  WHOIS, registrar category
+- DNS: record exists, A/AAAA count, MX/SPF/DMARC present, NS count, min TTL, CNAME chain length
+- TLS: HTTPS, valid cert, issuer type (free vs paid), validity period, cert age, SAN count, brand
+  keyword in SANs
+- Hosting: ASN class, free-hosting/platform flag (treated specially; must not stand in for phishing)
+- Redirects: hop count, cross-domain hops, shortener in chain
+
+### Excluded from all models
+
+- Popularity: Tranco rank, web traffic, PageRank, Google index, links pointing to page (allowlist only)
+- Blocklist membership (`statistical_report` in Hannousse–Yahiouche and UCI): blocklist layer only
+- PhiUSIIL derived scores: `URLSimilarityIndex`, `TLDLegitimateProb`, `URLCharProb`
+- Features that need every link on a page fetched live (Hannousse–Yahiouche `ratio_intErrors`,
+  `ratio_extErrors`, internal/external redirection ratios): old pages can't be recomputed
+
+### Stretch (tier 4)
 
 - Brand-vs-domain check from logo (Phishpedia-style) or LLM brand inference
 - Credential-page classifier on screenshot
@@ -57,8 +118,13 @@ Data card per dataset: source, collection dates, counts, class balance, dedup st
 
 ## Known pitfalls
 
-- Popularity features (rank, indexing) leak class labels; keep them out of the model.
-- Free-hosting traits (deep subdomains) can track hosting platform more than phishing.
-- Old datasets' HTML may be parked/takedown pages; prefer datasets that saved HTML at collection.
-- URL-only adversarial training helps little in the literature; robustness comes mainly from
-  features attackers can't cheaply change (domain age, cert, page intent) and multimodal fusion.
+- Popularity features leak class labels; keep them out of the model.
+- Hosting-platform identity (web.app, github.io, ...) does not transfer to unseen domains; mask it
+  (prior report §13.9).
+- URL depth differs systematically between sources and classes (report §13.7); balance and check it.
+- Old datasets' HTML may be parked or takedown pages; prefer datasets that saved HTML at collection
+  time, and treat junk HTML as missing.
+- Sources record URLs differently (scheme present or missing, `www.`, trailing slash); canonicalise
+  before computing features so formatting cannot reveal the source.
+- URL-only adversarial training helps little in the literature; robustness comes mainly from features
+  attackers can't cheaply change (domain age, cert, page intent) and multimodal fusion.
