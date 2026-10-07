@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phishdrift"
+version = "0.1.0"
+description = "Do phishing detectors survive time and attackers? Data, experiments, extension."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+  "numpy>=1.26",
+  "pandas>=2.1",
+  "pyarrow>=14",
+  "pyyaml>=6",
+  "requests>=2.31",
+  "tldextract>=5.1",
+]
+
+[project.optional-dependencies]
+datasets = ["datasets>=2.18", "ucimlrepo>=0.0.7"]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[project.scripts]
+phishdrift-collect = "collector.__main__:main"
+phishdrift-build = "data_pipeline.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["phishdrift*", "collector*", "data_pipeline*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

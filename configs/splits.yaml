@@ -1,0 +1,7 @@
+seed: 42
+random_split:
+  test_fraction: 0.2                 # fraction of rows (by whole domains) in test
+time_split:
+  cutoff: null                       # ISO date, e.g. "2025-06-01"; null = use cutoff_quantile
+  cutoff_quantile: 0.8               # train on the oldest 80% of dated rows, test on the rest
+  drop_test_domains_seen_in_train: true

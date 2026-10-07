@@ -1,0 +1,4 @@
+User-agent: *
+Disallow: /private
+Sitemap: https://example.org/sitemap_index.xml
+sitemap: https://example.org/news-sitemap.xml

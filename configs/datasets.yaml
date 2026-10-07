@@ -1,0 +1,39 @@
+paths:
+  interim_dir: data/interim          # normalized per-dataset parquet (common schema + helper cols)
+  processed_dir: data/processed
+  reports_dir: reports
+
+phreshphish:
+  hf_id: phreshphish/phreshphish
+  revision: main                     # pin a commit hash once you have downloaded it
+  splits: [train, test]              # HF splits to read; PhishDrift re-splits them itself
+  # Column names in the HF dataset. Check with: python -m data_pipeline inspect phreshphish
+  columns:
+    url: url
+    label: label
+    date: date
+    html: html
+  license: CC BY 4.0 (anti-phishing research only)
+
+phiusiil:
+  uci_id: 967
+  columns:
+    url: URL
+    label: label
+  # In PhiUSIIL label 1 = legitimate and 0 = phishing; the loader flips it to PhishDrift's 1 = phishing.
+  phishing_label_value: 0
+  license: CC BY 4.0
+
+live:
+  # Built from the collector's first-seen index (feeds) plus the benign sampler.
+  include_threats: [phishing]        # add "malware" to include URLhaus rows
+  license: per-feed terms (OpenPhish, PhishTank, URLhaus, Tranco)
+
+dedup:
+  html_min_tokens: 50                # pages with fewer visible tokens are not near-dup checked
+  html_max_chars: 200000             # truncate HTML before hashing (speed)
+  shingle_size: 5
+  simhash_max_hamming: 3             # must be < number of LSH bands (4) for exact recall
+  near_dup_within_label_only: true   # phishing kits clone real pages; never drop a phish because it matches a benign page
+
+chunk_rows: 20000                    # rows per batch when streaming big datasets
