@@ -1,0 +1,17 @@
+{
+  "objectClassName": "domain",
+  "ldhName": "EXAMPLE-PHISH.XYZ",
+  "status": ["client transfer prohibited"],
+  "events": [
+    {"eventAction": "registration", "eventDate": "2026-10-05T11:20:00Z"},
+    {"eventAction": "expiration", "eventDate": "2027-10-05T23:59:59Z"},
+    {"eventAction": "last changed", "eventDate": "2026-10-05T11:25:00Z"}
+  ],
+  "entities": [
+    {"objectClassName": "entity", "roles": ["registrar"], "handle": "1068",
+     "vcardArray": ["vcard", [["version", {}, "text", "4.0"], ["fn", {}, "text", "NameSilo, LLC"]]]},
+    {"objectClassName": "entity", "roles": ["registrant"],
+     "remarks": [{"title": "REDACTED FOR PRIVACY", "description": ["Some of the data in this object has been removed."]}]}
+  ],
+  "nameservers": [{"ldhName": "NS2.DNSOWL.COM"}, {"ldhName": "NS1.DNSOWL.COM"}]
+}

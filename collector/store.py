@@ -1,11 +1,14 @@
-"""Raw daily snapshots plus a first-seen index across all runs.
+"""Collector storage.
 
 Layout:
-  data/raw/feeds/YYYY-MM-DD/<source>.parquet     what each feed returned that day
-  data/interim/feeds_first_seen.parquet          one row per normalized URL
+  data/raw/feeds/YYYY-MM-DD/<feed>.parquet       what each training feed returned that day
+  data/raw/blocklists/YYYY-MM-DD/<feed>.parquet  blocklist-only feeds (URLhaus); never training data
+  data/raw/crawl/YYYY-MM-DD/<seed_source>.parquet benign inner pages from the crawler
+  data/raw/crawl/attempts.parquet                every seed domain tried and its outcome
+  data/interim/feeds_first_seen.parquet          one row per normalized feed URL
 
-The index is the dedup point: a URL seen again later keeps its original ``first_seen``
-and only gains new sources.
+The first-seen index is the dedup point for feed URLs: a URL seen again later keeps its
+original ``first_seen`` and only gains new sources.
 """
 
 from __future__ import annotations
@@ -37,6 +40,54 @@ def write_daily(df: pd.DataFrame, raw_dir: Path, day: date, source: str) -> Path
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out, index=False)
     return out
+
+
+CRAWL_COLUMNS = ["url", "html", "seed_source", "seed_domain", "crawled_at"]
+
+
+def write_crawl(df: pd.DataFrame, crawl_dir: Path, day: date, seed_source: str) -> Path:
+    out = Path(crawl_dir) / day.isoformat() / f"{seed_source}.parquet"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if out.exists():  # a second run on the same day appends
+        df = pd.concat([pd.read_parquet(out), df], ignore_index=True)
+    df[CRAWL_COLUMNS].to_parquet(out, index=False)
+    return out
+
+
+ATTEMPT_COLUMNS = ["seed_source", "seed_domain", "status", "pages", "attempted_at"]
+
+
+def load_attempts(crawl_dir: Path) -> pd.DataFrame:
+    """Every seed domain the crawler has tried, with its outcome."""
+    path = Path(crawl_dir) / "attempts.parquet"
+    if not path.exists():
+        return pd.DataFrame(columns=ATTEMPT_COLUMNS)
+    return pd.read_parquet(path)
+
+
+def append_attempts(df: pd.DataFrame, crawl_dir: Path) -> Path:
+    path = Path(crawl_dir) / "attempts.parquet"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not len(df):
+        return path
+    old = load_attempts(crawl_dir)
+    merged = pd.concat([p for p in (old, df[ATTEMPT_COLUMNS]) if len(p)], ignore_index=True)
+    merged["attempted_at"] = pd.to_datetime(merged["attempted_at"], utc=True)
+    tmp = path.with_suffix(".tmp.parquet")
+    merged.to_parquet(tmp, index=False)
+    os.replace(tmp, path)
+    return path
+
+
+def load_crawl(crawl_dir: Path) -> pd.DataFrame:
+    """All crawled pages, one row per normalized URL (earliest crawl kept)."""
+    files = sorted(Path(crawl_dir).glob("*/*.parquet"))
+    if not files:
+        return pd.DataFrame(columns=CRAWL_COLUMNS)
+    df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
+    df["crawled_at"] = pd.to_datetime(df["crawled_at"], utc=True)
+    df = df.assign(_k=df["url"].map(normalize_url)).sort_values("crawled_at", kind="stable")
+    return df.drop_duplicates("_k").drop(columns="_k").reset_index(drop=True)
 
 
 def empty_index() -> pd.DataFrame:

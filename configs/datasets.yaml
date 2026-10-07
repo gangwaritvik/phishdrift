@@ -1,39 +1,95 @@
+# Sources for the pooled corpus. Only URL, label, date and HTML are ever read from a source.
+# Local sources are downloaded by hand into data/raw/<source>/ (see README "Data").
+# Check a source's column names with: python -m data_pipeline inspect <source>
+
 paths:
-  interim_dir: data/interim          # normalized per-dataset parquet (common schema + helper cols)
+  interim_dir: data/interim
   processed_dir: data/processed
   reports_dir: reports
 
-phreshphish:
-  hf_id: phreshphish/phreshphish
-  revision: main                     # pin a commit hash once you have downloaded it
-  splits: [train, test]              # HF splits to read; PhishDrift re-splits them itself
-  # Column names in the HF dataset. Check with: python -m data_pipeline inspect phreshphish
-  columns:
-    url: url
-    label: label
-    date: date
-    html: html
-  license: CC BY 4.0 (anti-phishing research only)
+sources:
+  phreshphish:
+    kind: huggingface
+    hf_id: phreshphish/phreshphish
+    revision: main                     # pin a commit hash once downloaded
+    splits: {train: hf_train, test: hf_test}   # HF split -> origin; hf_test is the newest time slice
+    columns: {url: url, label: label, date: date, html: html}   # assumed; verify with inspect
+    license: CC BY 4.0, anti-phishing research only
+  phiusiil:
+    kind: uci
+    uci_id: 967
+    columns: {url: URL, label: label}  # every other column (incl. URLSimilarityIndex) is ignored
+    phishing_label_value: 0            # PhiUSIIL: 1 = legitimate, 0 = phishing
+    homepage_only_benign: true         # never the only benign source; domains seed the crawler
+    license: CC BY 4.0
+  phish360:
+    kind: table
+    path: data/raw/phish360/*.parquet
+    columns: {url: url, label: label, html: html}   # assumed; verify with inspect
+    license: to confirm
+  phishblitz:
+    kind: phishblitz
+    roots: {1: data/raw/phishblitz/phishing_resources, 0: data/raw/phishblitz/legitimate_resources}
+    info_csv: info.csv
+    columns: {url: URL, html_folder: HTML Folder}
+    page_dirs: [fully_downloaded_web_pages, no_screenshot_web_pages]
+    license: MIT (tool); dataset terms to confirm
+  phishpedia:
+    kind: folders
+    path: data/raw/phishpedia/*/       # one folder per site
+    url_file: info.txt
+    html_file: html.txt
+    label: 1                           # phishing only
+    license: research use (see Phishpedia repo)
+  urlphish:
+    kind: table
+    path: data/raw/urlphish/*.csv
+    columns: {url: url, label: label}  # the 22 precomputed feature columns are ignored
+    homepage_only_benign: true         # benign = Research Organization Registry sites
+    license: to confirm (Mendeley)
+  phishstorm:
+    kind: table
+    path: data/raw/phishstorm/urlset.csv
+    columns: {url: domain, label: label}   # the "domain" column holds the URL
+    read_options: {encoding: latin-1, on_bad_lines: skip}
+    license: unspecified (Aalto, 2014)
+  live:
+    kind: live
+    training_feeds: [openphish, phishing_database, phishtank]
+    license: per-feed terms (OpenPhish non-commercial, Phishing.Database MIT)
+  natural_legit:
+    kind: table
+    path: data/raw/natural_legit/*.csv
+    columns: {url: url}
+    label: 0                           # evaluation only: out-of-distribution FPR
+    license: own collection
 
-phiusiil:
-  uci_id: 967
-  columns:
-    url: URL
-    label: label
-  # In PhiUSIIL label 1 = legitimate and 0 = phishing; the loader flips it to PhishDrift's 1 = phishing.
-  phishing_label_value: 0
-  license: CC BY 4.0
+corpus:
+  seed: 42
+  # Ties in "keep the earliest copy" and domain ownership go to the source listed first.
+  source_priority: [live, phreshphish, phish360, phishblitz, phishpedia, urlphish, phiusiil, phishstorm, natural_legit]
+  max_urls_per_domain: 20              # prior report §9: crawler pools averaged ~21-23 URLs per domain
+  max_source_share: 0.35               # no source carries more than 35% of the training weight
+  depth:
+    top_bucket: 4                      # buckets 0, 1, 2, 3, 4+
+    balance: true
+    target_share: 0.8                  # downsample a bucket's majority class to at most 80%
+    min_minority: 50                   # buckets with a tinier minority are not balanced, only checked
+    fail_share: 0.9                    # build fails if any bucket is more than 90% one class
 
-live:
-  # Built from the collector's first-seen index (feeds) plus the benign sampler.
-  include_threats: [phishing]        # add "malware" to include URLhaus rows
-  license: per-feed terms (OpenPhish, PhishTank, URLhaus, Tranco)
+holdouts:
+  heldout_source: phish360             # never trained or calibrated on
+  eval_only_sources: [natural_legit]
+  time_slice:
+    origins: [hf_test]                 # PhreshPhish's official later-in-time test split
+    sources:
+      live: {newest_fraction: 0.2}     # newest 20% of live-feed rows by first-seen date
 
 dedup:
-  html_min_tokens: 50                # pages with fewer visible tokens are not near-dup checked
-  html_max_chars: 200000             # truncate HTML before hashing (speed)
+  html_min_tokens: 50                  # pages with fewer visible tokens are not near-dup checked
+  html_max_chars: 200000               # truncate HTML before hashing (speed)
   shingle_size: 5
-  simhash_max_hamming: 3             # must be < number of LSH bands (4) for exact recall
-  near_dup_within_label_only: true   # phishing kits clone real pages; never drop a phish because it matches a benign page
+  simhash_max_hamming: 3               # must be < number of LSH bands (4) for exact recall
+  near_dup_within_label_only: true     # phishing kits clone real pages; never drop a phish for matching a benign page
 
-chunk_rows: 20000                    # rows per batch when streaming big datasets
+chunk_rows: 20000                      # rows per batch when streaming big sources

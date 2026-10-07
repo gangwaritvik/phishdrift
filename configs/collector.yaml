@@ -1,48 +1,75 @@
-# Daily feed collector. Secrets come from environment variables, never from this file.
+# Live collector. Secrets come from environment variables, never from this file.
+# Run every 12 hours (scripts/cron_example.txt). Feeds are cached for their polling interval,
+# so running more often does not poll them faster.
+
 paths:
-  raw_dir: data/raw/feeds            # one folder per UTC day: data/raw/feeds/YYYY-MM-DD/<source>.parquet
+  raw_dir: data/raw/feeds              # training feeds: data/raw/feeds/YYYY-MM-DD/<feed>.parquet
+  blocklist_dir: data/raw/blocklists   # blocklist-only feeds; never training data
+  crawl_dir: data/raw/crawl            # benign inner pages: data/raw/crawl/YYYY-MM-DD/<seed_source>.parquet
+  seed_dir: data/interim/seeds         # crawl seed lists written by `python -m data_pipeline seeds`
   index_path: data/interim/feeds_first_seen.parquet
+  domain_info_dir: data/interim/domain_info   # first-seen RDAP/DNS/TLS captures (JSONL per day)
   http_cache_dir: .cache/http
 
 http:
   timeout_s: 20
   retries: 3
-  backoff_factor: 2.0                # waits 2s, 4s, 8s between retries
-  user_agent: "PhishDrift-research-collector/0.1 (academic project; contact via GitHub)"
-  default_min_interval_s: 1.0        # politeness delay between requests to the same host
+  backoff_factor: 2.0                  # waits 2s, 4s, 8s between retries
+  user_agent: "PhishDrift-research-collector/0.2 (academic project; https://github.com/gangwaritvik/phishdrift)"
+  default_min_interval_s: 1.0          # politeness delay between requests to the same host
 
 feeds:
-  openphish:
+  openphish:                           # main live source; community feed, non-commercial only
     enabled: true
+    role: training
     url: https://openphish.com/feed.txt
-    cache_ttl_s: 3300                # also the minimum polling interval
-  phishtank:
+    cache_ttl_s: 43200                 # 12 h: also the minimum polling interval
+  phishing_database:                   # secondary live source; MIT license
     enabled: true
+    role: training
+    url: https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-NEW-today.txt
+    cache_ttl_s: 43200
+  phishtank:                           # secondary only: registration closed, survivorship bias
+    enabled: true
+    role: training
     url_with_key: "http://data.phishtank.com/data/{key}/online-valid.csv"
-    key_env: PHISHTANK_APP_KEY       # skipped (with a log line) when unset
-    cache_ttl_s: 3300
-  urlhaus:
+    key_env: PHISHTANK_APP_KEY         # skipped (with a log line) when unset
+    cache_ttl_s: 43200
+  urlhaus:                             # blocklist only: mostly malware, not phishing training data
     enabled: true
+    role: blocklist
     url: https://urlhaus.abuse.ch/downloads/csv_recent/
-    auth_key_env: URLHAUS_AUTH_KEY   # sent as the Auth-Key header when set
-    cache_ttl_s: 290
-    # URLhaus lists malware-distribution URLs, not phishing. Rows are kept but tagged
-    # threat=malware so experiments can include or exclude them explicitly.
+    auth_key_env: URLHAUS_AUTH_KEY     # sent as the Auth-Key header when set
+    cache_ttl_s: 43200
 
-benign:
+crawler:                               # benign inner pages; robots.txt and Crawl-delay obeyed
   enabled: true
-  tranco_url: https://tranco-list.eu/top-1m.csv.zip
-  tranco_cache_ttl_s: 86400
-  top_n: 100000                      # sample from the top N domains
-  domains_per_day: 200               # domains sampled per daily run (seeded by date)
-  inner_pages_per_domain: 5          # inner URLs kept per domain (from sitemap or homepage links)
+  inner_pages_min: 3                   # domains yielding fewer allowed inner pages are logged
+  inner_pages_max: 5
   max_sitemaps_per_domain: 2
-  include_homepage: true
-  max_page_bytes: 5000000            # cap on robots.txt / sitemap / homepage downloads
-  # Benign free-hosted / platform pages so "deep subdomain on a free host" is not a phishing shortcut.
-  # Extend this list with real, legitimate sites you have checked by hand.
-  free_hosted_seeds:
-    - https://pages.github.com/
-    - https://docs.github.com/en/pages
-    - https://blog.google/
-    - https://wordpress.org/showcase/
+  max_page_bytes: 5000000
+  store_html: true                     # fetch each chosen inner page's HTML (benign sites only)
+  max_crawl_delay_s: 10                # skip domains asking for a longer Crawl-delay
+  seeds:
+    live:                              # Tranco-seeded pages belong to the "live" source
+      from: tranco                     # via the `tranco` package; rank never becomes a feature
+      top_n: 100000
+      domains_per_run: 60
+      include_homepage: true
+    phiusiil:                          # inner pages of PhiUSIIL legitimate domains
+      from: seed_file
+      domains_per_run: 60
+      include_homepage: false          # PhiUSIIL already has the homepages
+    urlphish:
+      from: seed_file
+      domains_per_run: 30
+      include_homepage: false
+  tranco_cache_dir: .cache/tranco
+
+domain_capture:                        # tier C raw facts, captured once per new live domain
+  enabled: true
+  max_domains_per_run: 500
+  rdap_url: "https://rdap.org/domain/{domain}"
+  dns_timeout_s: 5
+  tls: true                            # TLS handshake only (no page fetch) to read the certificate
+  tls_timeout_s: 8

@@ -1,6 +1,14 @@
 import pytest
 
-from phishdrift.domains import hostname, normalize_url, registered_domain
+from phishdrift.domains import (
+    hostname,
+    normalize_to_registrable,
+    normalize_url,
+    registered_domain,
+    registered_domain_private,
+    url_depth,
+    url_key,
+)
 
 
 @pytest.mark.parametrize(
@@ -13,8 +21,9 @@ from phishdrift.domains import hostname, normalize_url, registered_domain
         ("paytm.com/login", "paytm.com"),  # missing scheme
         ("HTTPS://WWW.Amazon.IN:443/ap/signin", "amazon.in"),
         ("https://paypal.com.secure-verify.xyz/", "secure-verify.xyz"),  # brand in subdomain
-        ("https://my-site.github.io/login", "my-site.github.io"),  # private suffix
-        ("https://evil.blogspot.com/", "evil.blogspot.com"),
+        ("https://my-site.github.io/login", "github.io"),  # U1: platform is one group
+        ("https://evil.blogspot.com/", "blogspot.com"),
+        ("https://a.web.app/x", "web.app"),
         ("http://192.0.2.10/bank/update.php", "192.0.2.10"),
         ("http://[2001:db8::1]:8080/x", "2001:db8::1"),
         ("https://xn--pypal-4ve.com/", "xn--pypal-4ve.com"),  # punycode stays as-is
@@ -23,18 +32,27 @@ from phishdrift.domains import hostname, normalize_url, registered_domain
         ("http://", ""),
     ],
 )
-def test_registered_domain(url, expected):
+def test_registered_domain_u1(url, expected):
     assert registered_domain(url) == expected
 
 
-def test_same_site_pages_share_domain():
-    a = registered_domain("https://a.example.co.uk/login")
-    b = registered_domain("http://b.c.example.co.uk/other?x=1")
-    assert a == b == "example.co.uk"
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://my-site.github.io/login", "my-site.github.io"),
+        ("https://a.web.app/x", "a.web.app"),
+        ("https://login.secure.paypal.co.uk/x", "paypal.co.uk"),
+    ],
+)
+def test_registered_domain_u2_honours_private_suffixes(url, expected):
+    assert registered_domain_private(url) == expected
 
 
-def test_different_free_hosted_sites_differ():
-    assert registered_domain("https://a.github.io/") != registered_domain("https://b.github.io/")
+def test_sites_on_one_platform_share_the_u1_group():
+    assert registered_domain("https://a.github.io/") == registered_domain("https://b.github.io/")
+    assert registered_domain_private("https://a.github.io/") != registered_domain_private(
+        "https://b.github.io/"
+    )
 
 
 @pytest.mark.parametrize(
@@ -52,5 +70,41 @@ def test_normalize_url(url, expected):
     assert normalize_url(url) == expected
 
 
+def test_url_key_ignores_scheme_www_and_trailing_slash():
+    variants = [
+        "https://www.Example.com/",
+        "http://example.com",
+        "example.com/",
+        "HTTPS://WWW.EXAMPLE.COM:443#top",
+    ]
+    assert {url_key(u) for u in variants} == {"example.com"}
+    assert url_key("https://example.com/a/?x=1") == "example.com/a?x=1"
+    assert url_key("https://example.com/A") != url_key("https://example.com/a")  # path case kept
+    assert url_key("https://example.com:8080/") == "example.com:8080"
+    assert url_key("https://sub.example.com/") != url_key("https://example.com/")
+
+
+@pytest.mark.parametrize(
+    ("url", "depth"),
+    [
+        ("https://www.example.com", 0),
+        ("https://www.example.com/", 0),
+        ("https://www.example.com/?q=1/2/3", 0),  # query excluded
+        ("https://www.example.com/#/a/b", 0),  # fragment excluded
+        ("https://example.com/a", 1),
+        ("https://example.com/a/", 1),
+        ("https://example.com//a///b", 2),  # empty segments ignored
+        ("example.com/a/b/c/login.php?x=1", 4),
+    ],
+)
+def test_url_depth(url, depth):
+    assert url_depth(url) == depth
+
+
+def test_normalize_to_registrable():
+    assert normalize_to_registrable("http://login.paypal.co.uk/a/b?x") == "https://www.paypal.co.uk"
+
+
 def test_hostname_handles_garbage():
     assert hostname("http://[not-ipv6/") == ""
+    assert hostname("HTTPS://Sub.Example.COM.:8443/x") == "sub.example.com"

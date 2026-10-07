@@ -76,11 +76,14 @@ class HttpClient:
         cache_ttl_s: float = 0,
         headers: dict[str, str] | None = None,
         max_bytes: int | None = None,
+        min_interval_s: float | None = None,
     ) -> bytes:
         """GET ``url``. Serves from disk cache when younger than ``cache_ttl_s``.
 
         The cache key is the URL only, so pass secrets in ``headers`` rather than the URL
-        when possible. Raises ``requests.HTTPError`` on a non-2xx final response.
+        when possible. ``min_interval_s`` overrides the per-host politeness delay (e.g. a
+        site's robots.txt Crawl-delay). Raises ``requests.HTTPError`` on a non-2xx final
+        response.
         """
         body_path, meta_path = self._cache_paths(url)
         if cache_ttl_s > 0 and meta_path.exists() and body_path.exists():
@@ -89,7 +92,10 @@ class HttpClient:
                 log.debug("cache hit %s", url)
                 return body_path.read_bytes()
 
-        self._wait_for_host(url, self.default_min_interval_s)
+        interval = self.default_min_interval_s
+        if min_interval_s is not None:
+            interval = max(interval, min_interval_s)
+        self._wait_for_host(url, interval)
         with self._session.get(url, timeout=self.timeout_s, headers=headers, stream=True) as resp:
             resp.raise_for_status()
             chunks, size = [], 0

@@ -1,7 +1,5 @@
-seed: 42
-random_split:
-  test_fraction: 0.2                 # fraction of rows (by whole domains) in test
-time_split:
-  cutoff: null                       # ISO date, e.g. "2025-06-01"; null = use cutoff_quantile
-  cutoff_quantile: 0.8               # train on the oldest 80% of dated rows, test on the rest
-  drop_test_domains_seen_in_train: true
+# Domain-grouped (U1, public-suffix-only) splits of the training pool.
+seed: 0                                # split k uses seed + k; seeds vary the partition only
+n_splits: 10
+test_fraction: 0.2                     # share of pool rows (whole domains) in each split's test side
+cal_fraction: 0.1                      # share of each train side held for calibration/thresholds

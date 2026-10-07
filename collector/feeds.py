@@ -1,5 +1,6 @@
-"""Phishing/malicious URL feeds. Parsers are pure functions (tested with fixtures);
-fetchers wrap them with the cached, rate-limited HTTP client.
+"""Live feeds. Parsers are pure functions (tested with fixtures); fetchers wrap them with
+the cached, rate-limited HTTP client. Each feed's ``role`` in configs/collector.yaml says
+whether it supplies training data (``training``) or only blocklist entries (``blocklist``).
 
 Every fetcher returns a frame with columns: url, source, threat, label, feed_time, target.
 """
@@ -56,6 +57,16 @@ def parse_openphish(text: str) -> pd.DataFrame:
     return _frame(urls, "openphish", "phishing", 1)
 
 
+def parse_url_list(text: str, source: str) -> pd.DataFrame:
+    """One URL per line; blank lines and ``#`` comments skipped (Phishing.Database lists)."""
+    urls = [
+        ln.strip()
+        for ln in text.splitlines()
+        if ln.strip() and not ln.lstrip().startswith("#") and "." in ln
+    ]
+    return _frame(urls, source, "phishing", 1)
+
+
 def parse_phishtank(csv_bytes: bytes) -> pd.DataFrame:
     df = pd.read_csv(io.BytesIO(csv_bytes), dtype=str)
     df = df[df["url"].notna()]
@@ -82,6 +93,11 @@ def fetch_openphish(client: HttpClient, cfg: dict) -> pd.DataFrame:
     return parse_openphish(body.decode("utf-8", errors="replace"))
 
 
+def fetch_phishing_database(client: HttpClient, cfg: dict) -> pd.DataFrame:
+    body = client.get(cfg["url"], cache_ttl_s=cfg["cache_ttl_s"])
+    return parse_url_list(body.decode("utf-8", errors="replace"), "phishing_database")
+
+
 def fetch_phishtank(client: HttpClient, cfg: dict) -> pd.DataFrame | None:
     key = os.environ.get(cfg["key_env"])
     if not key:
@@ -102,6 +118,7 @@ def fetch_urlhaus(client: HttpClient, cfg: dict) -> pd.DataFrame:
 
 FETCHERS = {
     "openphish": fetch_openphish,
+    "phishing_database": fetch_phishing_database,
     "phishtank": fetch_phishtank,
     "urlhaus": fetch_urlhaus,
 }

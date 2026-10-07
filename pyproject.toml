@@ -4,18 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "phishdrift"
-version = "0.1.0"
-description = "Do phishing detectors survive time and attackers? Data, experiments, extension."
+version = "0.2.0"
+description = "Phishing detector from pooled datasets: data pipeline, models, extension."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
+  "dnspython>=2.6",
   "numpy>=1.26",
   "pandas>=2.1",
   "pyarrow>=14",
   "pyyaml>=6",
   "requests>=2.31",
   "tldextract>=5.1",
+  "tranco>=0.8",
 ]
 
 [project.optional-dependencies]

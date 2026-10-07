@@ -6,4 +6,5 @@
   <url><loc>https://example.org/logo.png</loc></url>
   <url><loc>https://cdn.other.net/page</loc></url>
   <url><loc> https://www.example.org/contact </loc></url>
+  <url><loc>https://example.org/private/admin</loc></url>
 </urlset>

@@ -1,7 +1,8 @@
-"""Domain-disjoint random split and time split.
+"""Domain-grouped splits.
 
-Both assign whole registered domains (eTLD+1) to one side, so near-duplicate URLs on the
-same site can never sit in both train and test.
+Every split assigns whole registrable domains (U1, public-suffix-only) to one side, so
+URLs of the same site, including every site on one hosting platform, never sit on both
+sides. Overlap of domains or canonical URLs between sides is a hard failure (report §9).
 """
 
 from __future__ import annotations
@@ -9,9 +10,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-TRAIN, TEST = "train", "test"
-DROPPED_UNDATED = "dropped_undated"
-DROPPED_OVERLAP = "dropped_domain_overlap"
+from phishdrift.domains import url_key
+
+TRAIN, CAL, TEST = "train", "cal", "test"
 
 
 class LeakageError(AssertionError):
@@ -29,41 +30,45 @@ def random_domain_split(df: pd.DataFrame, test_fraction: float, seed: int) -> pd
         order = grp.index.to_numpy()[rng.permutation(len(grp))]
         sizes = grp.loc[order, "size"].to_numpy()
         target = test_fraction * sizes.sum()
+        if target <= 0:
+            continue
         n_take = int(np.searchsorted(np.cumsum(sizes), target, side="left")) + 1
-        test_domains.extend(order[: min(n_take, len(order))] if target > 0 else [])
+        test_domains.extend(order[: min(n_take, len(order))])
     return pd.Series(
         np.where(df["domain"].isin(set(test_domains)), TEST, TRAIN), index=df.index, name="split"
     )
 
 
-def resolve_cutoff(df: pd.DataFrame, cutoff: str | None, quantile: float) -> pd.Timestamp:
-    if cutoff:
-        return pd.Timestamp(cutoff, tz="UTC")
-    dated = df["date"].dropna()
-    if dated.empty:
-        raise ValueError("no dated rows: time split impossible")
-    return dated.quantile(quantile)
+def grouped_splits(
+    df: pd.DataFrame, n_splits: int, test_fraction: float, cal_fraction: float, seed: int
+) -> pd.DataFrame:
+    """``n_splits`` domain-grouped train/cal/test assignments (columns split_0..split_{n-1}).
+    Seeds vary the partition only. ``cal`` is a domain-grouped slice of the train side used
+    for calibration and thresholds."""
+    out = {}
+    for k in range(n_splits):
+        split = random_domain_split(df, test_fraction, seed + k)
+        train = split == TRAIN
+        cal = random_domain_split(df.loc[train], cal_fraction, seed + 1000 + k)
+        split.loc[cal.index[cal == TEST]] = CAL
+        assert_disjoint(df, split)
+        out[f"split_{k}"] = split.to_numpy()
+    return pd.DataFrame(out, index=df.index)
 
 
-def time_split(
-    df: pd.DataFrame, cutoff: pd.Timestamp, drop_test_domains_seen_in_train: bool = True
-) -> pd.Series:
-    """Train = dated rows before ``cutoff``; test = rows on/after it. Undated rows are
-    dropped. Test rows whose domain also appears in train are dropped so the test set is
-    both later in time and domain-disjoint."""
-    split = pd.Series(DROPPED_UNDATED, index=df.index, name="split", dtype=object)
-    dated = df["date"].notna()
-    split[dated & (df["date"] < cutoff)] = TRAIN
-    split[dated & (df["date"] >= cutoff)] = TEST
-    if drop_test_domains_seen_in_train:
-        train_domains = set(df.loc[split == TRAIN, "domain"])
-        split[(split == TEST) & df["domain"].isin(train_domains)] = DROPPED_OVERLAP
-    return split
-
-
-def assert_domain_disjoint(df: pd.DataFrame, split: pd.Series) -> None:
-    overlap = set(df.loc[split == TRAIN, "domain"]) & set(df.loc[split == TEST, "domain"])
-    if overlap:
-        raise LeakageError(
-            f"{len(overlap)} domains in both train and test, e.g. {sorted(overlap)[:5]}"
-        )
+def assert_disjoint(
+    df: pd.DataFrame, parts: pd.Series, names: tuple[str, ...] | None = None
+) -> None:
+    """Fail if any two parts share a registrable domain or a canonical URL."""
+    names = names or tuple(sorted(pd.unique(parts)))
+    keys = df["url"].map(url_key)
+    for i, a in enumerate(names):
+        for b in names[i + 1 :]:
+            dom = set(df.loc[parts == a, "domain"]) & set(df.loc[parts == b, "domain"])
+            if dom:
+                raise LeakageError(
+                    f"{len(dom)} domains in both {a!r} and {b!r}, e.g. {sorted(dom)[:5]}"
+                )
+            urls = set(keys[parts == a]) & set(keys[parts == b])
+            if urls:
+                raise LeakageError(f"{len(urls)} URLs in both {a!r} and {b!r}")

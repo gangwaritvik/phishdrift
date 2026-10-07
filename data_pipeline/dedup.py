@@ -1,11 +1,10 @@
-"""Deduplication before splitting.
+"""Near-identical HTML detection.
 
-1. Exact: URLs are normalized (phishdrift.domains.normalize_url). The earliest-dated copy
-   is kept. A URL labelled both phishing and benign is dropped entirely.
-2. Near-identical HTML: 64-bit SimHash over word shingles of the visible text; pages
-   within a small Hamming distance form a cluster and only the earliest page is kept.
-   Clustering is within a label by default, because phishing kits clone real pages and a
-   phish that looks like its target must not be removed.
+64-bit SimHash over word shingles of the visible text; pages within a small Hamming
+distance form a cluster and only the first page (earliest, after the caller's sort) is
+kept. Clustering is within a label by default, because phishing kits clone real pages and
+a phish that looks like its target must not be removed. Exact URL dedup lives in
+data_pipeline.corpus.
 """
 
 from __future__ import annotations
@@ -13,30 +12,15 @@ from __future__ import annotations
 import hashlib
 import html as htmllib
 import re
-from dataclasses import asdict, dataclass
 
 import numpy as np
 import pandas as pd
-
-from phishdrift.domains import normalize_url
 
 _DROP_BLOCKS = re.compile(r"<(script|style|noscript|template)\b.*?</\1\s*>|<!--.*?-->", re.S | re.I)
 _TAGS = re.compile(r"<[^>]+>")
 _WORDS = re.compile(r"\w+", re.U)
 N_BANDS = 4
 BAND_BITS = 64 // N_BANDS
-
-
-@dataclass
-class DedupStats:
-    n_in: int = 0
-    exact_duplicates: int = 0
-    label_conflicts: int = 0
-    near_duplicate_html: int = 0
-    n_out: int = 0
-
-    def as_dict(self) -> dict[str, int]:
-        return asdict(self)
 
 
 def visible_tokens(html: str, max_chars: int) -> list[str]:
@@ -77,23 +61,6 @@ def hamming(a: int, b: int) -> int:
     return ((a ^ b) & 0xFFFFFFFFFFFFFFFF).bit_count()
 
 
-def _keep_order(df: pd.DataFrame) -> pd.DataFrame:
-    """Earliest date first (undated last), then lowest row_id, for 'keep first' rules."""
-    return df.sort_values(["date", "row_id"], na_position="last", kind="stable")
-
-
-def exact_dedup(df: pd.DataFrame, stats: DedupStats) -> pd.DataFrame:
-    df = df.assign(url_norm=df["url"].map(normalize_url))
-    n_labels = df.groupby("url_norm")["label"].transform("nunique")
-    conflicts = n_labels > 1
-    stats.label_conflicts = int(conflicts.sum())
-    df = df.loc[~conflicts]
-    before = len(df)
-    df = _keep_order(df).drop_duplicates("url_norm", keep="first")
-    stats.exact_duplicates = before - len(df)
-    return df.drop(columns="url_norm")
-
-
 class _UnionFind:
     def __init__(self) -> None:
         self.parent: dict = {}
@@ -131,33 +98,22 @@ def near_dup_clusters(hashes: list[int], max_hamming: int) -> dict[int, int]:
     return {h: uf.find(h) for h in uniq}
 
 
-def near_dup_html(df: pd.DataFrame, cfg: dict, stats: DedupStats) -> pd.DataFrame:
+def near_dup_html(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, int]:
+    """Drop near-identical HTML pages, keeping the first row of each cluster in ``df``'s
+    current order (callers sort by date/priority first). Returns (frame, n_removed)."""
     has = df["html_simhash"].notna()
     if not has.any():
-        return df
+        return df, 0
     hashed = df.loc[has]
     groups = (
         [hashed]
         if not cfg["near_dup_within_label_only"]
-        else [g for _, g in hashed.groupby("label")]
+        else [g for _, g in hashed.groupby("label", sort=False)]
     )
-    drop_ids: list[int] = []
+    drop: list = []
     for g in groups:
-        roots = near_dup_clusters(
-            g["html_simhash"].astype("int64").tolist(), cfg["simhash_max_hamming"]
-        )
-        g = _keep_order(g.assign(_cluster=g["html_simhash"].astype("int64").map(roots)))
-        dup = g.duplicated("_cluster", keep="first")
-        drop_ids.extend(g.loc[dup, "row_id"].tolist())
-    stats.near_duplicate_html = len(drop_ids)
-    return df.loc[~df["row_id"].isin(drop_ids)]
-
-
-def deduplicate(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, DedupStats]:
-    """Run exact then near-dup HTML dedup. ``df`` needs row_id and html_simhash columns."""
-    stats = DedupStats(n_in=len(df))
-    df = exact_dedup(df, stats)
-    df = near_dup_html(df, cfg, stats)
-    df = df.sort_values("row_id").reset_index(drop=True)
-    stats.n_out = len(df)
-    return df, stats
+        hashes = g["html_simhash"].astype("int64")
+        roots = near_dup_clusters(hashes.tolist(), cfg["simhash_max_hamming"])
+        dup = hashes.map(roots).duplicated(keep="first")
+        drop.extend(g.index[dup.to_numpy()])
+    return df.drop(index=drop), len(drop)
