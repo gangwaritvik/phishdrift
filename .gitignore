@@ -1,0 +1,26 @@
+# Datasets and caches: never commit data
+data/
+.cache/
+*.parquet
+
+# Generated reports are rebuilt by scripts; keep the folder structure only
+reports/**/*.png
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Env / secrets
+.env
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
