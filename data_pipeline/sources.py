@@ -157,24 +157,19 @@ def iter_huggingface(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataF
     import shutil
     import tempfile
 
-    import pyarrow.parquet as pq
-    from huggingface_hub import hf_hub_download
-
     cols = cfg["columns"]
     want = [c for c in cols.values() if c]
     html_col = cols.get("html")
     limit = cfg.get("html_max_chars")
     tmp_root = Path(tempfile.mkdtemp(prefix="phishdrift_hf_", dir=cfg.get("download_dir")))
+    manifest: dict[str, int] = {}
     try:
         for split, origin in cfg["splits"].items():
-            for fname in _hf_files(cfg, split):
-                path = hf_hub_download(
-                    cfg["hf_id"],
-                    fname,
-                    repo_type="dataset",
-                    revision=cfg["revision"],
-                    local_dir=tmp_root,
-                )
+            files = _hf_files(cfg, split)
+            if not files:
+                raise RuntimeError(f"{name}: no parquet files found for split {split!r}")
+            for i, fname in enumerate(files, 1):
+                path = _download_with_retry(cfg, fname, tmp_root)
                 pf = pq.ParquetFile(path)
                 missing = [c for c in want if c not in pf.schema_arrow.names]
                 if missing:
@@ -183,15 +178,47 @@ def iter_huggingface(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataF
                         f"{pf.schema_arrow.names}. Fix sources.{name}.columns in "
                         "configs/datasets.yaml."
                     )
+                expected, seen = pf.metadata.num_rows, 0
                 for batch in pf.iter_batches(batch_size=min(chunk_rows, 2000), columns=want):
                     raw = batch.to_pandas()
+                    seen += len(raw)
                     if html_col:
                         raw[html_col] = _trim_html(raw[html_col], limit)
                     yield frame_from_table(raw, name, {**cfg, "origin": origin})
+                if seen != expected:
+                    raise RuntimeError(f"{name} {fname}: read {seen} of {expected} rows")
+                manifest[fname] = expected
+                log.info("%s %s [%d/%d]: %d rows read", name, split, i, len(files), expected)
                 del pf
                 Path(path).unlink(missing_ok=True)
+        log.info("%s: %d files, %d rows read in total", name, len(manifest), sum(manifest.values()))
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)
+
+
+def _download_with_retry(cfg: dict, fname: str, dest: Path, attempts: int = 4) -> str:
+    """hf_hub_download with exponential backoff; a file that still fails stops the build
+    instead of silently leaving a hole in the corpus."""
+    import time
+
+    from huggingface_hub import hf_hub_download
+
+    for attempt in range(1, attempts + 1):
+        try:
+            return hf_hub_download(
+                cfg["hf_id"],
+                fname,
+                repo_type="dataset",
+                revision=cfg["revision"],
+                local_dir=dest,
+            )
+        except Exception as exc:  # network errors, disk full, rate limits
+            if attempt == attempts:
+                raise
+            wait = 2**attempt
+            log.warning("download of %s failed (%s); retry %d in %ds", fname, exc, attempt, wait)
+            time.sleep(wait)
+    raise AssertionError("unreachable")
 
 
 # --- uci (PhiUSIIL) ------------------------------------------------------------------
