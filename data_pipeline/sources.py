@@ -137,21 +137,61 @@ def frame_from_table(raw: pd.DataFrame, name: str, cfg: dict) -> pd.DataFrame:
 # --- huggingface (PhreshPhish) ---------------------------------------------------------
 
 
+def _hf_files(cfg: dict, split: str) -> list[str]:
+    """Parquet files of one split in the dataset repo, e.g. data/train-000.parquet."""
+    from huggingface_hub import HfApi
+
+    files = HfApi().list_repo_files(cfg["hf_id"], repo_type="dataset", revision=cfg["revision"])
+    return sorted(f for f in files if f.startswith(f"data/{split}-") and f.endswith(".parquet"))
+
+
+def _trim_html(values, limit: int | None) -> list:
+    return [v[:limit] if isinstance(v, str) else v for v in values] if limit else list(values)
+
+
 def iter_huggingface(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]:
-    from datasets import load_dataset  # optional dependency: pip install -e ".[datasets]"
+    """Streams the dataset one parquet file at a time and deletes each file after reading it, so
+    peak disk use is one file (about 0.5 GB), not the whole dataset (about 25 GB). Only the mapped
+    columns are read; the html column is cut to `html_max_chars` characters when that is set
+    (feature definitions that need the full page must treat truncated HTML as a known limit)."""
+    import shutil
+    import tempfile
+
+    import pyarrow.parquet as pq
+    from huggingface_hub import hf_hub_download
 
     cols = cfg["columns"]
-    for split, origin in cfg["splits"].items():
-        ds = load_dataset(cfg["hf_id"], split=split, revision=cfg["revision"])
-        missing = [c for c in cols.values() if c and c not in ds.column_names]
-        if missing:
-            raise KeyError(
-                f"{name} split {split!r} has no columns {missing}; it has {ds.column_names}. "
-                f"Fix sources.{name}.columns in configs/datasets.yaml."
-            )
-        for batch in ds.iter(batch_size=chunk_rows):
-            raw = pd.DataFrame({v: batch[v] for v in cols.values() if v})
-            yield frame_from_table(raw, name, {**cfg, "origin": origin})
+    want = [c for c in cols.values() if c]
+    html_col = cols.get("html")
+    limit = cfg.get("html_max_chars")
+    tmp_root = Path(tempfile.mkdtemp(prefix="phishdrift_hf_", dir=cfg.get("download_dir")))
+    try:
+        for split, origin in cfg["splits"].items():
+            for fname in _hf_files(cfg, split):
+                path = hf_hub_download(
+                    cfg["hf_id"],
+                    fname,
+                    repo_type="dataset",
+                    revision=cfg["revision"],
+                    local_dir=tmp_root,
+                )
+                pf = pq.ParquetFile(path)
+                missing = [c for c in want if c not in pf.schema_arrow.names]
+                if missing:
+                    raise KeyError(
+                        f"{name} file {fname} has no columns {missing}; it has "
+                        f"{pf.schema_arrow.names}. Fix sources.{name}.columns in "
+                        "configs/datasets.yaml."
+                    )
+                for batch in pf.iter_batches(batch_size=min(chunk_rows, 2000), columns=want):
+                    raw = batch.to_pandas()
+                    if html_col:
+                        raw[html_col] = _trim_html(raw[html_col], limit)
+                    yield frame_from_table(raw, name, {**cfg, "origin": origin})
+                del pf
+                Path(path).unlink(missing_ok=True)
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
 
 
 # --- uci (PhiUSIIL) ------------------------------------------------------------------
@@ -335,11 +375,28 @@ def inspect(name: str, cfg: dict, n: int = 3) -> str:
     scfg = cfg["sources"][name]
     kind = scfg["kind"]
     if kind == "huggingface":
-        from datasets import load_dataset
+        import shutil
+        import tempfile
+
+        import pyarrow.parquet as pq
+        from huggingface_hub import hf_hub_download
 
         split = next(iter(scfg["splits"]))
-        ds = load_dataset(scfg["hf_id"], split=split, revision=scfg["revision"])
-        rows = ds.select(range(min(n, len(ds)))).to_pandas()
+        fname = _hf_files(scfg, split)[0]
+        tmp_root = Path(tempfile.mkdtemp(prefix="phishdrift_hf_", dir=scfg.get("download_dir")))
+        try:
+            path = hf_hub_download(
+                scfg["hf_id"],
+                fname,
+                repo_type="dataset",
+                revision=scfg["revision"],
+                local_dir=tmp_root,
+            )
+            pf = pq.ParquetFile(path)
+            rows = next(pf.iter_batches(batch_size=n)).to_pandas()
+            del pf
+        finally:
+            shutil.rmtree(tmp_root, ignore_errors=True)
     elif kind == "uci":
         from ucimlrepo import fetch_ucirepo
 
