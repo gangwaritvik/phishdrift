@@ -81,3 +81,9 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   platform masking, feature registry, `docs/FEATURE_DICTIONARY.md`).
 - Open questions: Phish360 and Phish-Blitz download access; PhreshPhish column names and whether its
   date is the collection date; prior study artifacts; exact deadline.
+
+### 2026-10-08 — Windows run script for milestone 1
+- Changed: `scripts/run_milestone1.ps1` (venv + install, pytest, collector run, inspect phreshphish,
+  build, crawl PhiUSIIL/URL-Phish seeds, rebuild; stops at the first failing step; reports missing
+  manual downloads and unset optional keys first); one-line pointer in README.
+- Next: Ritvik runs it on their PC and shares `reports/data_card.md` and the inspect output.

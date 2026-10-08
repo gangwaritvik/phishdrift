@@ -14,6 +14,8 @@ pytest && ruff check .
 
 ## Data (milestone 1)
 
+On Windows, `powershell -ExecutionPolicy Bypass -File scripts\run_milestone1.ps1` runs every step below from a fresh clone.
+
 ### 1. Get the sources
 
 PhreshPhish (Hugging Face) and PhiUSIIL (UCI) download automatically. Put the others here
