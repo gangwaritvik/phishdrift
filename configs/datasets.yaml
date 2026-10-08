@@ -14,7 +14,7 @@ sources:
     revision: main                     # pin a commit hash once downloaded
     splits: {train: hf_train, test: hf_test}   # HF split -> origin; hf_test is the newest time slice
     columns: {url: url, label: label, date: date, html: html}   # assumed; verify with inspect
-    html_max_chars: 30000              # HTML is cut to this length while streaming (disk); null = keep all
+    html_max_chars: null              # null = keep the full HTML (needs ~50 GB free); set e.g. 30000 on small disks
     # download_dir: D:/tmp             # optional: where the one-file-at-a-time download is kept
     license: CC BY 4.0, anti-phishing research only
   phiusiil:
