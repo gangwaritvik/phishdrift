@@ -67,7 +67,12 @@ def run_build(names: list[str], reuse_interim: bool, reload: list[str] | None = 
     for name in names:
         path = interim_dir / f"{name}.parquet"
         try:
-            if not (reuse_interim and path.exists() and name not in (reload or [])):
+            if not (
+                reuse_interim
+                and path.exists()
+                and sources.interim_complete(path)
+                and name not in (reload or [])
+            ):
                 path, load_stats[name] = sources.load_source_to_interim(name, cfg)
                 stats_path.write_text(json.dumps(load_stats, indent=2))
             interim[name] = path

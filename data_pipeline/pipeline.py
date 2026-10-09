@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 import pyarrow as pa
+import pyarrow.dataset as pads
 import pyarrow.parquet as pq
 
 from data_pipeline.corpus import POOL, build_corpus, enforce_depth
@@ -52,7 +53,7 @@ def write_parts(interim: dict[str, Path], corpus: pd.DataFrame, out_dir: Path) -
     counts: dict[str, int] = {}
     try:
         for name, path in interim.items():
-            for batch in pq.ParquetFile(path).iter_batches(batch_size=20_000):
+            for batch in pads.dataset(path, format="parquet").to_batches(batch_size=20_000):
                 chunk = batch.to_pandas()
                 chunk["uid"] = name + ":" + chunk["row_id"].astype(str)
                 chunk = chunk.join(lookup, on="uid", how="inner")

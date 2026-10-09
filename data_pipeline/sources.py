@@ -23,6 +23,7 @@ The interim file holds the schema plus helper columns: ``row_id``, ``html_simhas
 from __future__ import annotations
 
 import glob
+import json
 import logging
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -77,30 +78,43 @@ def to_binary_label(values: pd.Series, phishing_values: Iterable | None = None) 
     return out.astype("int8")
 
 
+def _append_chunks(
+    writer: pq.ParquetWriter,
+    chunks: Iterable[pd.DataFrame],
+    first_row_id: int,
+    dedup_cfg: dict,
+    label: str,
+) -> tuple[int, int]:
+    """Validate, add helper columns and write chunks. Returns (rows written, unparsable URLs)."""
+    n_rows = n_unparsable = 0
+    for chunk in chunks:
+        chunk, dropped = drop_unparsable(chunk)
+        validate(chunk)
+        n_unparsable += dropped
+        start = first_row_id + n_rows
+        chunk = chunk.assign(
+            row_id=range(start, start + len(chunk)),
+            html_simhash=pd.array(
+                [html_simhash(h, dedup_cfg) for h in chunk["html"]], dtype="Int64"
+            ),
+            has_html=chunk["html"].map(lambda h: bool(h)),
+        )
+        table = pa.Table.from_pandas(
+            chunk[INTERIM_COLUMNS], schema=INTERIM_SCHEMA, preserve_index=False
+        )
+        writer.write_table(table)
+        n_rows += len(chunk)
+        log.info("%s: %d rows written", label, n_rows)
+    return n_rows, n_unparsable
+
+
 def write_interim(chunks: Iterable[pd.DataFrame], out_path: Path, dedup_cfg: dict) -> dict:
     """Validate, add helper columns and stream chunks to ``out_path``. Returns load stats."""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = out_path.with_suffix(".tmp.parquet")
-    n_rows = n_unparsable = 0
-    with pq.ParquetWriter(tmp, INTERIM_SCHEMA) as writer:
-        for chunk in chunks:
-            chunk, dropped = drop_unparsable(chunk)
-            validate(chunk)
-            n_unparsable += dropped
-            chunk = chunk.assign(
-                row_id=range(n_rows, n_rows + len(chunk)),
-                html_simhash=pd.array(
-                    [html_simhash(h, dedup_cfg) for h in chunk["html"]], dtype="Int64"
-                ),
-                has_html=chunk["html"].map(lambda h: bool(h)),
-            )
-            table = pa.Table.from_pandas(
-                chunk[INTERIM_COLUMNS], schema=INTERIM_SCHEMA, preserve_index=False
-            )
-            writer.write_table(table)
-            n_rows += len(chunk)
-            log.info("%s: %d rows written", out_path.name, n_rows)
+    with pq.ParquetWriter(tmp, INTERIM_SCHEMA, compression="zstd") as writer:
+        n_rows, n_unparsable = _append_chunks(writer, chunks, 0, dedup_cfg, out_path.name)
     tmp.replace(out_path)
     return {"rows_loaded": n_rows + n_unparsable, "rows_unparsable_url": n_unparsable}
 
@@ -149,51 +163,147 @@ def _trim_html(values, limit: int | None) -> list:
     return [v[:limit] if isinstance(v, str) else v for v in values] if limit else list(values)
 
 
-def iter_huggingface(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]:
-    """Streams the dataset one parquet file at a time and deletes each file after reading it, so
-    peak disk use is one file (about 0.5 GB), not the whole dataset (about 25 GB). Only the mapped
-    columns are read; the html column is cut to `html_max_chars` characters when that is set
-    (feature definitions that need the full page must treat truncated HTML as a known limit)."""
-    import shutil
-    import tempfile
-
+def _iter_hf_file(
+    name: str, cfg: dict, fname: str, origin: str, chunk_rows: int, tmp_root: Path
+) -> Iterator[pd.DataFrame]:
+    """One parquet file of the dataset: download, read the mapped columns in batches, verify that
+    every row was read, then delete the file."""
     cols = cfg["columns"]
     want = [c for c in cols.values() if c]
     html_col = cols.get("html")
     limit = cfg.get("html_max_chars")
+    path = _download_with_retry(cfg, fname, tmp_root)
+    pf = pq.ParquetFile(path)
+    missing = [c for c in want if c not in pf.schema_arrow.names]
+    if missing:
+        raise KeyError(
+            f"{name} file {fname} has no columns {missing}; it has "
+            f"{pf.schema_arrow.names}. Fix sources.{name}.columns in configs/datasets.yaml."
+        )
+    expected, seen = pf.metadata.num_rows, 0
+    for batch in pf.iter_batches(batch_size=min(chunk_rows, 2000), columns=want):
+        raw = batch.to_pandas()
+        seen += len(raw)
+        if html_col:
+            raw[html_col] = _trim_html(raw[html_col], limit)
+        yield frame_from_table(raw, name, {**cfg, "origin": origin})
+    if seen != expected:
+        raise RuntimeError(f"{name} {fname}: read {seen} of {expected} rows")
+    del pf
+    Path(path).unlink(missing_ok=True)
+
+
+def _hf_plan(cfg: dict) -> list[tuple[str, str]]:
+    """Ordered (parquet file, origin) pairs of every split."""
+    plan = []
+    for split, origin in cfg["splits"].items():
+        files = _hf_files(cfg, split)
+        if not files:
+            raise RuntimeError(f"no parquet files found for split {split!r} of {cfg['hf_id']}")
+        plan += [(f, origin) for f in files]
+    return plan
+
+
+def iter_huggingface(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]:
+    """Streams the dataset one parquet file at a time and deletes each file after reading it, so
+    peak disk use is one file (about 0.5 GB), not the whole dataset (about 25 GB). Only the mapped
+    columns are read; the html column is cut to `html_max_chars` characters when that is set."""
+    import shutil
+    import tempfile
+
     tmp_root = Path(tempfile.mkdtemp(prefix="phishdrift_hf_", dir=cfg.get("download_dir")))
-    manifest: dict[str, int] = {}
     try:
-        for split, origin in cfg["splits"].items():
-            files = _hf_files(cfg, split)
-            if not files:
-                raise RuntimeError(f"{name}: no parquet files found for split {split!r}")
-            for i, fname in enumerate(files, 1):
-                path = _download_with_retry(cfg, fname, tmp_root)
-                pf = pq.ParquetFile(path)
-                missing = [c for c in want if c not in pf.schema_arrow.names]
-                if missing:
-                    raise KeyError(
-                        f"{name} file {fname} has no columns {missing}; it has "
-                        f"{pf.schema_arrow.names}. Fix sources.{name}.columns in "
-                        "configs/datasets.yaml."
-                    )
-                expected, seen = pf.metadata.num_rows, 0
-                for batch in pf.iter_batches(batch_size=min(chunk_rows, 2000), columns=want):
-                    raw = batch.to_pandas()
-                    seen += len(raw)
-                    if html_col:
-                        raw[html_col] = _trim_html(raw[html_col], limit)
-                    yield frame_from_table(raw, name, {**cfg, "origin": origin})
-                if seen != expected:
-                    raise RuntimeError(f"{name} {fname}: read {seen} of {expected} rows")
-                manifest[fname] = expected
-                log.info("%s %s [%d/%d]: %d rows read", name, split, i, len(files), expected)
-                del pf
-                Path(path).unlink(missing_ok=True)
-        log.info("%s: %d files, %d rows read in total", name, len(manifest), sum(manifest.values()))
+        for fname, origin in _hf_plan(cfg):
+            yield from _iter_hf_file(name, cfg, fname, origin, chunk_rows, tmp_root)
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)
+
+
+SHARD_MANIFEST = "_manifest.json"
+
+
+def interim_complete(path: Path) -> bool:
+    """A single parquet file is complete once it exists; a shard directory only once every shard
+    is written (its manifest says so)."""
+    path = Path(path)
+    if path.is_file():
+        return True
+    manifest = path / SHARD_MANIFEST
+    return manifest.exists() and bool(json.loads(manifest.read_text()).get("complete"))
+
+
+def _write_shard(shard: Path, chunks: Iterable[pd.DataFrame], first_row_id: int, cfg: dict) -> dict:
+    tmp = shard.with_suffix(".tmp.parquet")
+    with pq.ParquetWriter(tmp, INTERIM_SCHEMA, compression="zstd") as writer:
+        rows, unparsable = _append_chunks(writer, chunks, first_row_id, cfg["dedup"], shard.name)
+    tmp.replace(shard)
+    return {"shard": shard.name, "rows": rows, "unparsable": unparsable}
+
+
+def load_hf_sharded(name: str, cfg: dict, out_dir: Path) -> dict:
+    """PhreshPhish -> data/interim/<name>.parquet/ (one zstd shard per dataset file).
+
+    Resumable: a shard is renamed into place only when complete and recorded in
+    ``_manifest.json``, so a crash, closed terminal or network loss costs one file, not the whole
+    run. Re-running skips the finished prefix and continues with the same row ids."""
+    import shutil
+    import tempfile
+
+    scfg = cfg["sources"][name]
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = out_dir / SHARD_MANIFEST
+    old = json.loads(manifest_path.read_text()) if manifest_path.exists() else {"files": {}}
+    for leftover in out_dir.glob("*.tmp.parquet"):
+        leftover.unlink()
+
+    plan = _hf_plan(scfg)
+    files: dict[str, dict] = {}
+    for fname, _ in plan:  # keep only the finished prefix, in plan order
+        entry = old["files"].get(fname)
+        if entry is None or not (out_dir / entry["shard"]).exists():
+            break
+        files[fname] = entry
+    if files:
+        log.info("%s: resuming, %d of %d files already done", name, len(files), len(plan))
+
+    def save(complete: bool) -> None:
+        tmp = manifest_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"files": files, "complete": complete}, indent=1))
+        tmp.replace(manifest_path)
+
+    save(False)
+    next_row = sum(e["rows"] for e in files.values())
+    tmp_root = Path(tempfile.mkdtemp(prefix="phishdrift_hf_", dir=scfg.get("download_dir")))
+    try:
+        for i, (fname, origin) in enumerate(plan):
+            if fname in files:
+                continue
+            frames = _iter_hf_file(name, scfg, fname, origin, cfg["chunk_rows"], tmp_root)
+            entry = _write_shard(out_dir / f"{i:04d}.parquet", frames, next_row, cfg)
+            files[fname] = entry
+            next_row += entry["rows"]
+            save(False)
+            log.info(
+                "%s [%d/%d] %s: %d rows (%d total)",
+                name,
+                i + 1,
+                len(plan),
+                fname,
+                entry["rows"],
+                next_row,
+            )
+        crawl = _crawl_chunks(name, cfg["chunk_rows"])
+        if "crawl" not in files:
+            entry = _write_shard(out_dir / "crawl.parquet", crawl, next_row, cfg)
+            files["crawl"] = entry
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
+    save(True)
+    rows = sum(e["rows"] for e in files.values())
+    unparsable = sum(e["unparsable"] for e in files.values())
+    log.info("%s: complete, %d shards, %d rows", name, len(files), rows)
+    return {"rows_loaded": rows + unparsable, "rows_unparsable_url": unparsable}
 
 
 def _download_with_retry(cfg: dict, fname: str, dest: Path, attempts: int = 4) -> str:
@@ -379,9 +489,8 @@ LOADERS = {
 }
 
 
-def iter_source(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]:
-    """All rows of one source, plus crawler pages seeded from it (if any)."""
-    yield from LOADERS[cfg["kind"]](name, cfg, chunk_rows)
+def _crawl_chunks(name: str, chunk_rows: int) -> Iterator[pd.DataFrame]:
+    """Benign inner pages the crawler fetched from this source's seed domains (if any)."""
     crawl_dir = resolve(load_config("collector")["paths"]["crawl_dir"])
     crawl = load_crawl(crawl_dir)
     if len(crawl):
@@ -391,8 +500,16 @@ def iter_source(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]
             yield from _chunked(part, chunk_rows)
 
 
+def iter_source(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]:
+    """All rows of one source, plus crawler pages seeded from it (if any)."""
+    yield from LOADERS[cfg["kind"]](name, cfg, chunk_rows)
+    yield from _crawl_chunks(name, chunk_rows)
+
+
 def load_source_to_interim(name: str, cfg: dict) -> tuple[Path, dict]:
     out = resolve(cfg["paths"]["interim_dir"]) / f"{name}.parquet"
+    if cfg["sources"][name]["kind"] == "huggingface":
+        return out, load_hf_sharded(name, cfg, out)  # a resumable directory of shards
     chunks = iter_source(name, cfg["sources"][name], cfg["chunk_rows"])
     return out, write_interim(chunks, out, cfg["dedup"])
 
