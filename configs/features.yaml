@@ -9,15 +9,23 @@ lists:
 
   # Brands: everything below is merged; entries shorter than 4 characters are dropped.
   wikidata_min_sitelinks: 40        # widely known organisations only (language editions, not traffic)
+  wikidata_types:                   # one light query per type (direct instance-of); the old single
+    - Q4830453                      # query with a subclass path (P279*) returned 504 from Wikidata
+    - Q783794
+    - Q6881511
+    - Q891723
+    - Q22687
+    - Q1058914
+    - Q35127
   wikidata_query: |
-    SELECT DISTINCT ?label ?site WHERE {{
-      ?item wdt:P856 ?site ;
+    SELECT ?label ?site WHERE {{
+      ?item wdt:P31 wd:{type} ;
+            wdt:P856 ?site ;
             wikibase:sitelinks ?n ;
             rdfs:label ?label .
       FILTER(LANG(?label) = "en" && ?n >= {min_sitelinks})
-      ?item wdt:P31/wdt:P279* ?type .
-      VALUES ?type {{ wd:Q4830453 wd:Q891723 wd:Q22687 wd:Q35127 }}
     }}
+    LIMIT 4000
   brand_urls: []                    # extra plain-text brand lists (one per line), e.g. exported Phishpedia targets
   brand_seed:                       # starting set, used when no network source answers
     # global

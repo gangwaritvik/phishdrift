@@ -92,15 +92,24 @@ def brands_from_wikidata(client: HttpClient, cfg: dict) -> list[str]:
     """Brand tokens from Wikidata: companies and organisations with an official website
     and many language editions (a proxy for being widely known, not a popularity rank).
     The token is the registrable domain label of the official site and the English name."""
-    sparql = cfg["wikidata_query"].format(min_sitelinks=cfg["wikidata_min_sitelinks"])
-    url = f"https://query.wikidata.org/sparql?format=json&query={quote(sparql)}"
-    body = client.get(
-        url,
-        cache_ttl_s=7 * 86400,
-        headers={"Accept": "application/sparql-results+json"},
-        timeout_s=WIKIDATA_TIMEOUT_S,  # the query runs on the server for a while
-    )
-    rows = json.loads(body)["results"]["bindings"]
+    rows: list[dict] = []
+    failed = 0
+    for qid in cfg["wikidata_types"]:
+        sparql = cfg["wikidata_query"].format(type=qid, min_sitelinks=cfg["wikidata_min_sitelinks"])
+        url = f"https://query.wikidata.org/sparql?format=json&query={quote(sparql)}"
+        try:
+            body = client.get(
+                url,
+                cache_ttl_s=7 * 86400,
+                headers={"Accept": "application/sparql-results+json"},
+                timeout_s=WIKIDATA_TIMEOUT_S,
+            )
+            rows += json.loads(body)["results"]["bindings"]
+        except Exception as exc:  # noqa: BLE001 - one type failing must not lose the others
+            failed += 1
+            log.warning("Wikidata type %s skipped: %s", qid, str(exc)[:200])
+    if failed == len(cfg["wikidata_types"]):
+        raise RuntimeError("every Wikidata query failed")
     brands: set[str] = set()
     for r in rows:
         site = r.get("site", {}).get("value", "")
