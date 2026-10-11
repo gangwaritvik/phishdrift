@@ -9,6 +9,7 @@ Loader kinds (``kind`` in configs/datasets.yaml):
   table        local CSV / Parquet / JSONL files with a column map (Phish360, URL-Phish,
                PhishStorm, natural legitimate pages)
   folders      one folder per site with a URL file and an HTML file (Phishpedia)
+  openphish_blitz  Phish-Blitz PhishingSamples (URL lists + page folders)
   phishblitz   Phish-Blitz output: <root>/info.csv + downloaded page folders
   live         collector feeds (first-seen index)
 
@@ -23,7 +24,9 @@ The interim file holds the schema plus helper columns: ``row_id``, ``html_simhas
 from __future__ import annotations
 
 import glob
+import json
 import logging
+import re
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
@@ -77,30 +80,43 @@ def to_binary_label(values: pd.Series, phishing_values: Iterable | None = None) 
     return out.astype("int8")
 
 
+def _append_chunks(
+    writer: pq.ParquetWriter,
+    chunks: Iterable[pd.DataFrame],
+    first_row_id: int,
+    dedup_cfg: dict,
+    label: str,
+) -> tuple[int, int]:
+    """Validate, add helper columns and write chunks. Returns (rows written, unparsable URLs)."""
+    n_rows = n_unparsable = 0
+    for chunk in chunks:
+        chunk, dropped = drop_unparsable(chunk)
+        validate(chunk)
+        n_unparsable += dropped
+        start = first_row_id + n_rows
+        chunk = chunk.assign(
+            row_id=range(start, start + len(chunk)),
+            html_simhash=pd.array(
+                [html_simhash(h, dedup_cfg) for h in chunk["html"]], dtype="Int64"
+            ),
+            has_html=chunk["html"].map(lambda h: bool(h)),
+        )
+        table = pa.Table.from_pandas(
+            chunk[INTERIM_COLUMNS], schema=INTERIM_SCHEMA, preserve_index=False
+        )
+        writer.write_table(table)
+        n_rows += len(chunk)
+        log.info("%s: %d rows written", label, n_rows)
+    return n_rows, n_unparsable
+
+
 def write_interim(chunks: Iterable[pd.DataFrame], out_path: Path, dedup_cfg: dict) -> dict:
     """Validate, add helper columns and stream chunks to ``out_path``. Returns load stats."""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = out_path.with_suffix(".tmp.parquet")
-    n_rows = n_unparsable = 0
-    with pq.ParquetWriter(tmp, INTERIM_SCHEMA) as writer:
-        for chunk in chunks:
-            chunk, dropped = drop_unparsable(chunk)
-            validate(chunk)
-            n_unparsable += dropped
-            chunk = chunk.assign(
-                row_id=range(n_rows, n_rows + len(chunk)),
-                html_simhash=pd.array(
-                    [html_simhash(h, dedup_cfg) for h in chunk["html"]], dtype="Int64"
-                ),
-                has_html=chunk["html"].map(lambda h: bool(h)),
-            )
-            table = pa.Table.from_pandas(
-                chunk[INTERIM_COLUMNS], schema=INTERIM_SCHEMA, preserve_index=False
-            )
-            writer.write_table(table)
-            n_rows += len(chunk)
-            log.info("%s: %d rows written", out_path.name, n_rows)
+    with pq.ParquetWriter(tmp, INTERIM_SCHEMA, compression="zstd") as writer:
+        n_rows, n_unparsable = _append_chunks(writer, chunks, 0, dedup_cfg, out_path.name)
     tmp.replace(out_path)
     return {"rows_loaded": n_rows + n_unparsable, "rows_unparsable_url": n_unparsable}
 
@@ -123,7 +139,10 @@ def _col(raw: pd.DataFrame, cfg: dict, name: str) -> pd.Series | None:
 
 def frame_from_table(raw: pd.DataFrame, name: str, cfg: dict) -> pd.DataFrame:
     """Raw table -> schema using the source's column map. Unmapped columns are ignored."""
-    raw = raw[raw[cfg["columns"]["url"]].notna()].reset_index(drop=True)
+    keep = raw[cfg["columns"]["url"]].notna()
+    if "label" not in cfg:  # rows without a label cannot be used (a few in PhishStorm)
+        keep &= raw[cfg["columns"]["label"]].notna()
+    raw = raw[keep].reset_index(drop=True)
     return to_schema(
         raw[cfg["columns"]["url"]],
         _labels(raw, cfg),
@@ -137,21 +156,196 @@ def frame_from_table(raw: pd.DataFrame, name: str, cfg: dict) -> pd.DataFrame:
 # --- huggingface (PhreshPhish) ---------------------------------------------------------
 
 
-def iter_huggingface(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]:
-    from datasets import load_dataset  # optional dependency: pip install -e ".[datasets]"
+def _hf_files(cfg: dict, split: str) -> list[str]:
+    """Parquet files of one split in the dataset repo, e.g. data/train-000.parquet."""
+    from huggingface_hub import HfApi
 
+    files = HfApi().list_repo_files(cfg["hf_id"], repo_type="dataset", revision=cfg["revision"])
+    return sorted(f for f in files if f.startswith(f"data/{split}-") and f.endswith(".parquet"))
+
+
+def _trim_html(values, limit: int | None) -> list:
+    return [v[:limit] if isinstance(v, str) else v for v in values] if limit else list(values)
+
+
+def _iter_hf_file(
+    name: str, cfg: dict, fname: str, origin: str, chunk_rows: int, tmp_root: Path
+) -> Iterator[pd.DataFrame]:
+    """One parquet file of the dataset: download, read the mapped columns in batches, verify that
+    every row was read, then delete the file."""
     cols = cfg["columns"]
+    want = [c for c in cols.values() if c]
+    html_col = cols.get("html")
+    limit = cfg.get("html_max_chars")
+    local = _local_copy(cfg, fname)
+    path = str(local) if local else _download_with_retry(cfg, fname, tmp_root)
+    pf = pq.ParquetFile(path)
+    missing = [c for c in want if c not in pf.schema_arrow.names]
+    if missing:
+        raise KeyError(
+            f"{name} file {fname} has no columns {missing}; it has "
+            f"{pf.schema_arrow.names}. Fix sources.{name}.columns in configs/datasets.yaml."
+        )
+    expected, seen = pf.metadata.num_rows, 0
+    for batch in pf.iter_batches(batch_size=min(chunk_rows, 2000), columns=want):
+        raw = batch.to_pandas()
+        seen += len(raw)
+        if html_col:
+            raw[html_col] = _trim_html(raw[html_col], limit)
+        yield frame_from_table(raw, name, {**cfg, "origin": origin})
+    if seen != expected:
+        raise RuntimeError(f"{name} {fname}: read {seen} of {expected} rows")
+    del pf
+    if not local:  # files the user supplied by hand are never deleted
+        Path(path).unlink(missing_ok=True)
+
+
+def _local_copy(cfg: dict, fname: str) -> Path | None:
+    """A manually downloaded copy of a dataset file (e.g. via a browser) in `local_dir`, looked up
+    by file name; None when `local_dir` is unset or the file is not there."""
+    folder = cfg.get("local_dir")
+    if not folder:
+        return None
+    path = Path(folder) / Path(fname).name
+    return path if path.is_file() else None
+
+
+def _hf_plan(cfg: dict) -> list[tuple[str, str]]:
+    """Ordered (parquet file, origin) pairs of every split."""
+    plan = []
     for split, origin in cfg["splits"].items():
-        ds = load_dataset(cfg["hf_id"], split=split, revision=cfg["revision"])
-        missing = [c for c in cols.values() if c and c not in ds.column_names]
-        if missing:
-            raise KeyError(
-                f"{name} split {split!r} has no columns {missing}; it has {ds.column_names}. "
-                f"Fix sources.{name}.columns in configs/datasets.yaml."
+        files = _hf_files(cfg, split)
+        if not files:
+            raise RuntimeError(f"no parquet files found for split {split!r} of {cfg['hf_id']}")
+        plan += [(f, origin) for f in files]
+    return plan
+
+
+def iter_huggingface(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]:
+    """Streams the dataset one parquet file at a time and deletes each file after reading it, so
+    peak disk use is one file (about 0.5 GB), not the whole dataset (about 25 GB). Only the mapped
+    columns are read; the html column is cut to `html_max_chars` characters when that is set."""
+    import shutil
+    import tempfile
+
+    tmp_root = Path(tempfile.mkdtemp(prefix="phishdrift_hf_", dir=cfg.get("download_dir")))
+    try:
+        for fname, origin in _hf_plan(cfg):
+            yield from _iter_hf_file(name, cfg, fname, origin, chunk_rows, tmp_root)
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
+
+
+SHARD_MANIFEST = "_manifest.json"
+
+
+def interim_complete(path: Path) -> bool:
+    """A single parquet file is complete once it exists; a shard directory only once every shard
+    is written (its manifest says so)."""
+    path = Path(path)
+    if path.is_file():
+        return True
+    manifest = path / SHARD_MANIFEST
+    return manifest.exists() and bool(json.loads(manifest.read_text()).get("complete"))
+
+
+def _write_shard(shard: Path, chunks: Iterable[pd.DataFrame], first_row_id: int, cfg: dict) -> dict:
+    tmp = shard.with_suffix(".tmp.parquet")
+    with pq.ParquetWriter(tmp, INTERIM_SCHEMA, compression="zstd") as writer:
+        rows, unparsable = _append_chunks(writer, chunks, first_row_id, cfg["dedup"], shard.name)
+    tmp.replace(shard)
+    return {"shard": shard.name, "rows": rows, "unparsable": unparsable}
+
+
+def load_hf_sharded(name: str, cfg: dict, out_dir: Path) -> dict:
+    """PhreshPhish -> data/interim/<name>.parquet/ (one zstd shard per dataset file).
+
+    Resumable: a shard is renamed into place only when complete and recorded in
+    ``_manifest.json``, so a crash, closed terminal or network loss costs one file, not the whole
+    run. Re-running skips the finished prefix and continues with the same row ids."""
+    import shutil
+    import tempfile
+
+    scfg = cfg["sources"][name]
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = out_dir / SHARD_MANIFEST
+    old = json.loads(manifest_path.read_text()) if manifest_path.exists() else {"files": {}}
+    for leftover in out_dir.glob("*.tmp.parquet"):
+        leftover.unlink()
+
+    plan = _hf_plan(scfg)
+    files: dict[str, dict] = {}
+    for fname, _ in plan:  # keep only the finished prefix, in plan order
+        entry = old["files"].get(fname)
+        if entry is None or not (out_dir / entry["shard"]).exists():
+            break
+        files[fname] = entry
+    if files:
+        log.info("%s: resuming, %d of %d files already done", name, len(files), len(plan))
+
+    def save(complete: bool) -> None:
+        tmp = manifest_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"files": files, "complete": complete}, indent=1))
+        tmp.replace(manifest_path)
+
+    save(False)
+    next_row = sum(e["rows"] for e in files.values())
+    tmp_root = Path(tempfile.mkdtemp(prefix="phishdrift_hf_", dir=scfg.get("download_dir")))
+    try:
+        for i, (fname, origin) in enumerate(plan):
+            if fname in files:
+                continue
+            frames = _iter_hf_file(name, scfg, fname, origin, cfg["chunk_rows"], tmp_root)
+            entry = _write_shard(out_dir / f"{i:04d}.parquet", frames, next_row, cfg)
+            files[fname] = entry
+            next_row += entry["rows"]
+            save(False)
+            log.info(
+                "%s [%d/%d] %s: %d rows (%d total)",
+                name,
+                i + 1,
+                len(plan),
+                fname,
+                entry["rows"],
+                next_row,
             )
-        for batch in ds.iter(batch_size=chunk_rows):
-            raw = pd.DataFrame({v: batch[v] for v in cols.values() if v})
-            yield frame_from_table(raw, name, {**cfg, "origin": origin})
+        crawl = _crawl_chunks(name, cfg["chunk_rows"])
+        if "crawl" not in files:
+            entry = _write_shard(out_dir / "crawl.parquet", crawl, next_row, cfg)
+            files["crawl"] = entry
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
+    save(True)
+    rows = sum(e["rows"] for e in files.values())
+    unparsable = sum(e["unparsable"] for e in files.values())
+    log.info("%s: complete, %d shards, %d rows", name, len(files), rows)
+    return {"rows_loaded": rows + unparsable, "rows_unparsable_url": unparsable}
+
+
+def _download_with_retry(cfg: dict, fname: str, dest: Path, attempts: int = 4) -> str:
+    """hf_hub_download with exponential backoff; a file that still fails stops the build
+    instead of silently leaving a hole in the corpus."""
+    import time
+
+    from huggingface_hub import hf_hub_download
+
+    for attempt in range(1, attempts + 1):
+        try:
+            return hf_hub_download(
+                cfg["hf_id"],
+                fname,
+                repo_type="dataset",
+                revision=cfg["revision"],
+                local_dir=dest,
+            )
+        except Exception as exc:  # network errors, disk full, rate limits
+            if attempt == attempts:
+                raise
+            wait = 2**attempt
+            log.warning("download of %s failed (%s); retry %d in %ds", fname, exc, attempt, wait)
+            time.sleep(wait)
+    raise AssertionError("unreachable")
 
 
 # --- uci (PhiUSIIL) ------------------------------------------------------------------
@@ -269,6 +463,54 @@ def iter_phishblitz(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFr
             )
 
 
+_URL_LIST = re.compile(r"openphish_urls_(\d+)_(\d{2})_(\d{2})_(\d{4})\.txt$")
+
+
+def _blitz_html(group: Path, sub: str) -> dict[int, str | None]:
+    """index -> page HTML for the ``<index>_<domain>`` site folders in one sub-folder."""
+    out: dict[int, str | None] = {}
+    base = group / sub
+    if not base.is_dir():
+        return out
+    for site in base.iterdir():
+        m = re.match(r"(\d+)_", site.name)
+        if not m or not site.is_dir():
+            continue
+        pages = sorted(site.glob("*/index.html")) or sorted(site.rglob("index.html"))
+        out[int(m.group(1))] = _read_text(pages[0]) if pages else None
+    return out
+
+
+def iter_openphish_blitz(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]:
+    """Phish-Blitz 'PhishingSamples' release: ``openphish_urls_<N>_<DD>_<MM>_<YYYY>.txt`` lists
+    the URLs of ``openphish_phishing_resources_<N>/``, whose ``fully_downloaded/<i>_<domain>/``
+    folders hold the page of URL line ``i`` (0-based). HTML is read only from fully downloaded
+    pages; partial or broken captures keep the URL with no HTML. The date is the one in the
+    URL-list file name."""
+    root = resolve(cfg["path"])
+    lists = sorted(p for p in root.glob("openphish_urls_*.txt") if _URL_LIST.search(p.name))
+    if not lists:
+        raise FileNotFoundError(f"no openphish_urls_*.txt files in {root}; download them first")
+    for url_file in lists:
+        n, day, month, year = _URL_LIST.search(url_file.name).groups()
+        group = root / f"openphish_phishing_resources_{n}"
+        if (group / group.name).is_dir():  # zip extracted into a same-named folder
+            group = group / group.name
+        urls = [ln.strip() for ln in url_file.read_text(encoding="utf-8").splitlines()]
+        html = _blitz_html(group, cfg.get("html_dir", "fully_downloaded"))
+        frame = pd.DataFrame({"url": urls, "html": [html.get(i) for i in range(len(urls))]})
+        frame = frame[frame["url"] != ""].reset_index(drop=True)
+        for chunk in _chunked(frame, chunk_rows):
+            yield to_schema(
+                chunk["url"],
+                pd.Series([1] * len(chunk)),
+                name,
+                dates=pd.Series([f"{year}-{month}-{day}"] * len(chunk)),
+                html=chunk["html"],
+                origin=f"openphish_{n}",
+            )
+
+
 # --- live (collector) ----------------------------------------------------------------
 
 
@@ -308,13 +550,13 @@ LOADERS = {
     "table": iter_table,
     "folders": iter_folders,
     "phishblitz": iter_phishblitz,
+    "openphish_blitz": iter_openphish_blitz,
     "live": iter_live,
 }
 
 
-def iter_source(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]:
-    """All rows of one source, plus crawler pages seeded from it (if any)."""
-    yield from LOADERS[cfg["kind"]](name, cfg, chunk_rows)
+def _crawl_chunks(name: str, chunk_rows: int) -> Iterator[pd.DataFrame]:
+    """Benign inner pages the crawler fetched from this source's seed domains (if any)."""
     crawl_dir = resolve(load_config("collector")["paths"]["crawl_dir"])
     crawl = load_crawl(crawl_dir)
     if len(crawl):
@@ -324,8 +566,16 @@ def iter_source(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]
             yield from _chunked(part, chunk_rows)
 
 
+def iter_source(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]:
+    """All rows of one source, plus crawler pages seeded from it (if any)."""
+    yield from LOADERS[cfg["kind"]](name, cfg, chunk_rows)
+    yield from _crawl_chunks(name, chunk_rows)
+
+
 def load_source_to_interim(name: str, cfg: dict) -> tuple[Path, dict]:
     out = resolve(cfg["paths"]["interim_dir"]) / f"{name}.parquet"
+    if cfg["sources"][name]["kind"] == "huggingface":
+        return out, load_hf_sharded(name, cfg, out)  # a resumable directory of shards
     chunks = iter_source(name, cfg["sources"][name], cfg["chunk_rows"])
     return out, write_interim(chunks, out, cfg["dedup"])
 
@@ -335,17 +585,36 @@ def inspect(name: str, cfg: dict, n: int = 3) -> str:
     scfg = cfg["sources"][name]
     kind = scfg["kind"]
     if kind == "huggingface":
-        from datasets import load_dataset
+        import shutil
+        import tempfile
+
+        import pyarrow.parquet as pq
+        from huggingface_hub import hf_hub_download
 
         split = next(iter(scfg["splits"]))
-        ds = load_dataset(scfg["hf_id"], split=split, revision=scfg["revision"])
-        rows = ds.select(range(min(n, len(ds)))).to_pandas()
+        fname = _hf_files(scfg, split)[0]
+        tmp_root = Path(tempfile.mkdtemp(prefix="phishdrift_hf_", dir=scfg.get("download_dir")))
+        try:
+            path = hf_hub_download(
+                scfg["hf_id"],
+                fname,
+                repo_type="dataset",
+                revision=scfg["revision"],
+                local_dir=tmp_root,
+            )
+            pf = pq.ParquetFile(path)
+            rows = next(pf.iter_batches(batch_size=n)).to_pandas()
+            del pf
+        finally:
+            shutil.rmtree(tmp_root, ignore_errors=True)
     elif kind == "uci":
         from ucimlrepo import fetch_ucirepo
 
         rows = fetch_ucirepo(id=scfg["uci_id"]).data.original.head(n)
     elif kind == "table":
         rows = read_table(_paths(scfg["path"])[0], scfg.get("read_options")).head(n)
+    elif kind == "openphish_blitz":
+        rows = next(iter_openphish_blitz(name, scfg, n)).drop(columns=["html"], errors="ignore")
     elif kind == "phishblitz":
         root = resolve(next(iter(scfg["roots"].values())))
         rows = pd.read_csv(root / scfg["info_csv"], dtype=str).head(n)

@@ -4,8 +4,8 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 
 ## Status
 
-- Current step: 1 of 10, schema + loaders + dedup + depth check (code done on PR #1; needs a real
-  data run on Ritvik's machine)
+- Current step: 2 of 10, tier A URL features (code done; needs the list scrape, fit and build run on
+  Ritvik's machine). Milestone 1 is done (data card read).
 - Deadline: assumed 2026-10-23 (about 3 weeks from 2026-10-02; confirm)
 
 ## Open decisions
@@ -81,3 +81,45 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   platform masking, feature registry, `docs/FEATURE_DICTIONARY.md`).
 - Open questions: Phish360 and Phish-Blitz download access; PhreshPhish column names and whether its
   date is the collection date; prior study artifacts; exact deadline.
+
+### 2026-10-08 — Windows run script for milestone 1
+- Changed: `scripts/run_milestone1.ps1` (venv + install, pytest, collector run, inspect phreshphish,
+  build, crawl PhiUSIIL/URL-Phish seeds, rebuild; stops at the first failing step; reports missing
+  manual downloads and unset optional keys first); one-line pointer in README.
+- Next: Ritvik runs it on their PC and shares `reports/data_card.md` and the inspect output.
+
+### 2026-10-11 — Real PhreshPhish run, manual downloads, Phish-Blitz loader
+- Changed: PhreshPhish load is now resumable zstd shards (`data/interim/phreshphish.parquet/`) and uses
+  hand-downloaded files from `data/raw/phreshphish/` when present (`local_dir`), so a stalled Hugging Face
+  transfer can be replaced by `curl -C -`. `scripts/finish_download.ps1` moves/fetches the 33 missing files
+  and starts the detached build. New `openphish_blitz` loader for the Phish-Blitz PhishingSamples release
+  (URL list line `i` ↔ `fully_downloaded/<i>_<domain>/`; HTML only from fully downloaded pages; date from the
+  list file name); test `test_openphish_blitz_loader`.
+- Results: PhreshPhish 66 of 77 files loaded, 565,959 rows at last check (published size 372k; to explain in
+  the data card). URL-Phish (116,600 rows, 16,600 phishing) and PhishStorm (96,005 rows) are in `data/raw/`
+  with the columns the config expects. No data card yet; the run is still going.
+- Next: wait for the overnight chain, read `reports/data_card.md`, flag anything >99%, then add Phish-Blitz
+  (and Phishpedia/Phish360 when disk allows) with `build --reuse-interim --reload NAME`.
+- Open questions: why PhreshPhish has more rows than published; Phish360 access; disk space for Phishpedia (18 GB).
+
+### 2026-10-11 — Milestone 1 closed: real data run
+- Changed: memory-safe copy of kept rows (per-file `iter_batches`, 500 rows), rows with a missing label
+  dropped, UTF-8 seed files, Phish-Blitz and PhishStorm fixes.
+- Results (`reports/data_card.md`): pool 465,975 URLs / 382,115 domains, 140,535 phishing (30.2%);
+  time slice 80,637 URLs; 1,105 shared phishing domains removed; depth check passed (worst bucket 72.8%
+  one class). Nothing above 99% was reported, but there is no held-out source yet.
+- Open questions: Phish360 missing (no held-out source); Phish-Blitz only 248 URLs; PhiUSIIL dates are the
+  load date (2026-10-11), so the time slice must not rely on them; PhreshPhish 666k rows vs 372k published
+  (162k removed as near-duplicate HTML); Phishpedia (18 GB) when disk allows.
+
+### 2026-10-11 — Step 2: tier A URL features (code)
+- Changed: `features/` (registry with 99 features in 9 groups, platform masking, lists, fit, extract,
+  scrape, dictionary, CLI), `configs/features.yaml`, `configs/platforms.yaml` (1,916 entries from the PSL
+  private section), `configs/lists/*.txt` (offline seeds), `docs/FEATURE_DICTIONARY.md` (generated),
+  `experiments/feature_source_check.py`, tests per group (full suite passes).
+- Decisions: bigram likelihood and TLD risk are fitted on train folds only (`configs/lists/fitted.json`,
+  NaN until fitted); brand matching uses edit distance <= 2 for brands of 4+ letters.
+- Next on the PC: `python -m features lists` (scrape brands/keywords/shorteners), `python -m features fit`,
+  `python -m features build`, then `python -m experiments.feature_source_check`; review flagged features.
+  Then step 3 (HTML features) and the JS parity port.
+- Open questions: review of the scraped brand list; which flagged features to drop.

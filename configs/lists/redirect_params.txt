@@ -1,0 +1,19 @@
+# Query parameter names that usually carry a redirect target.
+url
+redirect
+redirect_url
+redirect_uri
+redirecturl
+return
+returnurl
+return_url
+next
+goto
+target
+dest
+destination
+continue
+link
+u
+r
+to

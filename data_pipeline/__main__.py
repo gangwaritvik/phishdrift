@@ -49,7 +49,7 @@ def write_seeds(cfg: dict) -> dict[str, int]:
             continue
         df = pq.read_table(path, columns=["domain", "label", "origin"]).to_pandas()
         domains = sorted(set(df.loc[(df["label"] == 0) & (df["origin"] != "crawl"), "domain"]))
-        (seed_dir / f"{name}.txt").write_text("\n".join(domains) + "\n")
+        (seed_dir / f"{name}.txt").write_text("\n".join(domains) + "\n", encoding="utf-8")
         written[name] = len(domains)
         log.info("seeds: %d %s benign domains -> %s", len(domains), name, seed_dir / f"{name}.txt")
     return written
@@ -67,7 +67,12 @@ def run_build(names: list[str], reuse_interim: bool, reload: list[str] | None = 
     for name in names:
         path = interim_dir / f"{name}.parquet"
         try:
-            if not (reuse_interim and path.exists() and name not in (reload or [])):
+            if not (
+                reuse_interim
+                and path.exists()
+                and sources.interim_complete(path)
+                and name not in (reload or [])
+            ):
                 path, load_stats[name] = sources.load_source_to_interim(name, cfg)
                 stats_path.write_text(json.dumps(load_stats, indent=2))
             interim[name] = path

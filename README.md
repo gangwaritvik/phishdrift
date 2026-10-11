@@ -14,6 +14,8 @@ pytest && ruff check .
 
 ## Data (milestone 1)
 
+On Windows, `powershell -ExecutionPolicy Bypass -File scripts\run_milestone1.ps1` runs every step below from a fresh clone.
+
 ### 1. Get the sources
 
 PhreshPhish (Hugging Face) and PhiUSIIL (UCI) download automatically. Put the others here
@@ -22,7 +24,7 @@ PhreshPhish (Hugging Face) and PhiUSIIL (UCI) download automatically. Put the ot
 | Source | Put it in | Where to get it |
 | --- | --- | --- |
 | Phish360 | `data/raw/phish360/*.parquet` | from the dataset's authors (no public download link) |
-| Phish-Blitz | `data/raw/phishblitz/{phishing,legitimate}_resources/` | link in the `Duddu-Hriday/Phish-Blitz` GitHub README |
+| Phish-Blitz (PhishingSamples, phishing only) | `data/raw/phishblitz/openphish_urls_<N>_<DD>_<MM>_<YYYY>.txt` + extracted `openphish_phishing_resources_<N>/` | OneDrive link in the `Duddu-Hriday/Phish-Blitz` GitHub README; skip the 63.9 GB LegitimateSamples.zip |
 | Phishpedia 30k | `data/raw/phishpedia/<site>/{info.txt,html.txt}` | Google Drive link in the Phishpedia GitHub README |
 | URL-Phish | `data/raw/urlphish/*.csv` | Mendeley Data |
 | PhishStorm | `data/raw/phishstorm/urlset.csv` | Aalto University PhishStorm page |

@@ -24,6 +24,8 @@ from phishdrift.schema import BOOKKEEPING, COLUMNS
 
 log = logging.getLogger(__name__)
 
+WRITE_BATCH_ROWS = 500  # rows per batch when copying kept rows (with HTML) to data/processed
+
 META_COLUMNS = [c for c in COLUMNS if c != "html"] + [
     *BOOKKEEPING,
     "row_id",
@@ -42,6 +44,16 @@ def load_meta(interim: dict[str, Path]) -> pd.DataFrame:
     return pd.concat(parts, ignore_index=True)
 
 
+def _iter_batches(path: Path, batch_rows: int):
+    """Record batches of one parquet file or of every shard in a directory, in order."""
+    path = Path(path)
+    files = [path] if path.is_file() else sorted(path.glob("*.parquet"))
+    for f in files:
+        if f.name.endswith(".tmp.parquet"):
+            continue
+        yield from pq.ParquetFile(f).iter_batches(batch_size=batch_rows)
+
+
 def write_parts(interim: dict[str, Path], corpus: pd.DataFrame, out_dir: Path) -> dict[str, int]:
     """Stream every source (with HTML) into one parquet file per corpus part."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -52,8 +64,15 @@ def write_parts(interim: dict[str, Path], corpus: pd.DataFrame, out_dir: Path) -
     counts: dict[str, int] = {}
     try:
         for name, path in interim.items():
-            for batch in pq.ParquetFile(path).iter_batches(batch_size=20_000):
+            # One file at a time, a few hundred rows per batch: pages are large, and a
+            # multi-file dataset scan reads many files ahead and used all the memory.
+            prefix = name + ":"
+            keep_ids = {int(u[len(prefix) :]) for u in lookup.index if u.startswith(prefix)}
+            for batch in _iter_batches(path, WRITE_BATCH_ROWS):
                 chunk = batch.to_pandas()
+                chunk = chunk.loc[chunk["row_id"].isin(keep_ids)].copy()
+                if chunk.empty:
+                    continue
                 chunk["uid"] = name + ":" + chunk["row_id"].astype(str)
                 chunk = chunk.join(lookup, on="uid", how="inner")
                 for part, rows in chunk.groupby("part"):

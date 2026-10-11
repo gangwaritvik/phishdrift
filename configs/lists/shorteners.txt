@@ -1,0 +1,28 @@
+# Source: shorteners_seed in configs/features.yaml (offline seed)
+# Fetched: 2026-10-11
+# Entries: 25
+adf.ly
+bc.vc
+bit.ly
+bl.ink
+buff.ly
+clck.ru
+cutt.ly
+goo.gl
+is.gd
+linktr.ee
+lnkd.in
+ow.ly
+qr.ae
+rb.gy
+rebrand.ly
+s.id
+shorte.st
+shorturl.at
+soo.gd
+t.co
+t.ly
+tiny.cc
+tinyurl.com
+v.gd
+wa.me
