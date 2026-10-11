@@ -472,3 +472,9 @@ def test_crawl_run_parallel_workers_checkpoint_every_chunk(tmp_path, fixtures):
     tried = store.load_attempts(crawl_dir)
     assert sorted(tried["seed_domain"]) == ["example.org", "other.edu", "third.com"]
     assert set(store.load_crawl(crawl_dir)["seed_domain"]) == {"example.org"}
+
+
+def test_crawl_domain_stops_after_its_time_budget(fixtures):
+    cfg = {**CRAWL_CFG, "domain_deadline_s": -1}
+    res = benign.crawl_domain(FakeClient(_site(fixtures)), "example.org", cfg, 0, False)
+    assert res.pages == []  # no request is made once the budget is used up

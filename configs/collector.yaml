@@ -16,6 +16,7 @@ http:
   retries: 3
   backoff_factor: 2.0                  # waits 2s, 4s, 8s between retries
   user_agent: "PhishDrift-research-collector/0.2 (academic project; https://github.com/gangwaritvik/phishdrift)"
+  max_download_s: 30                   # a response that takes longer than this in total is dropped
   default_min_interval_s: 1.0          # politeness delay between requests to the same host
 
 feeds:
@@ -50,6 +51,7 @@ crawler:                               # benign inner pages; robots.txt and Craw
   max_page_bytes: 5000000
   store_html: true                     # fetch each chosen inner page's HTML (benign sites only)
   max_crawl_delay_s: 10                # skip domains asking for a longer Crawl-delay
+  domain_deadline_s: 240               # no new requests to a site after this many seconds
   workers: 16                          # sites crawled in parallel (each host still waits its own delay)
   checkpoint_every: 100                # results are saved after every this many domains
   seeds:
