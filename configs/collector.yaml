@@ -50,6 +50,8 @@ crawler:                               # benign inner pages; robots.txt and Craw
   max_page_bytes: 5000000
   store_html: true                     # fetch each chosen inner page's HTML (benign sites only)
   max_crawl_delay_s: 10                # skip domains asking for a longer Crawl-delay
+  workers: 16                          # sites crawled in parallel (each host still waits its own delay)
+  checkpoint_every: 100                # results are saved after every this many domains
   seeds:
     live:                              # Tranco-seeded pages belong to the "live" source
       from: tranco                     # via the `tranco` package; rank never becomes a feature

@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +29,7 @@ class HttpClient:
     default_min_interval_s: float = 1.0
     _last_request: dict[str, float] = field(default_factory=dict, init=False)
     _session: requests.Session = field(init=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
 
     def __post_init__(self) -> None:
         self.cache_dir = Path(self.cache_dir)
@@ -61,13 +63,15 @@ class HttpClient:
         return self.cache_dir / f"{key}.body", self.cache_dir / f"{key}.json"
 
     def _wait_for_host(self, url: str, min_interval_s: float) -> None:
+        """Reserve the next request slot for this host (thread-safe), then sleep until it."""
         host = urlsplit(url).hostname or ""
-        last = self._last_request.get(host)
-        if last is not None:
-            delay = min_interval_s - (time.monotonic() - last)
-            if delay > 0:
-                time.sleep(delay)
-        self._last_request[host] = time.monotonic()
+        with self._lock:
+            now = time.monotonic()
+            last = self._last_request.get(host)
+            slot = now if last is None else max(now, last + min_interval_s)
+            self._last_request[host] = slot
+        if slot > now:
+            time.sleep(slot - now)
 
     def get(
         self,
