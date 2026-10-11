@@ -222,3 +222,25 @@ def test_build_streams_a_processed_part(tmp_path, monkeypatch, lists):
     df = pd.read_parquet(out)
     assert list(df.columns) == ["uid", *NAMES] and len(df) == 2
     assert df.loc[0, "homoglyph_brand_match"] == 1
+
+
+def test_wikidata_brands_survive_one_failing_type():
+    import json
+
+    from features.scrape import brands_from_wikidata
+
+    class Client:
+        def get(self, url, **kwargs):
+            if "Q22687" in url:
+                raise TimeoutError("504")
+            rows = [
+                {"label": {"value": "Acme Bank"}, "site": {"value": "https://www.acmebank.com/"}}
+            ]
+            return json.dumps({"results": {"bindings": rows}}).encode()
+
+    cfg = {
+        "wikidata_types": ["Q4830453", "Q22687"],
+        "wikidata_query": "{type} {min_sitelinks}",
+        "wikidata_min_sitelinks": 40,
+    }
+    assert "acmebank" in brands_from_wikidata(Client(), cfg)
