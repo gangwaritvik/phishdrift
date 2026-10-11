@@ -23,6 +23,7 @@ The interim file holds the schema plus helper columns: ``row_id``, ``html_simhas
 
 from __future__ import annotations
 
+import ast
 import glob
 import json
 import logging
@@ -404,15 +405,31 @@ def _read_text(path: Path) -> str | None:
         return None
 
 
-def read_site_folder(folder: Path, url_file: str, html_file: str) -> tuple[str, str | None] | None:
-    """(url, html) from one site folder; None when there is no usable URL."""
+def _parse_site_info(text: str) -> tuple[str, str | None]:
+    """(url, date) from an info file: a Python-dict repr with 'url' and 'isotime' (Phishpedia
+    30k), or a plain file whose first non-empty line is the URL."""
+    text = text.strip()
+    if text.startswith("{"):
+        try:
+            info = ast.literal_eval(text)
+        except (ValueError, SyntaxError):
+            info = None
+        if isinstance(info, dict):
+            return str(info.get("url") or "").strip(), info.get("isotime") or None
+    return next((ln.strip() for ln in text.splitlines() if ln.strip()), ""), None
+
+
+def read_site_folder(
+    folder: Path, url_file: str, html_file: str
+) -> tuple[str, str | None, str | None] | None:
+    """(url, html, date) from one site folder; None when there is no usable URL."""
     text = _read_text(folder / url_file)
     if not text:
         return None
-    url = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+    url, date = _parse_site_info(text)
     if not url:
         return None
-    return url, _read_text(folder / html_file)
+    return url, _read_text(folder / html_file), date
 
 
 def iter_folders(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]:
@@ -424,9 +441,13 @@ def iter_folders(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame
             if (r := read_site_folder(f, cfg["url_file"], cfg["html_file"]))
         ]
         if rows:
-            raw = pd.DataFrame(rows, columns=["url", "html"])
+            raw = pd.DataFrame(rows, columns=["url", "html", "date"])
             yield to_schema(
-                raw["url"], pd.Series([int(cfg["label"])] * len(raw)), name, html=raw["html"]
+                raw["url"],
+                pd.Series([int(cfg["label"])] * len(raw)),
+                name,
+                dates=raw["date"],
+                html=raw["html"],
             )
 
 
