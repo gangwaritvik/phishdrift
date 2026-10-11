@@ -172,7 +172,8 @@ def _iter_hf_file(
     want = [c for c in cols.values() if c]
     html_col = cols.get("html")
     limit = cfg.get("html_max_chars")
-    path = _download_with_retry(cfg, fname, tmp_root)
+    local = _local_copy(cfg, fname)
+    path = str(local) if local else _download_with_retry(cfg, fname, tmp_root)
     pf = pq.ParquetFile(path)
     missing = [c for c in want if c not in pf.schema_arrow.names]
     if missing:
@@ -190,7 +191,18 @@ def _iter_hf_file(
     if seen != expected:
         raise RuntimeError(f"{name} {fname}: read {seen} of {expected} rows")
     del pf
-    Path(path).unlink(missing_ok=True)
+    if not local:  # files the user supplied by hand are never deleted
+        Path(path).unlink(missing_ok=True)
+
+
+def _local_copy(cfg: dict, fname: str) -> Path | None:
+    """A manually downloaded copy of a dataset file (e.g. via a browser) in `local_dir`, looked up
+    by file name; None when `local_dir` is unset or the file is not there."""
+    folder = cfg.get("local_dir")
+    if not folder:
+        return None
+    path = Path(folder) / Path(fname).name
+    return path if path.is_file() else None
 
 
 def _hf_plan(cfg: dict) -> list[tuple[str, str]]:

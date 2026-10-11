@@ -16,6 +16,7 @@ sources:
     columns: {url: url, label: label, date: date, html: html}   # assumed; verify with inspect
     html_max_chars: null              # null = keep the full HTML (needs ~50 GB free); set e.g. 30000 on small disks
     # download_dir: D:/tmp             # optional: where the one-file-at-a-time download is kept
+    local_dir: data/raw/phreshphish    # files downloaded by hand (e.g. in a browser) are used from here, by name; anything missing is fetched
     license: CC BY 4.0, anti-phishing research only
   phiusiil:
     kind: uci
