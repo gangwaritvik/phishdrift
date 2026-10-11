@@ -28,6 +28,7 @@ class HttpClient:
     user_agent: str = "PhishDrift-research-collector/0.1"
     default_min_interval_s: float = 1.0
     max_download_s: float | None = None  # wall-clock cap for one response body
+    connect_timeout_s: float | None = None  # shorter wait for the connection itself
     _last_request: dict[str, float] = field(default_factory=dict, init=False)
     _session: requests.Session = field(init=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
@@ -58,6 +59,7 @@ class HttpClient:
             user_agent=http_cfg["user_agent"],
             default_min_interval_s=http_cfg["default_min_interval_s"],
             max_download_s=http_cfg.get("max_download_s"),
+            connect_timeout_s=http_cfg.get("connect_timeout_s"),
         )
 
     def _cache_paths(self, url: str) -> tuple[Path, Path]:
@@ -74,6 +76,10 @@ class HttpClient:
             self._last_request[host] = slot
         if slot > now:
             time.sleep(slot - now)
+
+    def _timeout(self, timeout_s: float | None) -> float | tuple[float, float]:
+        read = timeout_s or self.timeout_s
+        return (self.connect_timeout_s, read) if self.connect_timeout_s else read
 
     def get(
         self,
@@ -104,7 +110,7 @@ class HttpClient:
             interval = max(interval, min_interval_s)
         self._wait_for_host(url, interval)
         with self._session.get(
-            url, timeout=timeout_s or self.timeout_s, headers=headers, stream=True
+            url, timeout=self._timeout(timeout_s), headers=headers, stream=True
         ) as resp:
             resp.raise_for_status()
             chunks, size = [], 0

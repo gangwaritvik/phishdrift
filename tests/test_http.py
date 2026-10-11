@@ -27,3 +27,21 @@ def test_slow_download_is_cut_off(tmp_path, monkeypatch):
     except requests.Timeout:
         return
     raise AssertionError("expected a Timeout")
+
+
+def test_connect_timeout_is_separate_from_read_timeout(tmp_path):
+    from phishdrift.http import HttpClient
+
+    plain = HttpClient(cache_dir=tmp_path, timeout_s=20)
+    assert plain._timeout(None) == 20
+    fast = HttpClient(cache_dir=tmp_path, timeout_s=20, connect_timeout_s=8)
+    assert fast._timeout(None) == (8, 20) and fast._timeout(5) == (8, 5)
+    cfg = {
+        "timeout_s": 20,
+        "retries": 1,
+        "backoff_factor": 1.0,
+        "user_agent": "x",
+        "default_min_interval_s": 1.0,
+        "connect_timeout_s": 8,
+    }
+    assert HttpClient.from_config(cfg, tmp_path).connect_timeout_s == 8
