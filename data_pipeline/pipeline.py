@@ -25,6 +25,8 @@ from phishdrift.schema import BOOKKEEPING, COLUMNS
 
 log = logging.getLogger(__name__)
 
+WRITE_BATCH_ROWS = 1000  # rows per batch when copying kept rows (with HTML) to data/processed
+
 META_COLUMNS = [c for c in COLUMNS if c != "html"] + [
     *BOOKKEEPING,
     "row_id",
@@ -53,7 +55,14 @@ def write_parts(interim: dict[str, Path], corpus: pd.DataFrame, out_dir: Path) -
     counts: dict[str, int] = {}
     try:
         for name, path in interim.items():
-            for batch in pads.dataset(path, format="parquet").to_batches(batch_size=20_000):
+            # Only the kept rows are read, in small batches: HTML makes rows large, and
+            # 20,000-row batches of full pages used several GB of memory.
+            prefix = name + ":"
+            keep_ids = [int(u[len(prefix) :]) for u in lookup.index if u.startswith(prefix)]
+            scan = pads.dataset(path, format="parquet").to_batches(
+                batch_size=WRITE_BATCH_ROWS, filter=pads.field("row_id").isin(keep_ids)
+            )
+            for batch in scan:
                 chunk = batch.to_pandas()
                 chunk["uid"] = name + ":" + chunk["row_id"].astype(str)
                 chunk = chunk.join(lookup, on="uid", how="inner")
