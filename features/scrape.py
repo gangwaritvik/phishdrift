@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
@@ -81,7 +82,8 @@ def write_platforms(domains: list[str], source: str) -> Path:
 
 
 def _clean_brand(token: str) -> str | None:
-    token = "".join(_WORD.findall(token.lower()))
+    token = unicodedata.normalize("NFKD", token.lower())
+    token = "".join(_WORD.findall("".join(c for c in token if not unicodedata.combining(c))))
     return token if len(token) >= MIN_BRAND_LEN else None
 
 

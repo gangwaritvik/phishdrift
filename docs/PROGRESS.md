@@ -129,3 +129,15 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   (lists, fit, build, source-leakage check in one command).
 - Next: Ritvik runs it on the PC and shares `reports/tables/feature_source_check.csv`; then review flagged
   features, add Phishpedia and a held-out source, then milestone 3 (HTML features).
+
+### 2026-10-11 — Wikidata fix, within-class source check, Phishpedia, accent fix
+- Changed: Wikidata brand scrape now runs seven light per-type queries (PRs #6, #7; brands 67 -> 794).
+  `experiments/feature_source_check.py` also reports source eta2 within each class (`eta2_source_within`).
+  Phishpedia loader reads the dict-style `info.txt` (PR #8). `_clean_brand` strips accents (Hermès -> hermes).
+- Results (`reports/data_card.md`): pool 474,987 URLs / 387,855 domains, 149,675 phishing (31.5%);
+  Phishpedia adds 9,580 phishing URLs (2019-2020); depth check passed (worst bucket 72.8%); nothing >99%.
+  Feature source check: 17 of 99 features flagged (path/length features separate sources more than classes).
+- Next: benign inner-page crawl at scale (PhiUSIIL + URL-Phish seeds), rebuild with `--reload phiusiil urlphish live`,
+  rebuild features and re-run the source check; milestone 3 plan.
+- Open questions: Phish360 (held-out source); PhiUSIIL dates are the load date; drop vs keep the flagged features
+  (decide at training with a with/without comparison); deadline date; lists still need Ritvik's one-time review.
