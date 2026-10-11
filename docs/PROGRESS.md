@@ -123,3 +123,9 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   `python -m features build`, then `python -m experiments.feature_source_check`; review flagged features.
   Then step 3 (HTML features) and the JS parity port.
 - Open questions: review of the scraped brand list; which flagged features to drop.
+
+### 2026-10-11 — Milestone 1+2 merged (PR #4); milestone 2 run script
+- Changed: PR #4 merged into main (CI fix: `huggingface_hub` in dev extras). Added `scripts/run_milestone2.ps1`
+  (lists, fit, build, source-leakage check in one command).
+- Next: Ritvik runs it on the PC and shares `reports/tables/feature_source_check.csv`; then review flagged
+  features, add Phishpedia and a held-out source, then milestone 3 (HTML features).
