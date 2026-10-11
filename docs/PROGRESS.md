@@ -141,3 +141,9 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   rebuild features and re-run the source check; milestone 3 plan.
 - Open questions: Phish360 (held-out source); PhiUSIIL dates are the load date; drop vs keep the flagged features
   (decide at training with a with/without comparison); deadline date; lists still need Ritvik's one-time review.
+
+### 2026-10-11 — Parallel benign crawl with checkpoints
+- Changed: `collector/benign.py` crawls sites in parallel (`crawler.workers: 16`) and saves results every
+  `crawler.checkpoint_every: 100` domains (a stopped run keeps finished domains; before, nothing was saved until a
+  seed set finished). `HttpClient` per-host delay is thread-safe. Test for the parallel path.
+- Next: Ritvik copies the update and reruns `python -m collector crawl --seeds phiusiil urlphish`, then rebuilds.

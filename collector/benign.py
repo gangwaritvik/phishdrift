@@ -23,6 +23,7 @@ import logging
 import random
 import re
 import zlib
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -279,28 +280,56 @@ def crawl(
         done = set(attempts.loc[attempts["seed_source"] == name, "seed_domain"])
         picked = sample_domains(domains, scfg["domains_per_run"], run_seed(now.date(), name), done)
         rows, log_rows = [], []
-        for i, domain in enumerate(picked):
+        base_seed = run_seed(now.date(), name)
+        workers = max(1, int(cfg.get("workers", 1)))
+        chunk = max(1, int(cfg.get("checkpoint_every", 100)))
+
+        include_home = scfg["include_homepage"]
+
+        def one(
+            item: tuple[int, str], base_seed: int = base_seed, include_home: bool = include_home
+        ) -> DomainResult:
+            i, domain = item
             try:
-                res = crawl_domain(
-                    client, domain, cfg, run_seed(now.date(), name) + i, scfg["include_homepage"]
-                )
+                return crawl_domain(client, domain, cfg, base_seed + i, include_home)
             except Exception as exc:  # noqa: BLE001 - one bad site must not stop the run
                 log.debug("crawl %s: %s", domain, exc)
-                res = DomainResult(domain, ERROR, [])
-            log_rows.append(
-                {
-                    "seed_source": name,
-                    "seed_domain": domain,
-                    "status": res.status,
-                    "pages": len(res.pages),
-                    "attempted_at": now,
-                }
-            )
-            rows += [{**p, "seed_source": name, "seed_domain": domain} for p in res.pages]
-        if rows:
-            pages = pd.DataFrame(rows).assign(crawled_at=now)
-            store.write_crawl(pages, crawl_dir, now.date(), name)
-        store.append_attempts(pd.DataFrame(log_rows, columns=store.ATTEMPT_COLUMNS), crawl_dir)
+                return DomainResult(domain, ERROR, [])
+
+        items = list(enumerate(picked))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for start in range(0, len(items), chunk):
+                # Different sites run in parallel; each host keeps its own politeness delay.
+                results = list(pool.map(one, items[start : start + chunk]))
+                chunk_rows, chunk_log = [], []
+                for res in results:
+                    chunk_log.append(
+                        {
+                            "seed_source": name,
+                            "seed_domain": res.domain,
+                            "status": res.status,
+                            "pages": len(res.pages),
+                            "attempted_at": now,
+                        }
+                    )
+                    chunk_rows += [
+                        {**p, "seed_source": name, "seed_domain": res.domain} for p in res.pages
+                    ]
+                if chunk_rows:  # checkpoint: a stopped run keeps everything finished so far
+                    pages = pd.DataFrame(chunk_rows).assign(crawled_at=now)
+                    store.write_crawl(pages, crawl_dir, now.date(), name)
+                store.append_attempts(
+                    pd.DataFrame(chunk_log, columns=store.ATTEMPT_COLUMNS), crawl_dir
+                )
+                rows += chunk_rows
+                log_rows += chunk_log
+                log.info(
+                    "crawl %s: %d/%d domains, %d pages so far",
+                    name,
+                    min(start + chunk, len(items)),
+                    len(items),
+                    len(rows),
+                )
         statuses = pd.Series([r["status"] for r in log_rows], dtype=object).value_counts()
         summary[name] = {
             "domains": len(picked),

@@ -451,3 +451,24 @@ def test_http_client_caches_and_hides_url(tmp_path, monkeypatch):
     assert all("SECRETKEY" not in p.read_text(errors="ignore") for p in tmp_path.glob("*.json"))
     client.get(url)  # ttl 0 bypasses the cache
     assert len(calls) == 2
+
+
+def test_crawl_run_parallel_workers_checkpoint_every_chunk(tmp_path, fixtures):
+    seed_dir, crawl_dir = tmp_path / "seeds", tmp_path / "crawl"
+    seed_dir.mkdir()
+    (seed_dir / "phiusiil.txt").write_text("example.org\nother.edu\nthird.com\n")
+    cfg = {
+        **CRAWL_CFG,
+        "workers": 4,
+        "checkpoint_every": 1,
+        "seeds": {
+            "phiusiil": {"from": "seed_file", "domains_per_run": 3, "include_homepage": False}
+        },
+    }
+    client = FakeClient({**_site(fixtures), "https://other.edu/robots.txt": 503})
+    now = datetime(2026, 10, 7, 6, 15, tzinfo=UTC)
+    out = benign.crawl(client, cfg, crawl_dir, seed_dir, now)
+    assert out["phiusiil"]["domains"] == 3
+    tried = store.load_attempts(crawl_dir)
+    assert sorted(tried["seed_domain"]) == ["example.org", "other.edu", "third.com"]
+    assert set(store.load_crawl(crawl_dir)["seed_domain"]) == {"example.org"}
