@@ -110,6 +110,12 @@ def run_crawl(client: HttpClient, cfg: dict, now: datetime, only: list[str] | No
         **cfg["crawler"],
         "tranco_cache_dir": resolve(cfg["crawler"]["tranco_cache_dir"]),
     }
+    # The crawler meets many dead sites, so it can use fewer retries and a shorter connect wait.
+    overrides = cfg["crawler"].get("http")
+    if overrides:
+        client = HttpClient.from_config(
+            {**cfg["http"], **overrides}, resolve(paths["http_cache_dir"])
+        )
     return benign.crawl(
         client, crawler_cfg, resolve(paths["crawl_dir"]), resolve(paths["seed_dir"]), now, only
     )

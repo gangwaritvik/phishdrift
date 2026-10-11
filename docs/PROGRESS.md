@@ -153,3 +153,8 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   stalled on slow sites. Added `http.max_download_s: 30` (wall-clock cap per response) and
   `crawler.domain_deadline_s: 240` (no new requests to a site after that), with tests.
 - Next: Ritvik copies the update and reruns the crawl (done domains are skipped), then rebuilds the pool.
+
+### 2026-10-11 — Faster crawl on dead sites
+- Changed: crawler-only HTTP settings (`crawler.http`: 1 retry, 8 s connect timeout) so a dead site costs about 15 s,
+  not about 90 s; results are saved every 25 domains. After the first restart the crawl had done 1,060 PhiUSIIL sites
+  (2,878 pages) but a batch of 100 took over 15 minutes.
