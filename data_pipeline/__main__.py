@@ -49,7 +49,7 @@ def write_seeds(cfg: dict) -> dict[str, int]:
             continue
         df = pq.read_table(path, columns=["domain", "label", "origin"]).to_pandas()
         domains = sorted(set(df.loc[(df["label"] == 0) & (df["origin"] != "crawl"), "domain"]))
-        (seed_dir / f"{name}.txt").write_text("\n".join(domains) + "\n")
+        (seed_dir / f"{name}.txt").write_text("\n".join(domains) + "\n", encoding="utf-8")
         written[name] = len(domains)
         log.info("seeds: %d %s benign domains -> %s", len(domains), name, seed_dir / f"{name}.txt")
     return written
