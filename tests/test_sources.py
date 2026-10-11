@@ -172,3 +172,23 @@ def test_frame_from_table_drops_rows_with_missing_label():
     out = frame_from_table(raw, "phishstorm", cfg)
     assert len(out) == 2
     assert sorted(out["label"]) == [0, 1]
+
+
+def test_folder_loader_reads_phishpedia_dict_info(tmp_path):
+    d = tmp_path / "1&1 Ionos+2019-07-28-22`34`40"
+    d.mkdir()
+    (d / "info.txt").write_text(
+        "{'sector': 'Online Services', 'url': 'http://serv-acamai.com/1und1/de/index.php', "
+        "'isotime': '2019-07-02T21:14:13Z', 'brand': '1&1 Ionos', 'emails': []}"
+    )
+    (d / "html.txt").write_text(PAGE)
+    cfg = {
+        "kind": "folders",
+        "path": str(tmp_path / "*/"),
+        "url_file": "info.txt",
+        "html_file": "html.txt",
+        "label": 1,
+    }
+    df = validate(_collect("phishpedia", cfg))
+    assert df["url"].tolist() == ["http://serv-acamai.com/1und1/de/index.php"]
+    assert df["date"].iloc[0].year == 2019 and df["html"].notna().all()
