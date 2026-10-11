@@ -3,7 +3,7 @@
 python -m features dictionary           # regenerate docs/FEATURE_DICTIONARY.md
 python -m features lists [names...]     # collect word lists from the internet (needs network)
 python -m features fit                  # fit bigram and TLD numbers on the training folds
-python -m features build                # tier A features for data/processed/pool.parquet
+python -m features build [--split NAME]  # tier A features for one processed part (default pool)
 """
 
 from __future__ import annotations
@@ -33,13 +33,19 @@ def _paths() -> tuple[Path, Path]:
     return processed, processed / "features_a.parquet"
 
 
+def output_path(base: Path, split: str) -> Path:
+    """features_a.parquet for the pool, features_a_<split>.parquet for any other part."""
+    return base if split == "pool" else base.with_name(f"{base.stem}_{split}{base.suffix}")
+
+
 def _url_batches(path: Path, columns: list[str]):
     yield from pq.ParquetFile(path).iter_batches(batch_size=BATCH, columns=columns)
 
 
 def build(split: str = "pool") -> Path:
     """Tier A features for every row of a processed part, streamed (URLs only, no HTML)."""
-    processed, out_path = _paths()
+    processed, base = _paths()
+    out_path = output_path(base, split)
     src = processed / f"{split}.parquet"
     lists, fitted = load_lists(), load_fitted()
     schema = pa.schema([("uid", pa.string())] + [(n, pa.float32()) for n in NAMES])
@@ -73,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="features")
     parser.add_argument("command", choices=["dictionary", "lists", "fit", "build"])
     parser.add_argument("names", nargs="*")
+    parser.add_argument("--split", default="pool", help="part to build features for (build only)")
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -86,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "fit":
         print(fit_command())
     else:
-        print(build())
+        print(build(args.split))
     return 0
 
 

@@ -68,7 +68,7 @@ Outputs in `data/processed/`:
 
 - `pool.parquet` training pool (with per-source class weights); `splits.parquet` assigns it to
   train / cal / test for 10 domain-grouped splits
-- `heldout_source.parquet` (Phish360), `time_slice.parquet` (PhreshPhish's later test split plus
+- `heldout_source.parquet` (`holdouts.heldout_source` in `configs/datasets.yaml`; PhishStorm while Phish360 is unavailable), `time_slice.parquet` (PhreshPhish's later test split plus
   the newest live data), `eval_only.parquet` (natural legitimate pages): never trained on
 - `manifest.json`; the data card in `reports/data_card.md` and tables in `reports/tables/`
 
