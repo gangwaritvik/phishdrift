@@ -139,7 +139,10 @@ def _col(raw: pd.DataFrame, cfg: dict, name: str) -> pd.Series | None:
 
 def frame_from_table(raw: pd.DataFrame, name: str, cfg: dict) -> pd.DataFrame:
     """Raw table -> schema using the source's column map. Unmapped columns are ignored."""
-    raw = raw[raw[cfg["columns"]["url"]].notna()].reset_index(drop=True)
+    keep = raw[cfg["columns"]["url"]].notna()
+    if "label" not in cfg:  # rows without a label cannot be used (a few in PhishStorm)
+        keep &= raw[cfg["columns"]["label"]].notna()
+    raw = raw[keep].reset_index(drop=True)
     return to_schema(
         raw[cfg["columns"]["url"]],
         _labels(raw, cfg),

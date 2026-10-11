@@ -160,3 +160,15 @@ def test_write_interim_streams_and_counts(tmp_path, dedup_cfg):
     assert df["has_html"].tolist() == [False, True]
     assert df["html_simhash"].isna().tolist() == [True, False]
     assert list(df.columns) == sources.INTERIM_COLUMNS
+
+
+def test_frame_from_table_drops_rows_with_missing_label():
+    import pandas as pd
+
+    from data_pipeline.sources import frame_from_table
+
+    raw = pd.DataFrame({"domain": ["a.com/x", "b.com/y", "c.com/z"], "label": ["1", None, "0"]})
+    cfg = {"columns": {"url": "domain", "label": "label"}}
+    out = frame_from_table(raw, "phishstorm", cfg)
+    assert len(out) == 2
+    assert sorted(out["label"]) == [0, 1]
