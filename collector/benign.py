@@ -22,6 +22,7 @@ import gzip
 import logging
 import random
 import re
+import time
 import zlib
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -199,7 +200,11 @@ def crawl_domain(
     if delay is not None and delay > cfg["max_crawl_delay_s"]:
         return DomainResult(domain, CRAWL_DELAY_TOO_LONG, [])
 
+    started = time.monotonic()
+
     def get(url: str) -> str:
+        if time.monotonic() - started > cfg.get("domain_deadline_s", float("inf")):
+            raise requests.Timeout(f"{domain}: domain time budget used up")
         return _decode(client.get(url, max_bytes=max_bytes, min_interval_s=delay))
 
     candidates: list[str] = []

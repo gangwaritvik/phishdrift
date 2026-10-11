@@ -27,6 +27,7 @@ class HttpClient:
     backoff_factor: float = 2.0
     user_agent: str = "PhishDrift-research-collector/0.1"
     default_min_interval_s: float = 1.0
+    max_download_s: float | None = None  # wall-clock cap for one response body
     _last_request: dict[str, float] = field(default_factory=dict, init=False)
     _session: requests.Session = field(init=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
@@ -56,6 +57,7 @@ class HttpClient:
             backoff_factor=http_cfg["backoff_factor"],
             user_agent=http_cfg["user_agent"],
             default_min_interval_s=http_cfg["default_min_interval_s"],
+            max_download_s=http_cfg.get("max_download_s"),
         )
 
     def _cache_paths(self, url: str) -> tuple[Path, Path]:
@@ -106,7 +108,10 @@ class HttpClient:
         ) as resp:
             resp.raise_for_status()
             chunks, size = [], 0
+            started = time.monotonic()
             for chunk in resp.iter_content(64 * 1024):
+                if self.max_download_s and time.monotonic() - started > self.max_download_s:
+                    raise requests.Timeout(f"download of {url} exceeded {self.max_download_s}s")
                 chunks.append(chunk)
                 size += len(chunk)
                 if max_bytes is not None and size >= max_bytes:

@@ -147,3 +147,9 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   `crawler.checkpoint_every: 100` domains (a stopped run keeps finished domains; before, nothing was saved until a
   seed set finished). `HttpClient` per-host delay is thread-safe. Test for the parallel path.
 - Next: Ritvik copies the update and reruns `python -m collector crawl --seeds phiusiil urlphish`, then rebuilds.
+
+### 2026-10-11 — Crawl time limits
+- Changed: the PhiUSIIL part of the crawl ran (760 sites, 2,150 pages, 425 sites with a full set); the URL-Phish part
+  stalled on slow sites. Added `http.max_download_s: 30` (wall-clock cap per response) and
+  `crawler.domain_deadline_s: 240` (no new requests to a site after that), with tests.
+- Next: Ritvik copies the update and reruns the crawl (done domains are skipped), then rebuilds the pool.
