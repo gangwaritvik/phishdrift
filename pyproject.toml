@@ -22,7 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 datasets = ["datasets>=2.18", "ucimlrepo>=0.0.7"]
-dev = ["pytest>=8", "ruff>=0.5"]
+dev = ["pytest>=8", "ruff>=0.5", "huggingface_hub>=0.23"]
 
 [project.scripts]
 phishdrift-collect = "collector.__main__:main"
