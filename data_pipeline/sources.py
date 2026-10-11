@@ -9,6 +9,7 @@ Loader kinds (``kind`` in configs/datasets.yaml):
   table        local CSV / Parquet / JSONL files with a column map (Phish360, URL-Phish,
                PhishStorm, natural legitimate pages)
   folders      one folder per site with a URL file and an HTML file (Phishpedia)
+  openphish_blitz  Phish-Blitz PhishingSamples (URL lists + page folders)
   phishblitz   Phish-Blitz output: <root>/info.csv + downloaded page folders
   live         collector feeds (first-seen index)
 
@@ -25,6 +26,7 @@ from __future__ import annotations
 import glob
 import json
 import logging
+import re
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
@@ -458,6 +460,54 @@ def iter_phishblitz(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFr
             )
 
 
+_URL_LIST = re.compile(r"openphish_urls_(\d+)_(\d{2})_(\d{2})_(\d{4})\.txt$")
+
+
+def _blitz_html(group: Path, sub: str) -> dict[int, str | None]:
+    """index -> page HTML for the ``<index>_<domain>`` site folders in one sub-folder."""
+    out: dict[int, str | None] = {}
+    base = group / sub
+    if not base.is_dir():
+        return out
+    for site in base.iterdir():
+        m = re.match(r"(\d+)_", site.name)
+        if not m or not site.is_dir():
+            continue
+        pages = sorted(site.glob("*/index.html")) or sorted(site.rglob("index.html"))
+        out[int(m.group(1))] = _read_text(pages[0]) if pages else None
+    return out
+
+
+def iter_openphish_blitz(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]:
+    """Phish-Blitz 'PhishingSamples' release: ``openphish_urls_<N>_<DD>_<MM>_<YYYY>.txt`` lists
+    the URLs of ``openphish_phishing_resources_<N>/``, whose ``fully_downloaded/<i>_<domain>/``
+    folders hold the page of URL line ``i`` (0-based). HTML is read only from fully downloaded
+    pages; partial or broken captures keep the URL with no HTML. The date is the one in the
+    URL-list file name."""
+    root = resolve(cfg["path"])
+    lists = sorted(p for p in root.glob("openphish_urls_*.txt") if _URL_LIST.search(p.name))
+    if not lists:
+        raise FileNotFoundError(f"no openphish_urls_*.txt files in {root}; download them first")
+    for url_file in lists:
+        n, day, month, year = _URL_LIST.search(url_file.name).groups()
+        group = root / f"openphish_phishing_resources_{n}"
+        if (group / group.name).is_dir():  # zip extracted into a same-named folder
+            group = group / group.name
+        urls = [ln.strip() for ln in url_file.read_text(encoding="utf-8").splitlines()]
+        html = _blitz_html(group, cfg.get("html_dir", "fully_downloaded"))
+        frame = pd.DataFrame({"url": urls, "html": [html.get(i) for i in range(len(urls))]})
+        frame = frame[frame["url"] != ""].reset_index(drop=True)
+        for chunk in _chunked(frame, chunk_rows):
+            yield to_schema(
+                chunk["url"],
+                pd.Series([1] * len(chunk)),
+                name,
+                dates=pd.Series([f"{year}-{month}-{day}"] * len(chunk)),
+                html=chunk["html"],
+                origin=f"openphish_{n}",
+            )
+
+
 # --- live (collector) ----------------------------------------------------------------
 
 
@@ -497,6 +547,7 @@ LOADERS = {
     "table": iter_table,
     "folders": iter_folders,
     "phishblitz": iter_phishblitz,
+    "openphish_blitz": iter_openphish_blitz,
     "live": iter_live,
 }
 
@@ -559,6 +610,8 @@ def inspect(name: str, cfg: dict, n: int = 3) -> str:
         rows = fetch_ucirepo(id=scfg["uci_id"]).data.original.head(n)
     elif kind == "table":
         rows = read_table(_paths(scfg["path"])[0], scfg.get("read_options")).head(n)
+    elif kind == "openphish_blitz":
+        rows = next(iter_openphish_blitz(name, scfg, n)).drop(columns=["html"], errors="ignore")
     elif kind == "phishblitz":
         root = resolve(next(iter(scfg["roots"].values())))
         rows = pd.read_csv(root / scfg["info_csv"], dtype=str).head(n)

@@ -31,11 +31,9 @@ sources:
     columns: {url: url, label: label, html: html}   # assumed; verify with inspect
     license: to confirm
   phishblitz:
-    kind: phishblitz
-    roots: {1: data/raw/phishblitz/phishing_resources, 0: data/raw/phishblitz/legitimate_resources}
-    info_csv: info.csv
-    columns: {url: URL, html_folder: HTML Folder}
-    page_dirs: [fully_downloaded_web_pages, no_screenshot_web_pages]
+    kind: openphish_blitz              # PhishingSamples release (phishing only); the legitimate zip is not used
+    path: data/raw/phishblitz          # openphish_urls_<N>_<DD>_<MM>_<YYYY>.txt + openphish_phishing_resources_<N>/
+    html_dir: fully_downloaded         # partial and broken captures keep the URL but get no HTML
     license: MIT (tool); dataset terms to confirm
   phishpedia:
     kind: folders

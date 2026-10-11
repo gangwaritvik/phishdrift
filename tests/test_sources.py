@@ -104,6 +104,23 @@ def test_phishblitz_loader(tmp_path):
     assert df.loc["https://t1.com/", "html"] is None
 
 
+def test_openphish_blitz_loader(tmp_path):
+    (tmp_path / "openphish_urls_3_24_09_2025.txt").write_text(
+        "meta.pages.dev/\nfake-bank.xyz/login.php\nbroken.example.top/\n"
+    )
+    res = tmp_path / "openphish_phishing_resources_3" / "openphish_phishing_resources_3"
+    page = res / "fully_downloaded" / "1_fake-bank.xyz" / "fake-bank.xyz"
+    page.mkdir(parents=True)
+    (page / "index.html").write_text(PAGE)
+    (res / "broken_samples" / "2_broken.example.top").mkdir(parents=True)
+    cfg = {"kind": "openphish_blitz", "path": str(tmp_path)}
+    df = validate(_collect("phishblitz", cfg)).set_index("url")
+    assert len(df) == 3 and (df["label"] == 1).all()
+    assert df.loc["fake-bank.xyz/login.php", "html"] == PAGE
+    assert df["html"].notna().sum() == 1  # partial and broken captures carry no HTML
+    assert (df["date"].dt.strftime("%Y-%m-%d") == "2025-09-24").all()
+
+
 def test_iter_source_appends_crawled_pages(monkeypatch, tmp_path):
     (tmp_path / "p.csv").write_text("URL,label\nhttps://www.uni.edu,legitimate\n")
     t = pd.Timestamp("2026-10-07", tz="UTC")

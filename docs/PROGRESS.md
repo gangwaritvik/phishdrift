@@ -87,3 +87,17 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   build, crawl PhiUSIIL/URL-Phish seeds, rebuild; stops at the first failing step; reports missing
   manual downloads and unset optional keys first); one-line pointer in README.
 - Next: Ritvik runs it on their PC and shares `reports/data_card.md` and the inspect output.
+
+### 2026-10-11 — Real PhreshPhish run, manual downloads, Phish-Blitz loader
+- Changed: PhreshPhish load is now resumable zstd shards (`data/interim/phreshphish.parquet/`) and uses
+  hand-downloaded files from `data/raw/phreshphish/` when present (`local_dir`), so a stalled Hugging Face
+  transfer can be replaced by `curl -C -`. `scripts/finish_download.ps1` moves/fetches the 33 missing files
+  and starts the detached build. New `openphish_blitz` loader for the Phish-Blitz PhishingSamples release
+  (URL list line `i` ↔ `fully_downloaded/<i>_<domain>/`; HTML only from fully downloaded pages; date from the
+  list file name); test `test_openphish_blitz_loader`.
+- Results: PhreshPhish 66 of 77 files loaded, 565,959 rows at last check (published size 372k; to explain in
+  the data card). URL-Phish (116,600 rows, 16,600 phishing) and PhishStorm (96,005 rows) are in `data/raw/`
+  with the columns the config expects. No data card yet; the run is still going.
+- Next: wait for the overnight chain, read `reports/data_card.md`, flag anything >99%, then add Phish-Blitz
+  (and Phishpedia/Phish360 when disk allows) with `build --reuse-interim --reload NAME`.
+- Open questions: why PhreshPhish has more rows than published; Phish360 access; disk space for Phishpedia (18 GB).
