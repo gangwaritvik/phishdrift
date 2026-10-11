@@ -13,8 +13,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-FLAG_RATIO = 2.0  # flag when eta2_source > FLAG_RATIO * eta2_label ...
-FLAG_MIN = 0.05  # ... and eta2_source is at least this
+FLAG_RATIO = 2.0  # flag when eta2_source_within > FLAG_RATIO * eta2_label ...
+FLAG_MIN = 0.05  # ... and eta2_source_within is at least this
+MIN_SOURCE_ROWS = (
+    200  # a source needs this many rows in a class to take part in the within-class test
+)
 
 
 def eta_squared(values: pd.Series, groups: pd.Series) -> float:
@@ -28,6 +31,24 @@ def eta_squared(values: pd.Series, groups: pd.Series) -> float:
     return float(between / total)
 
 
+def eta_squared_within_class(df: pd.DataFrame, name: str) -> float:
+    """Variance share explained by the source inside each class, weighted by class size.
+
+    The plain source eta2 mixes in the label whenever sources have different class mixes
+    (one source mostly benign, another mostly phishing). Inside one class only dataset
+    style can separate the sources, which is the shortcut a model could learn.
+    """
+    total, weight = 0.0, 0
+    for _, part in df.groupby("label"):
+        counts = part["source"].value_counts()
+        part = part[part["source"].isin(counts[counts >= MIN_SOURCE_ROWS].index)]
+        if part["source"].nunique() < 2:
+            continue
+        total += eta_squared(part[name], part["source"]) * len(part)
+        weight += len(part)
+    return total / weight if weight else float("nan")
+
+
 def run(processed: Path, out: Path) -> pd.DataFrame:
     feats = pd.read_parquet(processed / "features_a.parquet")
     meta = pd.read_parquet(processed / "pool.parquet", columns=["uid", "label", "source"])
@@ -35,6 +56,7 @@ def run(processed: Path, out: Path) -> pd.DataFrame:
     rows = []
     for name in [c for c in feats.columns if c != "uid"]:
         es, el = eta_squared(df[name], df["source"]), eta_squared(df[name], df["label"])
+        ew = eta_squared_within_class(df, name)
         rows.append(
             {
                 "feature": name,
@@ -43,10 +65,11 @@ def run(processed: Path, out: Path) -> pd.DataFrame:
                 "mean_phishing": df.loc[df.label == 1, name].mean(),
                 "eta2_label": el,
                 "eta2_source": es,
-                "flag": es >= FLAG_MIN and es > FLAG_RATIO * el,
+                "eta2_source_within": ew,
+                "flag": ew >= FLAG_MIN and ew > FLAG_RATIO * el,
             }
         )
-    res = pd.DataFrame(rows).sort_values("eta2_source", ascending=False)
+    res = pd.DataFrame(rows).sort_values("eta2_source_within", ascending=False)
     out.parent.mkdir(parents=True, exist_ok=True)
     res.to_csv(out, index=False)
     print(f"{int(res['flag'].sum())} of {len(res)} features flagged -> {out}")
