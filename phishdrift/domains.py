@@ -135,3 +135,11 @@ def registered_domain_private(url: str) -> str:
 def normalize_to_registrable(url: str) -> str:
     """Representation check (report R4): ``https://www.<registrable domain>``."""
     return f"https://www.{registered_domain(url)}"
+
+
+def split_host(host: str) -> tuple[str, str, str]:
+    """``(subdomain, domain label, public suffix)`` of a lowercased host under the U1
+    definition (ICANN suffixes only). ``a.b.example.co.uk`` -> ``("a.b", "example", "co.uk")``.
+    A host without a known suffix returns ``("", host, "")``."""
+    ext = _EXTRACT_U1(host)
+    return ext.subdomain, ext.domain, ext.suffix

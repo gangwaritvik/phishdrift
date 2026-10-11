@@ -1,0 +1,99 @@
+# Tier A URL feature engine. Word lists are collected by `python -m features lists`
+# (run on a PC with internet) and frozen into configs/lists/ and configs/platforms.yaml.
+# Popularity (Tranco rank, traffic) is never used to choose list entries.
+
+lists:
+  psl_url: https://publicsuffix.org/list/public_suffix_list.dat   # private section = hosting platforms
+  platform_extra_urls: []                                          # more one-domain-per-line lists
+  platform_extras: [bit.ly, tinyurl.com]                           # shorteners are masked too: they hide the target
+
+  # Brands: everything below is merged; entries shorter than 4 characters are dropped.
+  wikidata_min_sitelinks: 40        # widely known organisations only (language editions, not traffic)
+  wikidata_query: |
+    SELECT DISTINCT ?label ?site WHERE {{
+      ?item wdt:P856 ?site ;
+            wikibase:sitelinks ?n ;
+            rdfs:label ?label .
+      FILTER(LANG(?label) = "en" && ?n >= {min_sitelinks})
+      ?item wdt:P31/wdt:P279* ?type .
+      VALUES ?type {{ wd:Q4830453 wd:Q891723 wd:Q22687 wd:Q35127 }}
+    }}
+  brand_urls: []                    # extra plain-text brand lists (one per line), e.g. exported Phishpedia targets
+  brand_seed:                       # starting set, used when no network source answers
+    # global
+    - paypal
+    - amazon
+    - apple
+    - microsoft
+    - google
+    - facebook
+    - instagram
+    - whatsapp
+    - netflix
+    - linkedin
+    - twitter
+    - dropbox
+    - adobe
+    - docusign
+    - ebay
+    - alibaba
+    - walmart
+    - fedex
+    - dhl
+    - ups
+    - usps
+    - chase
+    - wellsfargo
+    - bankofamerica
+    - citibank
+    - hsbc
+    - barclays
+    - santander
+    - americanexpress
+    - mastercard
+    - visa
+    - coinbase
+    - binance
+    - metamask
+    - blockchain
+    - steam
+    - spotify
+    - outlook
+    - office365
+    - onedrive
+    - icloud
+    - yahoo
+    - telegram
+    # India: banks and payment apps
+    - sbi
+    - onlinesbi
+    - hdfcbank
+    - icicibank
+    - axisbank
+    - kotak
+    - pnbindia
+    - bankofbaroda
+    - canarabank
+    - unionbankofindia
+    - indusind
+    - yesbank
+    - idfcfirstbank
+    - paytm
+    - phonepe
+    - googlepay
+    - bhimupi
+    - mobikwik
+    - freecharge
+    - amazonpay
+    - flipkart
+    - irctc
+    - incometax
+    - epfindia
+    - aadhaar
+    - uidai
+    - jio
+    - airtel
+  keywords_seed: [login, signin, sign-in, verify, verification, secure, security, update, account, kyc, wallet, bank, banking, otp, upi, password, confirm, suspend, suspended, unlock, restore, recover, billing, invoice, payment, refund, claim, reward, prize, gift, support, helpdesk, webscr, authenticate, validate, alert, urgent, limited, appeal, cashback, netbanking, ebanking, credential, free]
+  keyword_urls: []
+  shorteners_seed: [bit.ly, tinyurl.com, t.co, goo.gl, ow.ly, is.gd, buff.ly, cutt.ly, rebrand.ly, tiny.cc, shorturl.at, rb.gy, t.ly, lnkd.in, s.id, v.gd, bl.ink, soo.gd, clck.ru, qr.ae, shorte.st, adf.ly, bc.vc, linktr.ee, wa.me]
+  shortener_urls: []

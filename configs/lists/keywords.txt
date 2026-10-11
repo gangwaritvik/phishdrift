@@ -1,0 +1,47 @@
+# Source: keywords_seed in configs/features.yaml (offline seed)
+# Fetched: 2026-10-11
+# Entries: 44
+account
+alert
+appeal
+authenticate
+bank
+banking
+billing
+cashback
+claim
+confirm
+credential
+ebanking
+free
+gift
+helpdesk
+invoice
+kyc
+limited
+login
+netbanking
+otp
+password
+payment
+prize
+recover
+refund
+restore
+reward
+secure
+security
+sign-in
+signin
+support
+suspend
+suspended
+unlock
+update
+upi
+urgent
+validate
+verification
+verify
+wallet
+webscr

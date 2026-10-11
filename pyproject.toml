@@ -27,9 +27,10 @@ dev = ["pytest>=8", "ruff>=0.5"]
 [project.scripts]
 phishdrift-collect = "collector.__main__:main"
 phishdrift-build = "data_pipeline.__main__:main"
+phishdrift-features = "features.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["phishdrift*", "collector*", "data_pipeline*"]
+include = ["phishdrift*", "collector*", "data_pipeline*", "features*", "experiments*"]
 
 [tool.ruff]
 line-length = 100
@@ -38,6 +39,9 @@ extend-exclude = ["*.ipynb"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"features/registry.py" = ["E501"]  # feature definitions are prose
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
