@@ -20,11 +20,12 @@ from __future__ import annotations
 
 import gzip
 import logging
+import queue
 import random
 import re
+import threading
 import time
 import zlib
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -42,6 +43,7 @@ log = logging.getLogger(__name__)
 
 _LOC_RE = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.IGNORECASE)
 _HREF_RE = re.compile(r"""<a\s[^>]*?href\s*=\s*["']([^"'#]+)["']""", re.IGNORECASE)
+MAX_CANDIDATES_CHECKED = 2000  # a huge sitemap is never scanned end to end
 _SKIP_EXT = re.compile(r"\.(?:jpe?g|png|gif|svg|webp|ico|pdf|zip|gz|mp4|mp3|css|js|xml)$", re.I)
 
 # Crawl outcomes written to the attempts log.
@@ -159,8 +161,11 @@ def select_inner_pages(
     allowed by robots.txt."""
     home = normalize_url(homepage)
     site = registered_domain(homepage)
+    rng = random.Random(seed)
+    candidates = list(candidates)
+    rng.shuffle(candidates)  # look at candidates in random order and stop once k are found
     seen, pages = set(), []
-    for url in candidates:
+    for url in candidates[:MAX_CANDIDATES_CHECKED]:
         url = url.strip()
         if not url.startswith(("http://", "https://")) or registered_domain(url) != site:
             continue
@@ -172,7 +177,9 @@ def select_inner_pages(
             continue
         seen.add(norm)
         pages.append(url)
-    return sorted(random.Random(seed).sample(pages, min(k, len(pages))))
+        if len(pages) >= k:
+            break
+    return sorted(pages)
 
 
 # --- one domain ------------------------------------------------------------------------
@@ -251,6 +258,41 @@ def crawl_domain(
     return DomainResult(domain, status, pages)
 
 
+TIMED_OUT = "timed_out"
+
+
+def run_parallel(items, work, workers: int, hard_limit_s: float, poll_s: float = 1.0):
+    """Run ``work(item)`` for every item on up to ``workers`` daemon threads and yield
+    ``(item, result)`` as each finishes. An item still running after ``hard_limit_s`` is
+    abandoned and yielded as ``(item, None)``; its thread is left behind (daemon threads do
+    not block the program from exiting), so one stuck site cannot freeze the crawl."""
+    done: queue.Queue = queue.Queue()
+    pending = list(items)[::-1]  # pop() takes the first item
+    running: dict[int, tuple[object, float]] = {}  # token -> (item, started)
+    token = 0
+
+    def target(tok: int, item) -> None:
+        done.put((tok, work(item)))
+
+    while pending or running:
+        while pending and len(running) < workers:
+            item = pending.pop()
+            running[token] = (item, time.monotonic())
+            threading.Thread(target=target, args=(token, item), daemon=True).start()
+            token += 1
+        try:
+            tok, result = done.get(timeout=poll_s)
+        except queue.Empty:
+            tok = None
+        if tok is not None and tok in running:  # a late result from an abandoned item is dropped
+            yield running.pop(tok)[0], result
+        now = time.monotonic()
+        for tok, (item, started) in list(running.items()):
+            if now - started > hard_limit_s:
+                del running[tok]
+                yield item, None
+
+
 # --- one run ---------------------------------------------------------------------------
 
 
@@ -302,24 +344,25 @@ def crawl(
                 return DomainResult(domain, ERROR, [])
 
         items = list(enumerate(picked))
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            for start in range(0, len(items), chunk):
-                # Different sites run in parallel; each host keeps its own politeness delay.
-                results = list(pool.map(one, items[start : start + chunk]))
-                chunk_rows, chunk_log = [], []
-                for res in results:
-                    chunk_log.append(
-                        {
-                            "seed_source": name,
-                            "seed_domain": res.domain,
-                            "status": res.status,
-                            "pages": len(res.pages),
-                            "attempted_at": now,
-                        }
-                    )
-                    chunk_rows += [
-                        {**p, "seed_source": name, "seed_domain": res.domain} for p in res.pages
-                    ]
+        hard_limit_s = cfg.get("domain_deadline_s", 240) + 180  # deadline + a slow last request
+        chunk_rows, chunk_log = [], []
+        # Different sites run in parallel; each host keeps its own politeness delay.
+        for n_done, ((_, domain), res) in enumerate(
+            run_parallel(items, one, workers, hard_limit_s), 1
+        ):
+            if res is None:
+                res = DomainResult(domain, TIMED_OUT, [])
+            chunk_log.append(
+                {
+                    "seed_source": name,
+                    "seed_domain": res.domain,
+                    "status": res.status,
+                    "pages": len(res.pages),
+                    "attempted_at": now,
+                }
+            )
+            chunk_rows += [{**p, "seed_source": name, "seed_domain": res.domain} for p in res.pages]
+            if len(chunk_log) >= chunk or n_done == len(items):
                 if chunk_rows:  # checkpoint: a stopped run keeps everything finished so far
                     pages = pd.DataFrame(chunk_rows).assign(crawled_at=now)
                     store.write_crawl(pages, crawl_dir, now.date(), name)
@@ -328,12 +371,9 @@ def crawl(
                 )
                 rows += chunk_rows
                 log_rows += chunk_log
+                chunk_rows, chunk_log = [], []
                 log.info(
-                    "crawl %s: %d/%d domains, %d pages so far",
-                    name,
-                    min(start + chunk, len(items)),
-                    len(items),
-                    len(rows),
+                    "crawl %s: %d/%d domains, %d pages so far", name, n_done, len(items), len(rows)
                 )
         statuses = pd.Series([r["status"] for r in log_rows], dtype=object).value_counts()
         summary[name] = {

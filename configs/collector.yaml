@@ -56,7 +56,7 @@ crawler:                               # benign inner pages; robots.txt and Craw
     retries: 1                         # dead sites are common: fail fast
     connect_timeout_s: 8
     backoff_factor: 1.0
-  workers: 16                          # sites crawled in parallel (each host still waits its own delay)
+  workers: 48                          # sites crawled in parallel (each host still waits its own delay)
   checkpoint_every: 25                 # results are saved after every this many domains
   seeds:
     live:                              # Tranco-seeded pages belong to the "live" source
