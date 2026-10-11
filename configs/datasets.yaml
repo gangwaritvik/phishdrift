@@ -79,7 +79,9 @@ corpus:
     fail_share: 0.9                    # build fails if any bucket is more than 90% one class
 
 holdouts:
-  heldout_source: phish360             # never trained or calibrated on
+  # Phish360 has no public download, so PhishStorm (both classes, 2014, URL only) is held out for now.
+  # Switch back to phish360 once its files are in data/raw/phish360 (the build then needs a rerun).
+  heldout_source: phishstorm           # never trained or calibrated on
   eval_only_sources: [natural_legit]
   time_slice:
     origins: [hf_test]                 # PhreshPhish's official later-in-time test split

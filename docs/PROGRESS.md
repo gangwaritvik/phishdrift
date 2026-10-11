@@ -165,3 +165,16 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   `workers` busy (before, a batch of 25 used only 25 of 48 workers); `select_inner_pages` stops after 5 pages and
   scans at most 2,000 sitemap URLs (huge sitemaps were scanned end to end); default workers 48.
 - Cause of the second freeze: not confirmed (no traceback); the last save was at 19:18 UTC with 1,410 PhiUSIIL sites done.
+
+### 2026-10-11 — Milestone 2 run on real data; held-out source set to PhishStorm
+- Real run: pool rebuilt with the benign crawl (479,657 URLs / 387,856 domains, 149,675 phishing); tier A features built
+  and checked (`reports/tables/feature_source_check.csv`): the same 17 of 99 features are flagged (source eta2 within
+  class 0.05-0.39 against label eta2 under 0.09, e.g. `n_slash`, `path_depth`, `entropy_url`, `url_len`). Strongest label
+  signals are unflagged: `tld_risk` 0.265, `suspicious_tld` 0.139. The path-word features are 57% NaN (no path).
+- Decision (Ritvik, card): Phish360 has no public download, so `holdouts.heldout_source` is now `phishstorm` (both
+  classes, 2014, URL only). Caveats: no HTML (tier A only), depth 0 is 97% phishing and depth 4+ 91% phishing inside it,
+  so its score needs the depth-matched check. Training loses PhishStorm rows. Switch back when Phish360 files arrive.
+- Changed: `configs/datasets.yaml`; `python -m features build --split NAME` writes `features_a_<NAME>.parquet` for any
+  processed part; `scripts/run_milestone2.ps1` also builds the time slice and held-out features.
+- Next: Ritvik reruns the pool build with the new held-out source, then `run_milestone2.ps1`; then milestone 3
+  (HTML features) on his go.

@@ -11,7 +11,8 @@
     1. python -m features lists   (scrape platforms, brands, keywords, shorteners; needs internet)
     2. python -m features fit     (bigram and TLD numbers from the training fold only)
     3. python -m features build   (data\processed\features_a.parquet)
-    4. python -m experiments.feature_source_check  (reports\tables\feature_source_check.csv)
+    4. python -m features build --split time_slice / heldout_source  (features_a_<part>.parquet)
+    5. python -m experiments.feature_source_check  (reports\tables\feature_source_check.csv)
 #>
 
 $ErrorActionPreference = "Stop"
@@ -38,6 +39,11 @@ function Invoke-Step {
 Invoke-Step "scrape lists" { & $py -m features lists }
 Invoke-Step "fit (training fold only)" { & $py -m features fit }
 Invoke-Step "build tier A features" { & $py -m features build }
+foreach ($part in @("time_slice", "heldout_source")) {
+    if (Test-Path "data\processed\$part.parquet") {
+        Invoke-Step "build tier A features: $part" { & $py -m features build --split $part }
+    }
+}
 Invoke-Step "source-leakage check" { & $py -m experiments.feature_source_check }
 
 Write-Host ""

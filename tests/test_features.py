@@ -224,6 +224,17 @@ def test_build_streams_a_processed_part(tmp_path, monkeypatch, lists):
     assert df.loc[0, "homoglyph_brand_match"] == 1
 
 
+def test_build_other_parts_get_their_own_file(tmp_path, monkeypatch, lists):
+    from features import __main__ as cli
+
+    held = pa.table({"uid": ["s:0"], "url": ["http://x.org/a"]})
+    pq.write_table(held, tmp_path / "heldout_source.parquet")
+    monkeypatch.setattr(cli, "_paths", lambda: (tmp_path, tmp_path / "features_a.parquet"))
+    monkeypatch.setattr(cli, "load_lists", lambda: lists)
+    out = cli.build("heldout_source")
+    assert out.name == "features_a_heldout_source.parquet" and len(pd.read_parquet(out)) == 1
+
+
 def test_wikidata_brands_survive_one_failing_type():
     import json
 
