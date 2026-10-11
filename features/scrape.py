@@ -85,6 +85,9 @@ def _clean_brand(token: str) -> str | None:
     return token if len(token) >= MIN_BRAND_LEN else None
 
 
+WIKIDATA_TIMEOUT_S = 180
+
+
 def brands_from_wikidata(client: HttpClient, cfg: dict) -> list[str]:
     """Brand tokens from Wikidata: companies and organisations with an official website
     and many language editions (a proxy for being widely known, not a popularity rank).
@@ -92,7 +95,10 @@ def brands_from_wikidata(client: HttpClient, cfg: dict) -> list[str]:
     sparql = cfg["wikidata_query"].format(min_sitelinks=cfg["wikidata_min_sitelinks"])
     url = f"https://query.wikidata.org/sparql?format=json&query={quote(sparql)}"
     body = client.get(
-        url, cache_ttl_s=7 * 86400, headers={"Accept": "application/sparql-results+json"}
+        url,
+        cache_ttl_s=7 * 86400,
+        headers={"Accept": "application/sparql-results+json"},
+        timeout_s=WIKIDATA_TIMEOUT_S,  # the query runs on the server for a while
     )
     rows = json.loads(body)["results"]["bindings"]
     brands: set[str] = set()
