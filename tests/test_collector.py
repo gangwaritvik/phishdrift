@@ -478,3 +478,30 @@ def test_crawl_domain_stops_after_its_time_budget(fixtures):
     cfg = {**CRAWL_CFG, "domain_deadline_s": -1}
     res = benign.crawl_domain(FakeClient(_site(fixtures)), "example.org", cfg, 0, False)
     assert res.pages == []  # no request is made once the budget is used up
+
+
+def test_run_parallel_abandons_a_stuck_item_and_keeps_going():
+    import threading
+
+    release = threading.Event()
+
+    def work(item):
+        if item == "stuck":
+            release.wait(30)
+        return item.upper()
+
+    out = dict(
+        benign.run_parallel(
+            ["a", "stuck", "b", "c"], work, workers=2, hard_limit_s=0.3, poll_s=0.05
+        )
+    )
+    release.set()
+    assert out == {"a": "A", "stuck": None, "b": "B", "c": "C"}
+
+
+def test_select_inner_pages_stops_after_k_and_caps_scanning():
+    urls = [f"https://big.com/p/{i}" for i in range(50_000)]
+    pages = benign.select_inner_pages(urls, "https://big.com/", 5, seed=1)
+    assert len(pages) == 5 and pages == benign.select_inner_pages(
+        urls, "https://big.com/", 5, seed=1
+    )

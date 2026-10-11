@@ -158,3 +158,10 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Changed: crawler-only HTTP settings (`crawler.http`: 1 retry, 8 s connect timeout) so a dead site costs about 15 s,
   not about 90 s; results are saved every 25 domains. After the first restart the crawl had done 1,060 PhiUSIIL sites
   (2,878 pages) but a batch of 100 took over 15 minutes.
+
+### 2026-10-11 — Crawl no longer waits on a stuck site
+- Changed: `collector/benign.py` runs sites on daemon threads (`run_parallel`) with a hard limit per site, so one
+  stuck site is abandoned and recorded as `timed_out` instead of freezing a batch; the sliding window keeps all
+  `workers` busy (before, a batch of 25 used only 25 of 48 workers); `select_inner_pages` stops after 5 pages and
+  scans at most 2,000 sitemap URLs (huge sitemaps were scanned end to end); default workers 48.
+- Cause of the second freeze: not confirmed (no traceback); the last save was at 19:18 UTC with 1,410 PhiUSIIL sites done.
