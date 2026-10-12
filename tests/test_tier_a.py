@@ -100,3 +100,21 @@ def test_end_to_end_small(tmp_path):
     tier_a.run(tmp_path, reports, [0], cfg=cfg, lists=lists)  # rerun: split 0 skipped
     assert len(pd.read_csv(reports / "tables" / "tier_a_runs.csv")) == len(runs)
     assert not math.isnan(runs["op_1pct_recall"].iloc[0])
+
+
+def test_loso_small(tmp_path):
+    from experiments import loso
+
+    lists = Lists.build(keywords=["login", "verify"], suspicious_tlds=["xyz"])
+    pool = _write_part(tmp_path, "pool", _rows("a", 300, 0) + _rows("b", 300, 5000), lists)
+    splits = grouped_splits(pool, 1, 0.25, 0.2, seed=0).assign(uid=pool["uid"])
+    splits.to_parquet(tmp_path / "splits.parquet", index=False)
+    cfg = tier_a.load_config("models")
+    cfg["lightgbm"] = cfg["lightgbm"] | {"n_estimators": 10, "min_child_samples": 5}
+    cfg["char_ngram"] = cfg["char_ngram"] | {"min_df": 1, "max_features": 2000}
+    md = loso.run(tmp_path, tmp_path / "reports", [0], cfg=cfg, lists=lists)
+    rows = pd.read_csv(tmp_path / "reports" / "tables" / "loso.csv")
+    left = rows[rows.condition == "leave_out"]
+    assert set(left["source"]) == {"a", "b"} and len(left) == 2 * len(loso.LOSO_SPECS)
+    assert (left["n_urls"] == 300).all()  # the left-out source is scored whole
+    assert "leave_out" in md.read_text(encoding="utf-8")

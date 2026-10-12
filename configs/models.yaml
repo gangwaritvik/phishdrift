@@ -59,3 +59,6 @@ char_ngram:                           # TF-IDF of the masked canonical URL + log
   sublinear_tf: true
   C: 4.0
   max_iter: 1000
+
+loso:                                 # leave-one-source-out (experiments/loso.py)
+  splits: [0, 1, 2]                   # train/cal sides of these splits; the left-out source is scored whole
