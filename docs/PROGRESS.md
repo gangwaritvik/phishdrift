@@ -221,8 +221,19 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   (66.0 / 52.9). Cal-side thresholds give 3.6% FPR on PhishStorm and 1.6% on the time slice. PhiUSIIL
   stays weakest (55.5 / 38.4). Nothing above 99%.
 - Rule added to CLAUDE.md: run independent work in parallel (Ritvik's request).
-- Next: shuffled-label control and normalised check for the hybrid, stacked model, then put the hybrid in
-  the browser (char n-gram vocabulary needs to be small enough; 500k terms is about 14 MB of JSON).
-- Open: the thresholds do not hold across sources (a per-source or conservative threshold is needed);
-  no naturally browsed legitimate set yet for the OOD FPR; the HTML tier needs the PC.
+- Checks (`reports/hybrid_checks.md`, 10 splits): shuffled-label control mean ROC-AUC 0.4962, not flagged;
+  test URLs normalised to `https://www.<domain>`: ROC-AUC 0.870, recall 44.3 / 29.8 (LightGBM alone 0.829).
+- Stacked model (`reports/stack_a.md`, LightGBM + XGBoost + char n-gram, logistic-regression meta model,
+  isotonic calibration; recall at FPR 1% / 0.1%): test 66.5 / 46.3, held-out PhishStorm 70.8 / 47.1,
+  time slice 72.3 / 54.6; its cal-side thresholds give FPR 2.4% on PhishStorm (hybrid 3.6%), Brier
+  0.068, ECE 0.004 on test. Mixed against the hybrid (test 69.0 / 50.3, PhishStorm 69.0 / 48.8, time
+  slice 73.1 / 52.0): the hybrid is better on test, the stack on PhishStorm at 1% and the time slice at
+  0.1%. Both are within a few points; the hybrid is a single model and is the one exported.
+- Browser (`js/src/hybrid.js`, `models/export_hybrid.py`): the hybrid with 100,000-term char vocabularies
+  (8 MB; split 0 test ROC-AUC 0.951 vs 0.952 with 500,000 terms; 272-URL parity with Python in `npm test`
+  and pytest), about 2 ms per URL, SHAP reasons about 100 ms on request.
+- Open: the thresholds do not hold across sources (leave-one-source-out shows the cal-side 1% threshold
+  giving 20.6% FPR on a held-out PhreshPhish) so a conservative threshold or per-source calibration is
+  needed; no naturally browsed legitimate set yet for the OOD FPR; HTML tier (tier B) needs the PC.
+- Next: backend + extension skeleton (milestone 9) using `js/src/hybrid.js`; tier B when the PC is back.
 
