@@ -62,3 +62,7 @@ char_ngram:                           # TF-IDF of the masked canonical URL + log
 
 loso:                                 # leave-one-source-out (experiments/loso.py)
   splits: [0, 1, 2]                   # train/cal sides of these splits; the left-out source is scored whole
+
+stack:                                # experiments/stack_a.py
+  n_folds: 5                          # domain-grouped folds for out-of-fold base scores
+  meta_c: 1.0                         # inverse regularisation of the logistic-regression meta model
