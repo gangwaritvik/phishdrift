@@ -16,3 +16,18 @@ import { buildLists, extract } from "./src/features.js";
 const lists = buildLists(listsJson, pslRules);
 const features = extract("https://paypa1.com/verify", lists, names);
 ```
+
+## Tier A model
+
+`src/model.js` scores a URL with the exported tier A model (`data/tier_a_model.json`, written by
+`python -m models.export`): the LightGBM trees, the lists and fitted numbers it was trained
+with, the "suspicious" (FPR 1%) and "dangerous" (FPR 0.1%) thresholds and the isotonic map, all
+from one domain-grouped split. `tests/fixtures/model_parity.json` holds LightGBM's own
+probability for each parity URL; `npm test` checks JavaScript reproduces it.
+
+```js
+import { loadModel, scoreUrl } from "./src/model.js";
+const model = loadModel(bundleJson, pslRules);
+const { prob, calibrated, verdict } = scoreUrl(model, "https://paypa1.com/verify");
+// verdict: 0 safe, 1 suspicious, 2 dangerous
+```
