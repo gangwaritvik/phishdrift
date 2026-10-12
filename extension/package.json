@@ -1,0 +1,12 @@
+{
+  "name": "phishdrift-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node build.mjs && node --test"
+  },
+  "engines": { "node": ">=18" }
+}

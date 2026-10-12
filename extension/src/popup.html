@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PhishDrift</title>
+<style>
+  :root { --bg: #ffffff; --fg: #111827; --muted: #6b7280; --safe: #15803d; --warn: #b45309;
+    --bad: #b91c1c; --line: #e5e7eb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111827; --fg: #f3f4f6; --muted: #9ca3af; --safe: #4ade80; --warn: #fbbf24;
+      --bad: #f87171; --line: #374151; }
+  }
+  body { width: 320px; margin: 0; padding: 14px; background: var(--bg); color: var(--fg);
+    font: 14px/1.45 system-ui, sans-serif; }
+  h1 { margin: 0 0 4px; font-size: 1.1rem; }
+  .safe { color: var(--safe); } .suspicious { color: var(--warn); } .dangerous { color: var(--bad); }
+  ul { padding-left: 18px; margin: 6px 0; }
+  .muted { color: var(--muted); font-size: .85rem; }
+  .row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  button { font: inherit; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--line);
+    background: none; color: var(--fg); cursor: pointer; }
+  button[hidden] { display: none; }
+</style>
+</head>
+<body>
+  <h1 id="headline">Checking...</h1>
+  <div class="muted" id="site"></div>
+  <ul id="reasons"></ul>
+  <div class="muted" id="notes"></div>
+  <div class="row">
+    <button id="trust" hidden>Trust this site</button>
+    <button id="report" hidden>Report a false alarm</button>
+  </div>
+  <div class="muted" id="status" role="status"></div>
+  <script src="popup.js" type="module"></script>
+</body>
+</html>
