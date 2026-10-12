@@ -4,8 +4,11 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 
 ## Status
 
-- Current step: 2 of 10, tier A URL features (code done; needs the list scrape, fit and build run on
-  Ritvik's machine). Milestone 1 is done (data card read).
+- Current step: milestones 4-5 for tier A (training, stacking, calibration) and milestone 8 (JS port +
+  parity) done in the cloud on files copied from the PC. Milestones 1-2 done. Milestone 3 (HTML) waits for
+  Ritvik's go and PC access.
+- Waiting on the PC (Ritvik has no PC access for now): 12-hourly collector schedule (live feed has 245 URLs),
+  tier B HTML extraction from the 10 GB pool, a held-out source with HTML, Phish360, one-time list review.
 - Deadline: assumed 2026-10-23 (about 3 weeks from 2026-10-02; confirm)
 
 ## Open decisions
@@ -178,3 +181,22 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   processed part; `scripts/run_milestone2.ps1` also builds the time slice and held-out features.
 - Next: Ritvik reruns the pool build with the new held-out source, then `run_milestone2.ps1`; then milestone 3
   (HTML features) on his go.
+
+### 2026-10-12 — Tier A training over 10 splits; JS port with parity test (cloud)
+- Changed: `models/gbdt.py`, `models/char_ngram.py`, `experiments/metrics.py` (fixed-FPR operating points,
+  granularity flag), `experiments/tier_a.py` (10 domain-grouped splits, LightGBM / XGBoost with and without
+  the 17 source-flagged features, char n-gram TF-IDF + LR; `tld_risk` and bigram likelihood refitted on each
+  split's train side; hard domain/URL overlap checks; representation check on `https://www.<domain>`;
+  depth buckets; shuffled-label controls; resumable per split), `configs/models.yaml`. JS port in `js/`
+  (all 99 tier A features, public-suffix trie, `npm test`), `features/js_export.py`,
+  `tests/fixtures/url_parity.json` (272 URLs), Node step in CI.
+- Results (`reports/tier_a.md`, median of 10 splits): test ROC-AUC 0.918 LightGBM / 0.936 char n-gram,
+  recall 57.5% / 61.3% at FPR 1% and 39.6% / 40.7% at 0.1%. Held-out PhishStorm (59,485 URLs, 33,056
+  domains): LightGBM 0.914, recall 58.6% at 1% and 40.0% at 0.1%, but the cal-side 1% threshold gives
+  2.6% FPR there. Time slice: 0.950 / 0.960. Normalised URLs: 0.829 / 0.856 (the representation gap the
+  prior report found, smaller here). Dropping the 17 flagged features lowers held-out AUC to 0.891, so
+  all features stay. Controls 0.4933 / 0.4997, none flagged. Nothing above 99%.
+- Decision: shuffled-label controls train without sample weights; with the heavy per-source weights
+  they sat at 0.43-0.45 through a leaf-size artifact (unweighted 0.49-0.50 in a scratch check).
+- Gap: no out-of-distribution FPR yet; there is no naturally browsed legitimate set (needs a crawl).
+- Next: LOSO table and stacked + calibrated model (running), PR #15, then the tier A browser export.
