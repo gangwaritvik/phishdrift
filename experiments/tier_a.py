@@ -206,12 +206,13 @@ def run_split(
                     depth_rows.append(base | {"depth": b} | r)
         log.info("split %d %s/%s: %.0fs", k, spec.name, spec.features, time.monotonic() - t0)
 
-    # Labels and their weights move together: weights are set per (source, class), so keeping
-    # the original weights would leave the true class visible to the model through them.
-    perm = np.random.default_rng(cfg["seed"] + k).permutation(len(y_train))
-    y_shuffled, w_shuffled = y_train[perm], w_train[perm]
+    # Controls are trained without sample weights. The per-(source, class) weights are heavy
+    # tailed; with random labels a small tree leaf then usually holds no heavy row and scores
+    # below average, so URLs in sparse regions of feature space (more often phishing) rank low
+    # and the AUC drifts under 0.5 without any label information (0.43-0.45 on split 0).
+    y_shuffled = np.random.default_rng(cfg["seed"] + k).permutation(y_train)
     for spec in CONTROL_SPECS:
-        model = make_model(spec, cfg).fit(model_input(spec, train), y_shuffled, w_shuffled)
+        model = make_model(spec, cfg).fit(model_input(spec, train), y_shuffled)
         s = model.score(model_input(spec, test))
         row = evaluate(test["label"], s, targets, min_neg)
         controls.append({"split": k, "model": spec.name, "features": spec.features} | row)
