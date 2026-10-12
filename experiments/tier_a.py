@@ -206,10 +206,12 @@ def run_split(
                     depth_rows.append(base | {"depth": b} | r)
         log.info("split %d %s/%s: %.0fs", k, spec.name, spec.features, time.monotonic() - t0)
 
-    rng = np.random.default_rng(cfg["seed"] + k)
-    y_shuffled = rng.permutation(y_train)
+    # Labels and their weights move together: weights are set per (source, class), so keeping
+    # the original weights would leave the true class visible to the model through them.
+    perm = np.random.default_rng(cfg["seed"] + k).permutation(len(y_train))
+    y_shuffled, w_shuffled = y_train[perm], w_train[perm]
     for spec in CONTROL_SPECS:
-        model = make_model(spec, cfg).fit(model_input(spec, train), y_shuffled, w_train)
+        model = make_model(spec, cfg).fit(model_input(spec, train), y_shuffled, w_shuffled)
         s = model.score(model_input(spec, test))
         row = evaluate(test["label"], s, targets, min_neg)
         controls.append({"split": k, "model": spec.name, "features": spec.features} | row)
