@@ -11,7 +11,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,backend]"
       - run: ruff check . && ruff format --check .
       - run: pytest
       - uses: actions/setup-node@v4
@@ -19,3 +19,5 @@ jobs:
           node-version: "20"
       - run: npm test
         working-directory: js
+      - run: npm test
+        working-directory: extension

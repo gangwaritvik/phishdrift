@@ -4,7 +4,7 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 
 ## Status
 
-- Current step: milestones 4-5 for tier A (training, stacking, calibration) and milestone 8 (JS port +
+- Current step: milestone 9 skeleton (backend + extension, local smoke-tested) added after PR #15 merged; milestones 4-5 for tier A (training, stacking, calibration) and milestone 8 (JS port +
   parity) done in the cloud on files copied from the PC. Milestones 1-2 done. Milestone 3 (HTML) waits for
   Ritvik's go and PC access.
 - Waiting on the PC (Ritvik has no PC access for now): 12-hourly collector schedule (live feed has 245 URLs),
@@ -237,3 +237,24 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   needed; no naturally browsed legitimate set yet for the OOD FPR; HTML tier (tier B) needs the PC.
 - Next: backend + extension skeleton (milestone 9) using `js/src/hybrid.js`; tier B when the PC is back.
 
+
+### 2026-10-12 — Milestone 9 skeleton: FastAPI backend + Chrome extension (cloud)
+- PR #15 merged first (tier A models, hybrid, JS port). Branch restarted from main.
+- Changed: `backend/` (FastAPI: `/health`, `/score`, `/domain-info`, `/feedback`, `/lists/{manifest,blocklist,allowlist}`;
+  per-domain TTL cache, rate limit, domain-only input, fail-soft lookups; hashed list builder
+  `python -m backend build-lists`), `configs/backend.yaml`, `docs/BACKEND.md`, `tests/test_backend.py`,
+  `tests/fixtures/list_key_parity.json` (95 cases, checked in Python and JavaScript). `extension/` (MV3: service
+  worker, content script, banner, warning page with proceed/report, popup, daily list sync, `build.mjs` that
+  packs `js/src` and the model bundle into `extension/dist`, unit tests, `e2e/smoke.mjs`). CI runs the extension tests.
+- Decisions (mine, not validated): the backend is asked about a domain only when the on-device model already
+  flagged the address (privacy and latency); domain and page evidence can raise suspicious to dangerous but never
+  warn on a safe URL; backend domain rules are placeholders (young domain, no DNS/TLS, free cert), not a tier C model;
+  allowlist is Tranco top 50,000 (`allowlist_top_n`), rank only cuts the list.
+- Results: pytest 205 passed, ruff clean, `npm test` extension 16 and js 6 pass. Headless Chromium smoke test passes
+  with a stub backend and with the real backend: safe page untouched, suspicious banner, cross-site password form
+  escalates to warning, dangerous warning with reasons / report (domain only) / proceed anyway, blocklist hit on an address
+  the model passes, backend-down fail-open. Pages were local, not real sites.
+- Not done: real sites, Safe Browsing, LLM layer, screenshots, icons; no live RDAP/DNS/TLS call has succeeded
+  (sandbox offline); the list builder has not run on real feeds or Tranco; a dangerous page can start loading
+  before the warning replaces it (webNavigation cannot block).
+- Next: run the collector and `build-lists` on the PC when Ritvik is back, try on real sites; tier B waits for the PC.

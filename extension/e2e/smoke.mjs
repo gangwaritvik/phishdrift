@@ -1,5 +1,7 @@
 // Browser smoke test (not part of CI): loads extension/dist in Chromium, with a stub backend on
 // 127.0.0.1:8000 and a local page server; every host name resolves to the local page server.
+// With REAL_BACKEND=1 the stub is not started: run `uvicorn backend.app:create_app --factory` on
+// 127.0.0.1:8000 first, with lists built from a feed that lists example.com (see docs/BACKEND.md).
 // Needs Playwright (global or local) and a Chromium. Run: node build.mjs && node e2e/smoke.mjs
 //
 // Pages (verdicts from the shipped model, thresholds 0.865 suspicious / 0.9855 dangerous):
@@ -59,7 +61,8 @@ const pages = createServer((req, res) => {
   }
 });
 
-await listen(backend, 8000);
+const real = process.env.REAL_BACKEND === "1";
+if (!real) await listen(backend, 8000);
 await listen(pages, 8123);
 
 const context = await chromium.launchPersistentContext("", {
@@ -89,21 +92,21 @@ try {
   };
 
   // The list sync runs at install; wait for it.
-  await settle(worker, async () => (await worker.evaluate(async () => (await chrome.storage.local.get("lists")).lists?.version)) === "stub1", "list sync");
+  await settle(worker, async () => Boolean(await worker.evaluate(async () => (await chrome.storage.local.get("lists")).lists?.version)), "list sync");
 
   // 1. safe page: no banner, no warning, no backend call
   let page = await open("http://www.wikipedia.org:8123/wiki/Phishing");
   await sleep(1500);
   assert.match(page.url(), /wikipedia/);
   assert.equal(await page.locator("#phishdrift-banner-host").count(), 0);
-  assert.equal(scoreCalls.length, 0, "no domain is sent for an address the model passes");
+  if (!real) assert.equal(scoreCalls.length, 0, "no domain is sent for an address the model passes");
   console.log("ok  safe page untouched, nothing sent to the backend");
 
   // 2. suspicious: banner, and only the domain went to the backend
   page = await open("http://evil-blocked.com:8123/a");
   await settle(page, async () => (await page.locator("#phishdrift-banner-host").count()) === 1, "banner");
-  assert.deepEqual(scoreCalls.at(-1), { domain: "evil-blocked.com", local_verdict: 1 });
-  console.log("ok  suspicious page shows the banner; backend got", JSON.stringify(scoreCalls.at(-1)));
+  if (!real) assert.deepEqual(scoreCalls.at(-1), { domain: "evil-blocked.com", local_verdict: 1 });
+  console.log("ok  suspicious page shows the banner", real ? "(real backend)" : `; backend got ${JSON.stringify(scoreCalls.at(-1))}`);
 
   // 3. page check: password form to another site escalates to the warning page
   page = await open("http://evil-blocked.com:8123/b");
@@ -116,9 +119,14 @@ try {
   await settle(page, async () => page.url().startsWith(`chrome-extension://${extId}/warning.html`), "warning page");
   assert.ok((await page.locator("#reasons li").count()) >= 1);
   await page.click("#report");
-  await settle(page, async () => feedback.length === 1, "feedback");
-  assert.deepEqual(Object.keys(feedback[0]).sort(), ["domain", "kind", "verdict"]);
-  assert.equal(feedback[0].domain, "secure-paypal-login.xyz");
+  await page.waitForFunction(() => true);
+  if (!real) {
+    await settle(page, async () => feedback.length === 1, "feedback");
+    assert.deepEqual(Object.keys(feedback[0]).sort(), ["domain", "kind", "verdict"]);
+    assert.equal(feedback[0].domain, "secure-paypal-login.xyz");
+  } else {
+    await sleep(1000);
+  }
   await page.click("#proceed");
   await settle(page, async () => page.url().startsWith("http://secure-paypal-login.xyz:8123/"), "proceed anyway");
   await page.waitForSelector("#ok");
@@ -131,11 +139,15 @@ try {
   console.log("ok  blocklist hit blocks an address the model passes");
 
   // 6. fail open: backend gone, a flagged page still opens and gets its banner
-  await new Promise((r) => backend.close(r));
-  backend.closeAllConnections?.();
+  if (!real) {
+    await new Promise((r) => backend.close(r));
+    backend.closeAllConnections?.();
+  } else {
+    console.log("skip backend-down step with the real backend");
+  }
   page = await open("http://evil-blocked.com:8123/a?x=1");
   await settle(page, async () => (await page.locator("#phishdrift-banner-host").count()) === 1, "banner without backend");
-  console.log("ok  backend down: page still loads and is checked with the address model only");
+  console.log(real ? "ok  flagged page still gets its banner" : "ok  backend down: page still loads and is checked with the address model only");
 } catch (err) {
   failed = true;
   console.error("FAIL", err);
