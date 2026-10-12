@@ -4,8 +4,11 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 
 ## Status
 
-- Current step: 2 of 10, tier A URL features (code done; needs the list scrape, fit and build run on
-  Ritvik's machine). Milestone 1 is done (data card read).
+- Current step: milestones 4-5 for tier A (training, stacking, calibration) and milestone 8 (JS port +
+  parity) done in the cloud on files copied from the PC. Milestones 1-2 done. Milestone 3 (HTML) waits for
+  Ritvik's go and PC access.
+- Waiting on the PC (Ritvik has no PC access for now): 12-hourly collector schedule (live feed has 245 URLs),
+  tier B HTML extraction from the 10 GB pool, a held-out source with HTML, Phish360, one-time list review.
 - Deadline: assumed 2026-10-23 (about 3 weeks from 2026-10-02; confirm)
 
 ## Open decisions
@@ -178,3 +181,59 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   processed part; `scripts/run_milestone2.ps1` also builds the time slice and held-out features.
 - Next: Ritvik reruns the pool build with the new held-out source, then `run_milestone2.ps1`; then milestone 3
   (HTML features) on his go.
+
+### 2026-10-12 — Tier A training over 10 splits; JS port with parity test (cloud)
+- Changed: `models/gbdt.py`, `models/char_ngram.py`, `experiments/metrics.py` (fixed-FPR operating points,
+  granularity flag), `experiments/tier_a.py` (10 domain-grouped splits, LightGBM / XGBoost with and without
+  the 17 source-flagged features, char n-gram TF-IDF + LR; `tld_risk` and bigram likelihood refitted on each
+  split's train side; hard domain/URL overlap checks; representation check on `https://www.<domain>`;
+  depth buckets; shuffled-label controls; resumable per split), `configs/models.yaml`. JS port in `js/`
+  (all 99 tier A features, public-suffix trie, `npm test`), `features/js_export.py`,
+  `tests/fixtures/url_parity.json` (272 URLs), Node step in CI.
+- Results (`reports/tier_a.md`, median of 10 splits): test ROC-AUC 0.918 LightGBM / 0.936 char n-gram,
+  recall 57.5% / 61.3% at FPR 1% and 39.6% / 40.7% at 0.1%. Held-out PhishStorm (59,485 URLs, 33,056
+  domains): LightGBM 0.914, recall 58.6% at 1% and 40.0% at 0.1%, but the cal-side 1% threshold gives
+  2.6% FPR there. Time slice: 0.950 / 0.960. Normalised URLs: 0.829 / 0.856 (the representation gap the
+  prior report found, smaller here). Dropping the 17 flagged features lowers held-out AUC to 0.891, so
+  all features stay. Controls 0.4933 / 0.4997, none flagged. Nothing above 99%.
+- Decision: shuffled-label controls train without sample weights; with the heavy per-source weights
+  they sat at 0.43-0.45 through a leaf-size artifact (unweighted 0.49-0.50 in a scratch check).
+- Gap: no out-of-distribution FPR yet; there is no naturally browsed legitimate set (needs a crawl).
+- Next: LOSO table and stacked + calibrated model (running), PR #15, then the tier A browser export.
+
+### 2026-10-12 — Why tier A recall was low, and the hybrid model (cloud)
+- Diagnosis (`reports/loso.md`, split 0 error analysis): 70% of missed phishing URLs are bare domains with
+  no path, mostly PhiUSIIL (recall at FPR 1%: PhiUSIIL 47%, PhreshPhish 66%, URL-Phish 79%). A model with
+  only the domain name to judge has a ceiling; the HTML tier is where this should improve.
+  Leave-one-source-out shows thresholds do not transfer: holding out PhreshPhish the cal-side 1% threshold
+  gives 20.6% FPR, and the trivial `tld_risk` baseline (43% recall at 1% FPR) beats both models there
+  (30%, 8%), so the models also learn source style.
+- Tried on split 0, chosen on its calibration slice only (recall at FPR 1% / 0.1%): LightGBM 58.2 / 40.0,
+  bigger LightGBM 59.1 / 41.4, unweighted 59.0 / 41.6, char n-gram 60.4 / 37.8, host-only char n-gram
+  47.5 / 31.7, log-odds average 65.4 / 45.1, **LightGBM with out-of-fold char n-gram scores (URL and
+  host) as two extra features 68.4 / 50.1**.
+- Changed: `models/hybrid.py`, `experiments/hybrid_a.py` (10 splits, one result file per split so
+  processes run in parallel; `PHISHDRIFT_THREADS` limits threads per booster), `experiments/hybrid_checks.py`
+  (normalised-URL check, shuffled-label control), `models/explain.py` and `js/src/explain.js` (TreeSHAP
+  reasons), `models/export.py` and `js/src/model.js` (browser LightGBM with parity test).
+- Results (`reports/hybrid_a.md`, median of 10 splits, recall at FPR 1% / 0.1%): test 69.0 / 50.3
+  (LightGBM 57.5 / 39.6); held-out PhishStorm 69.0 / 48.8 (58.6 / 40.0); newest time slice 73.1 / 52.0
+  (66.0 / 52.9). Cal-side thresholds give 3.6% FPR on PhishStorm and 1.6% on the time slice. PhiUSIIL
+  stays weakest (55.5 / 38.4). Nothing above 99%.
+- Rule added to CLAUDE.md: run independent work in parallel (Ritvik's request).
+- Checks (`reports/hybrid_checks.md`, 10 splits): shuffled-label control mean ROC-AUC 0.4962, not flagged;
+  test URLs normalised to `https://www.<domain>`: ROC-AUC 0.870, recall 44.3 / 29.8 (LightGBM alone 0.829).
+- Stacked model (`reports/stack_a.md`, LightGBM + XGBoost + char n-gram, logistic-regression meta model,
+  isotonic calibration; recall at FPR 1% / 0.1%): test 66.5 / 46.3, held-out PhishStorm 70.8 / 47.1,
+  time slice 72.3 / 54.6; its cal-side thresholds give FPR 2.4% on PhishStorm (hybrid 3.6%), Brier
+  0.068, ECE 0.004 on test. Mixed against the hybrid (test 69.0 / 50.3, PhishStorm 69.0 / 48.8, time
+  slice 73.1 / 52.0): the hybrid is better on test, the stack on PhishStorm at 1% and the time slice at
+  0.1%. Both are within a few points; the hybrid is a single model and is the one exported.
+- Browser (`js/src/hybrid.js`, `models/export_hybrid.py`): the hybrid with 100,000-term char vocabularies
+  (8 MB; split 0 test ROC-AUC 0.951 vs 0.952 with 500,000 terms; 272-URL parity with Python in `npm test`
+  and pytest), about 2 ms per URL, SHAP reasons about 100 ms on request.
+- Open: the thresholds do not hold across sources (leave-one-source-out shows the cal-side 1% threshold
+  giving 20.6% FPR on a held-out PhreshPhish) so a conservative threshold or per-source calibration is
+  needed; no naturally browsed legitimate set yet for the OOD FPR; HTML tier (tier B) needs the PC.
+- Next: backend + extension skeleton (milestone 9) using `js/src/hybrid.js`; tier B when the PC is back.
+

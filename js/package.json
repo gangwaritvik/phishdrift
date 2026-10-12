@@ -1,0 +1,14 @@
+{
+  "name": "phishdrift-features",
+  "version": "0.1.0",
+  "description": "Tier A URL features in JavaScript, identical to features/url_features.py",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

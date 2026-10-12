@@ -1,0 +1,72 @@
+# Tier A base learners and the evaluation that `python -m experiments.tier_a` runs.
+# Every split trains on its own train side only; cal is used for thresholds, test for metrics.
+# The held-out source and the time slice are never trained or calibrated on.
+
+seed: 42
+
+eval:
+  target_fprs: [0.01, 0.001]          # recall at these FPRs is the headline (CLAUDE.md)
+  min_negatives: 10                   # fewer negatives than this: point is granularity-limited
+  leakage_tripwire: 0.99              # any held-out result above this is investigated first
+  shuffled_label_flag: 0.05           # negative controls: flag |mean AUC - 0.5| above this
+  depth_top_bucket: 4                 # depth buckets 0, 1, 2, 3, 4+ (same as the corpus build)
+
+# Features that separate sources more than classes (reports/tables/feature_source_check.csv,
+# 2026-10-12 run). The GBDTs are trained with and without them; the decision follows the results.
+source_flagged_features:
+  - path_depth
+  - n_slash
+  - char_continuation_rate
+  - entropy_url
+  - n_letters
+  - path_len
+  - url_len
+  - n_hyphen
+  - special_ratio_url
+  - letter_ratio_url
+  - longest_repeat_run
+  - n_com_tokens
+  - path_ext_present
+  - special_ratio_host
+  - shortest_word_url
+  - shortest_word_host
+  - kw_in_path
+
+lightgbm:
+  n_estimators: 600
+  learning_rate: 0.05
+  num_leaves: 63
+  min_child_samples: 50
+  subsample: 0.8
+  subsample_freq: 1
+  colsample_bytree: 0.8
+  reg_lambda: 1.0
+
+xgboost:
+  n_estimators: 600
+  learning_rate: 0.05
+  max_depth: 8
+  min_child_weight: 5
+  subsample: 0.8
+  colsample_bytree: 0.8
+  reg_lambda: 1.0
+  tree_method: hist
+
+char_ngram:                           # TF-IDF of the masked canonical URL + logistic regression
+  ngram_range: [3, 5]
+  min_df: 3
+  max_features: 500000
+  sublinear_tf: true
+  C: 4.0
+  max_iter: 1000
+
+loso:                                 # leave-one-source-out (experiments/loso.py)
+  splits: [0, 1, 2]                   # train/cal sides of these splits; the left-out source is scored whole
+
+stack:                                # experiments/stack_a.py
+  n_folds: 5                          # domain-grouped folds for out-of-fold base scores
+  meta_c: 1.0                         # inverse regularisation of the logistic-regression meta model
+
+explain:                              # models/explain.py: reasons shown with a warning
+  top: 3                              # at most this many reasons per URL
+  min_logodds: 0.1                    # a feature must add at least this much log-odds to count

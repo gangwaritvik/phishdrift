@@ -1,5 +1,5 @@
 # Datasets and caches: never commit data
-data/
+/data/
 .cache/
 *.parquet
 
@@ -24,3 +24,6 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# JavaScript
+node_modules/

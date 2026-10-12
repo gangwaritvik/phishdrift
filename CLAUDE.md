@@ -163,6 +163,9 @@ docs/           spec, features, feature dictionary, progress, prior_work/
 - Design changes: show a plan and wait for approval. If anything conflicts with these docs, ask instead
   of guessing.
 - Small, testable steps. Run tests before declaring a task done.
+- Run independent work in parallel (separate processes, agents, splits), not one after another; keep
+  only truly dependent steps in order. Experiments write one result file per split so parallel runs
+  never share a file, and use `PHISHDRIFT_THREADS=1` per process when several run at once.
 - After every step, append to docs/PROGRESS.md: what changed, results (with file paths), next step,
   open questions.
 - When behind, follow the cut list in PROJECT_SPEC.md rather than adding features.
