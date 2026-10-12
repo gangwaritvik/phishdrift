@@ -11,13 +11,16 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
   "dnspython>=2.6",
+  "lightgbm>=4.3",
   "numpy>=1.26",
   "pandas>=2.1",
   "pyarrow>=14",
   "pyyaml>=6",
   "requests>=2.31",
+  "scikit-learn>=1.4",
   "tldextract>=5.1",
   "tranco>=0.8",
+  "xgboost>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -30,7 +33,7 @@ phishdrift-build = "data_pipeline.__main__:main"
 phishdrift-features = "features.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["phishdrift*", "collector*", "data_pipeline*", "features*", "experiments*"]
+include = ["phishdrift*", "collector*", "data_pipeline*", "features*", "models*", "experiments*"]
 
 [tool.ruff]
 line-length = 100

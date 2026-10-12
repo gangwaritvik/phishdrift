@@ -275,21 +275,31 @@ def squatting_group(p: Parts, lists: Lists) -> dict[str, float]:
     }
 
 
+def _tld_risk(p: Parts, fitted: Fitted) -> float:
+    if p.is_ip or not p.suffix or not fitted.tld_risk:
+        return NAN
+    return fitted.tld_risk.get(p.suffix, fitted.tld_default)
+
+
+def fitted_values(p: Parts, fitted: Fitted) -> dict[str, float]:
+    """Only the features that depend on ``fitted``, so they can be recomputed per split."""
+    return {
+        "bigram_loglik_domain": _bigram_loglik(p.label, fitted),
+        "tld_risk": _tld_risk(p, fitted),
+    }
+
+
 def other_group(p: Parts, lists: Lists, fitted: Fitted) -> dict[str, float]:
     keys = {kv.split("=", 1)[0].lower() for kv in p.query.split("&") if kv}
     tail = f"{p.path}?{p.query}".lower()
     tld = p.suffix.rsplit(".", 1)[-1] if p.suffix else ""
-    if p.is_ip or not tld:
-        tld_risk = NAN
-    else:
-        tld_risk = fitted.tld_risk.get(p.suffix, fitted.tld_default) if fitted.tld_risk else NAN
     return {
         "is_shortener": float(p.domain in lists.shorteners),
         "has_redirect_param": float(bool(keys & lists.redirect_params)),
         "has_embedded_url": float(bool(_EMBEDDED.search(tail))),
         "has_embedded_email": float(bool(_EMAIL.search(tail))),
         "suspicious_tld": float(tld in lists.suspicious_tlds),
-        "tld_risk": tld_risk,
+        "tld_risk": _tld_risk(p, fitted),
         "is_hosting_platform": float(p.is_platform),
     }
 
