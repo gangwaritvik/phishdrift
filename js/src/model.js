@@ -47,7 +47,7 @@ export function rawScore(model, values) {
 }
 
 // np.interp with the ends clipped, as IsotonicRegression(out_of_bounds="clip").predict.
-function interp(v, xs, ys) {
+export function interp(v, xs, ys) {
   if (v <= xs[0]) return ys[0];
   const last = xs.length - 1;
   if (v >= xs[last]) return ys[last];
@@ -81,10 +81,10 @@ export function explain(model, features) {
 
 // Score one URL: `prob` is the model output the thresholds apply to, `calibrated` the isotonic
 // probability for display and the runtime combiner, `verdict` 0 safe / 1 suspicious / 2 dangerous,
-// `reasons` the plain-English reasons for a warning (empty when safe, unless `withReasons`).
+// `reasons` the plain-English reasons (only computed when `withReasons`; about 100 ms).
 export function scoreUrl(model, url, { withReasons = false } = {}) {
   const features = extract(url, model.lists, model.names);
   const scored = scoreFeatures(model, features);
-  const why = withReasons || scored.verdict !== SAFE ? explain(model, features) : [];
+  const why = withReasons ? explain(model, features) : [];
   return { ...scored, reasons: why, features };
 }

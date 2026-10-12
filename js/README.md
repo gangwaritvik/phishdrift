@@ -35,3 +35,23 @@ const model = loadModel(bundleJson, pslRules);
 const { prob, calibrated, verdict, reasons } = scoreUrl(model, "https://paypa1.com/verify");
 // verdict: 0 safe, 1 suspicious, 2 dangerous; reasons: [{ feature, contribution, text }]
 ```
+
+## Hybrid tier A model (the one to ship)
+
+`src/hybrid.js` + `src/chargram.js` score a URL with the hybrid model (`data/tier_a_hybrid.json`,
+8 MB, written by `python -m models.export_hybrid`): LightGBM on the 99 URL features plus the
+scores of two char n-gram TF-IDF + logistic-regression models (masked URL, host). The char models
+here have a 100,000-term vocabulary; the evaluated experiment (`reports/hybrid_a.md`) uses 500,000
+terms, and the shipped size has its own metrics in `reports/tables/hybrid_export.csv`.
+`tests/fixtures/hybrid_parity.json` holds Python's probability and reasons for every parity URL;
+`npm test` checks JavaScript reproduces them.
+
+Cost on a loaded 4-core machine: about 1 ms for features, 0.1 ms per char model and trees,
+so about 2 ms per URL, plus about 100 ms for the SHAP reasons, which `scoreUrl(model, url,
+{ withReasons: true })` computes only when a warning is shown.
+
+```js
+import { loadHybrid, scoreUrl } from "./src/hybrid.js";
+const model = loadHybrid(bundleJson, pslRules);
+const { prob, calibrated, verdict, reasons } = scoreUrl(model, url, { withReasons: true });
+```

@@ -13,6 +13,8 @@ from models.export import (
     lists_from_payload,
     probability,
 )
+from models.export_hybrid import BUNDLE_FILE as HYBRID_BUNDLE
+from models.export_hybrid import PARITY_FILE as HYBRID_PARITY_FILE
 
 
 def _small_model(missing: float):
@@ -101,3 +103,79 @@ def test_reasons_follow_rules():
     assert "80 characters" in out[1]["text"]
     assert reasons(phi, x, names, rules, top=1, min_logodds=0.1)[0]["feature"] == "host_is_ip"
     assert reasons(phi, x, names, rules, top=3, min_logodds=3.0) == []
+
+
+def _char_prob(payload: dict, text: str) -> float:
+    """Reference for js/src/chargram.js: sklearn's char TF-IDF + LR from the exported arrays."""
+    import re
+    from collections import Counter
+
+    index = {t: i for i, t in enumerate(payload["terms"])}
+    lo, hi = payload["ngram_range"]
+    text = re.sub(r"\s\s+", " ", text)
+    counts: Counter = Counter()
+    for n in range(lo, min(hi, len(text)) + 1):
+        for i in range(len(text) - n + 1):
+            if text[i : i + n] in index:
+                counts[index[text[i : i + n]]] += 1
+    w = {i: (1 + np.log(c)) * payload["idf"][i] for i, c in counts.items()}
+    norm = np.sqrt(sum(v * v for v in w.values()))
+    z = payload["intercept"]
+    if norm > 0:
+        z += sum(v / norm * payload["coef"][i] for i, v in w.items())
+    return float(1 / (1 + np.exp(-z)))
+
+
+def test_char_payload_reproduces_sklearn():
+    from models.char_ngram import CharNgramLR
+    from models.export_hybrid import char_payload
+
+    texts = [
+        "paypal-login.xyz/verify",
+        "example.com/a/b",
+        "secure-bank.top/x  y",
+        "github.io/p",
+    ] * 20
+    y = np.array([1, 0, 1, 0] * 20)
+    params = dict(
+        ngram_range=[3, 5], min_df=1, max_features=60, sublinear_tf=True, C=4.0, max_iter=100
+    )
+    model = CharNgramLR(params, 0).fit(texts, y)
+    payload = char_payload(model)
+    assert len(payload["terms"]) == 60
+    probe = ["paypal-login.xyz/verify", "", "zz", "unseen.org/q?a=b", "a  b"]
+    ref = model.score(probe)
+    got = np.array([_char_prob(payload, t) for t in probe])
+    assert np.max(np.abs(got - ref)) < 1e-6
+    assert got[1] == pytest.approx(1 / (1 + np.exp(-payload["intercept"])))
+
+
+@pytest.mark.skipif(not HYBRID_BUNDLE.exists(), reason="no exported hybrid model")
+def test_hybrid_bundle_reproduces_fitted_model_on_parity_urls():
+    from features.urlparts import parse
+    from models.stack import logit
+
+    bundle = json.loads(HYBRID_BUNDLE.read_text(encoding="utf-8"))
+    parity = json.loads(HYBRID_PARITY_FILE.read_text(encoding="utf-8"))
+    assert parity["bundle_created"] == bundle["created"], "rerun python -m models.export_hybrid"
+    lists, fitted = lists_from_payload(bundle["lists"])
+    urls = [c["url"] for c in parity["cases"]]
+    names = bundle["names"]
+    x = feature_matrix(urls, lists, fitted, names[:-2])
+    parts = [parse(u, lists.platforms) for u in urls]
+    texts = {
+        "char_url": [p.canon if p else "" for p in parts],
+        "char_host": [p.host if p else "" for p in parts],
+    }
+    char = np.column_stack(
+        [
+            logit(np.array([_char_prob(bundle["char"][n], t) for t in texts[n]]))
+            for n in ("char_url", "char_host")
+        ]
+    ).astype(np.float32)
+    got = probability(bundle["trees"], np.hstack([x, char]))
+    expected = np.array([c["prob"] for c in parity["cases"]])
+    assert len(urls) >= 200
+    assert np.max(np.abs(got - expected)) < 1e-6
+    t = bundle["thresholds"]
+    assert 0 < t["suspicious"] <= t["dangerous"] <= 1

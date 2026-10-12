@@ -46,7 +46,8 @@ test("verdicts follow the thresholds", () => {
     explain: { top: 3, min_logodds: 0.1 } };
   const model = loadModel(bundle, ["com"]);
   // url_len > 0.5 goes right (+4, dangerous); NaN (unparsable) goes left by default (-4, safe).
-  const hit = scoreUrl(model, "https://example.com/");
+  const hit = scoreUrl(model, "https://example.com/", { withReasons: true });
+  assert.deepEqual(scoreUrl(model, "https://example.com/").reasons, []);
   assert.equal(hit.verdict, DANGEROUS);
   // One split on url_len: its contribution is the leaf value minus the cover-weighted mean (4 - 0).
   assert.deepEqual(hit.reasons, [{ feature: "url_len", contribution: 4, text: "Long (11)." }]);
