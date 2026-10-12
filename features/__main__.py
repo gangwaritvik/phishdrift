@@ -4,6 +4,12 @@ python -m features dictionary           # regenerate docs/FEATURE_DICTIONARY.md
 python -m features lists [names...]     # collect word lists from the internet (needs network)
 python -m features fit                  # fit bigram and TLD numbers on the training folds
 python -m features build [--split NAME]  # tier A features for one processed part (default pool)
+python -m features build --tier B [--split NAME] [--workers N]
+                                         # tier B (HTML) features, resumable shards, then
+                                         # data/processed/features_b[_NAME].parquet
+python -m features build --tier C [--info-dir DIR] [--out FILE]
+                                         # tier C (domain/DNS/TLS) features of the first-seen
+                                         # captures -> data/processed/features_c.parquet
 python -m features export-js            # js/data/ (public-suffix rules, lists, fitted numbers)
 python -m features parity               # tests/fixtures/url_parity.json (Python-JS parity cases)
 """
@@ -84,6 +90,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("names", nargs="*")
     parser.add_argument("--split", default="pool", help="part to build features for (build only)")
+    parser.add_argument(
+        "--tier", choices=["A", "B", "C"], default="A", help="feature tier to build (build only)"
+    )
+    parser.add_argument(
+        "--info-dir",
+        type=Path,
+        default=None,
+        help="tier C: first-seen capture JSONL directory (default paths.domain_info_dir)",
+    )
+    parser.add_argument(
+        "--out", type=Path, default=None, help="tier C: output parquet (default features_c)"
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="worker processes for tier B (default: CPUs - 1, at most 4)",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -104,6 +128,20 @@ def main(argv: list[str] | None = None) -> int:
         print(js_export.write_parity())
     elif args.command == "fit":
         print(fit_command())
+    elif args.tier == "C":
+        from features import build_c
+
+        out, counts = build_c.build_c(args.info_dir, args.out)
+        print(counts.to_string())
+        print(out)
+    elif args.tier == "B":
+        from features import build_b
+
+        try:
+            out = build_b.build_b(args.split, workers=args.workers)
+        except KeyboardInterrupt:
+            return 130  # build_b already said how to resume
+        print(out if out is not None else f"no HTML in {args.split}: tier B not built")
     else:
         print(build(args.split))
     return 0

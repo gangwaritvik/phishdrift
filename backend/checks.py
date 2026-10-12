@@ -24,8 +24,8 @@ from backend.settings import Settings
 from collector.domain_capture import (
     DnsQuery,
     dns_facts,
-    dnspython_query,
     fetch_rdap,
+    make_query,
     tls_facts,
 )
 from phishdrift.domains import registered_domain
@@ -227,7 +227,7 @@ class LiveChecker:
         self._rdap_client = _CachedRdapClient(
             http, lookup["rdap_cache_ttl_s"], lookup["rdap_min_interval_s"]
         )
-        self._query = query or dnspython_query(cap["dns_timeout_s"])
+        self._query = query or make_query(cap)  # same resolver as the collector
         self._tls = tls
         self._now = now
         self._pool = ThreadPoolExecutor(max_workers=lookup["workers"], thread_name_prefix="rdap")
@@ -262,7 +262,10 @@ class LiveChecker:
                 return None, None  # a broken resolver must not look like "does not resolve"
         tls = None
         if cap.get("tls", True) and _all_global(addresses):
-            tls = self._tls(host, cap["tls_timeout_s"])
+            if self._tls is tls_facts:  # connect to our own answer, not the machine's resolver
+                tls = tls_facts(host, cap["tls_timeout_s"], addresses[0])
+            else:
+                tls = self._tls(host, cap["tls_timeout_s"])
         return dns, tls
 
     def __call__(self, domain: str) -> dict[str, Any]:

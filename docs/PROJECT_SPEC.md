@@ -7,7 +7,7 @@
   on static datasets).
 - Builds on the prior study `docs/prior_work/representation_sensitivity_report.pdf` (v1.1.1,
   2026-09-10), cited below as "the report".
-- Deadline: about 3 weeks from 2026-10-02 (confirm the exact date and update it here).
+- Deadline: Monday 2026-10-19 (Ritvik, 2026-10-12: "next monday").
 - The student is comfortable with Python, ML, web and extension development.
 
 ## Goal
@@ -148,13 +148,13 @@ Small robustness section:
 
 ## Cut list (cut from the top when behind)
 
-1. Optional LLM layer
+1. Optional LLM layer (cut first)
 2. Logo/screenshot brand matching
-3. Tier C model (keep the first-seen capture; report as future work)
-4. Extension page checks beyond password/form-action checks
-5. Leave-one-source-out for tier B (keep tier A)
+3. Extension page checks beyond password/form-action checks
+4. Leave-one-source-out for tier B (keep tier A)
 Never cut: domain-grouped splits, 10-split reporting, held-out source and time slice, recall at fixed
-FPR, OOD legitimate FPR, negative controls, popularity ban, platform masking, depth check.
+FPR, OOD legitimate FPR, negative controls, popularity ban, platform masking, depth check, tier C
+(Ritvik, 2026-10-12: "we are keeping tier c").
 
 ## Report outline
 

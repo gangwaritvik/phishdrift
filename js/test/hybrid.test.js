@@ -45,3 +45,16 @@ test("char n-gram scoring on a tiny model", () => {
   assert.equal(charProb(model, ""), 1 / (1 + Math.exp(-0.5))); // no terms: intercept only
   assert.ok(Math.abs(logit(0, 1e-6) + Math.log(999999)) < 1e-9);
 });
+
+test("word scoring: lowercase alphanumeric tokens and token pairs", () => {
+  // Terms "pay", "login", "pay login" (pair, joined by one space); "Pay-Login" -> pay, login.
+  const model = loadChar({
+    kind: "word", piece: "url", ngram_range: [1, 2], sublinear_tf: true,
+    terms: ["pay", "login", "pay login"], idf: [1, 2, 3], coef: [1, -1, 0.5], intercept: 0,
+    eps: 1e-6,
+  });
+  const norm = Math.sqrt(1 + 4 + 9);
+  const z = (1 * 1 + 2 * -1 + 3 * 0.5) / norm;
+  assert.ok(Math.abs(charProb(model, "Pay-Login!!") - 1 / (1 + Math.exp(-z))) < 1e-6);
+  assert.equal(charProb(model, "zzz"), 0.5); // no known terms: intercept only
+});

@@ -1,0 +1,18 @@
+{
+ "kind": "combine",
+ "name": "pw",
+ "scorers": "char_url char_host char_path word_url",
+ "gbdt": "base",
+ "seed": 42,
+ "split": 0,
+ "seconds": 57,
+ "n_urls": 33614,
+ "n_pos": 9065,
+ "n_neg": 24549,
+ "roc_auc": 0.9538345329445346,
+ "pr_auc": 0.9195661753318365,
+ "recall_1pct": 0.7073359073359073,
+ "fpr_1pct": 0.00998003992015968,
+ "recall_0p1pct": 0.509873138444567,
+ "fpr_0p1pct": 0.0009776365636074789
+}

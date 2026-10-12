@@ -58,12 +58,51 @@ ROBOTS_UNREADABLE, ROBOTS_DISALLOW_ALL, CRAWL_DELAY_TOO_LONG = (
 # --- seeds -----------------------------------------------------------------------------
 
 
-def tranco_domains(top_n: int, cache_dir: Path) -> list[str]:
-    """Latest Tranco list (top ``top_n``), cached on disk by the ``tranco`` package."""
-    from tranco import Tranco  # imported lazily: only the live seed set needs it
+def _cached_tranco(cache_dir: Path, top_n: int) -> list[str] | None:
+    """Newest complete list in the ``tranco`` package's cache (``<list id>.csv``, rank,domain)."""
+    for path in sorted(
+        Path(cache_dir).glob("*.csv"), key=lambda p: p.stat().st_mtime, reverse=True
+    ):
+        domains = []
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if len(domains) >= top_n:
+                    break
+                rank, sep, domain = line.strip().partition(",")
+                if not sep or not rank.isdigit():
+                    domains = []  # cut off or not a list: try the next file
+                    break
+                domains.append(domain)
+        if len(domains) >= min(top_n, 100_000):
+            return domains
+    return None
+
+
+def tranco_domains(
+    top_n: int, cache_dir: Path, attempts: int = 3, wait_s: float = 10.0
+) -> list[str]:
+    """Latest Tranco list (top ``top_n``), cached on disk by the ``tranco`` package.
+
+    Two processes starting at once (the collector and the OOD crawl) can race on that cache,
+    and one then reads a half-written file (seen on 2026-10-12: "substring not found"). So a
+    failed read is retried, and the newest complete cached list is used as a last resort."""
+    from tranco import Tranco  # imported lazily: only the Tranco seed sets need it
 
     Path(cache_dir).mkdir(parents=True, exist_ok=True)
-    return Tranco(cache_dir=str(cache_dir)).list().top(top_n)
+    error: Exception | None = None
+    for i in range(attempts):
+        try:
+            return Tranco(cache_dir=str(cache_dir)).list().top(top_n)
+        except Exception as exc:  # noqa: BLE001 - network, a bad cache file, or the race above
+            error = exc
+            log.warning("tranco: attempt %d failed: %s", i + 1, exc)
+            if i + 1 < attempts:
+                time.sleep(wait_s)
+    cached = _cached_tranco(Path(cache_dir), top_n)
+    if cached is None:
+        raise RuntimeError(f"no Tranco list available: {error}")
+    log.warning("tranco: using the newest cached list instead")
+    return cached
 
 
 def read_seed_file(path: Path) -> list[str]:

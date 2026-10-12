@@ -1,0 +1,18 @@
+{
+ "kind": "combine",
+ "name": "hybrid_base",
+ "scorers": "char_url char_host",
+ "gbdt": "base",
+ "seed": 42,
+ "split": 2,
+ "seconds": 50,
+ "n_urls": 33613,
+ "n_pos": 9068,
+ "n_neg": 24545,
+ "roc_auc": 0.9534149217568302,
+ "pr_auc": 0.919109694019419,
+ "recall_1pct": 0.6934274371415968,
+ "fpr_1pct": 0.009900183336728458,
+ "recall_0p1pct": 0.4949272165857962,
+ "fpr_0p1pct": 0.0009777958851089836
+}

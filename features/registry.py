@@ -268,8 +268,498 @@ def _rows() -> list[Feature]:
     return f
 
 
+def _rows_b() -> list[Feature]:
+    """Tier B: features of the page HTML (``features/html_features.py``).
+
+    Every value is NaN when the page has no usable HTML (missing, under 200 characters of visible
+    text, or an obvious parked / takedown / error page). Ratios are NaN when their denominator is
+    zero. "The domain" means the registrable domain after platform-identity masking.
+    """
+    f: list[Feature] = []
+
+    def add(name: str, group: str, definition: str, papers: str = "own", cost: str = "low"):
+        f.append(
+            Feature(
+                name,
+                group,
+                definition,
+                papers,
+                tier="B",
+                availability="samples with HTML",
+                runtime_cost=cost,
+                in_browser=True,
+            )
+        )
+
+    g = "forms"
+    add("n_forms", g, "Number of `<form>` elements.", "H,P")
+    add("n_password_fields", g, "Number of `<input type=password>` elements.", "P,U")
+    add("n_credential_forms", g, "Forms that contain at least one password field.", "H")
+    add("n_password_outside_form", g, "Password fields that are not inside any form.", "own")
+    add(
+        "n_password_forms_external",
+        g,
+        "Forms with a password field whose action posts to another registrable domain.",
+        "H",
+    )
+    add("n_input_hidden", g, "Number of `<input type=hidden>` elements.", "H,P")
+    add("hidden_input_ratio", g, "Hidden inputs divided by all inputs; NaN if no inputs.", "H")
+    add(
+        "has_submit_button", g, "A submit input, an image input or a submit `<button>` exists.", "P"
+    )
+    add("n_form_action_empty", g, "Forms whose action is missing or blank.", "H,U")
+    add("n_form_action_hash", g, "Forms whose action starts with `#`.", "H,U")
+    add("n_form_action_js", g, "Forms whose action is a `javascript:` URL.", "H,U")
+    add("n_form_action_mailto", g, "Forms whose action is a `mailto:` URL.", "U")
+    add(
+        "n_form_action_external",
+        g,
+        "Forms whose action is a URL on another registrable domain.",
+        "H,U",
+    )
+    add(
+        "n_otp_fields",
+        g,
+        "Visible inputs whose name, id, placeholder or label mentions a one-time code.",
+        "own",
+    )
+    add(
+        "n_card_fields",
+        g,
+        "Visible inputs whose name, id, placeholder or label mentions a payment card (card number, cardholder, ...).",
+        "own",
+    )
+    add("n_cvv_fields", g, "Visible inputs that ask for a CVV, CVC or card security code.", "own")
+    add("n_upi_pin_fields", g, "Visible inputs that ask for a UPI PIN, MPIN or ATM PIN.", "own")
+
+    g = "links"
+    add("n_links", g, "Number of `<a>` elements with an href.", "H,P")
+    add(
+        "link_internal_ratio",
+        g,
+        "Share of links that stay on the page's domain (relative or same registrable domain); NaN if no links.",
+        "H,P",
+    )
+    add(
+        "link_external_ratio",
+        g,
+        "Share of links that go to another registrable domain; NaN if no links.",
+        "H,P",
+    )
+    add(
+        "link_null_ratio",
+        g,
+        "Share of links that go nowhere (empty, `#...`, `javascript:`); NaN if no links.",
+        "H,P,U",
+    )
+    add(
+        "n_external_link_domains",
+        g,
+        "Distinct other registrable domains linked from anchors.",
+        "own",
+    )
+    add(
+        "n_anchor_text_mismatch",
+        g,
+        "Links whose visible text is a domain different from the domain the href points to.",
+        "U",
+    )
+    add("n_links_insecure_http", g, "Links whose href is an absolute `http://` URL.", "own")
+    add("n_links_ip_host", g, "Links whose host is an IP address.", "own")
+    add("n_links_shortener", g, "Links to a known URL shortener.", "own")
+    add("has_base_external", g, "A `<base href>` points to another registrable domain.", "own")
+    add(
+        "meta_script_link_internal_ratio",
+        g,
+        "Share of URLs in `<meta content>`, `<script src>` and `<link href>` that stay on the page's domain; NaN if none.",
+        "H",
+    )
+
+    g = "resources"
+    add("n_script_src", g, "Number of `<script src>` elements.", "H")
+    add(
+        "script_external_ratio",
+        g,
+        "Share of script sources on another registrable domain; NaN if none.",
+        "H,P",
+    )
+    add(
+        "css_external_ratio",
+        g,
+        "Share of stylesheet links on another registrable domain; NaN if none.",
+        "H,P",
+    )
+    add("n_img", g, "Number of `<img>` elements with a source.", "H")
+    add(
+        "img_external_ratio",
+        g,
+        "Share of image sources on another registrable domain; NaN if none.",
+        "H",
+    )
+    add("n_img_data_uri", g, "Images embedded as `data:` URIs.", "own")
+    add("has_favicon", g, "A `<link rel=icon>` (any icon relation) is declared.", "H,P")
+    add(
+        "favicon_external",
+        g,
+        "A declared favicon is on another registrable domain; NaN if no favicon is declared.",
+        "H,P",
+    )
+    add(
+        "resource_external_ratio",
+        g,
+        "Share of all scripts, stylesheets, images, media and frames on another registrable domain; NaN if none.",
+        "H",
+    )
+    add(
+        "n_external_resource_domains",
+        g,
+        "Distinct other registrable domains that supply resources.",
+        "own",
+    )
+
+    g = "text"
+    add("has_title", g, "The page has a `<title>` element.", "H,P")
+    add(
+        "title_empty",
+        g,
+        "The title element exists but is blank; NaN if there is no title element.",
+        "H,P",
+    )
+    add(
+        "title_has_credential_word",
+        g,
+        "The title contains a sign-in or verification word; NaN if no title text.",
+        "own",
+        "medium",
+    )
+    add(
+        "domain_in_title",
+        g,
+        "The domain label appears in the title (letters and digits only); NaN if no title text or the domain is an IP, a hosting platform or under 3 characters.",
+        "H",
+        "medium",
+    )
+    add(
+        "title_domain_match",
+        g,
+        "Share of the domain label's character trigrams found in the title; NaN as for `domain_in_title`.",
+        "P",
+        "medium",
+    )
+    add(
+        "url_title_match",
+        g,
+        "Share of title words (3+ characters) that appear in the masked URL; NaN if the title has none.",
+        "P",
+        "medium",
+    )
+    add("has_description", g, "A non-empty `<meta name=description>` exists.", "P")
+    add(
+        "has_copyright",
+        g,
+        "The visible text contains a copyright sign, `copyright` or `all rights reserved`.",
+        "H,P",
+    )
+    add(
+        "domain_in_copyright",
+        g,
+        "The domain label appears in the text around the copyright notice; NaN if no notice or the domain label is not usable.",
+        "H",
+        "medium",
+    )
+    add(
+        "n_bank_words",
+        g,
+        "Occurrences of banking words and phrases in the visible text.",
+        "own",
+        "medium",
+    )
+    add(
+        "n_pay_words",
+        g,
+        "Occurrences of payment words and phrases in the visible text.",
+        "own",
+        "medium",
+    )
+    add(
+        "n_crypto_words",
+        g,
+        "Occurrences of cryptocurrency words and phrases in the visible text.",
+        "own",
+        "medium",
+    )
+    add(
+        "n_urgency_words",
+        g,
+        "Occurrences of urgency and threat phrases in the visible text.",
+        "own",
+        "medium",
+    )
+    add(
+        "n_credential_words",
+        g,
+        "Occurrences of sign-in words (login, password, OTP, ...) in the visible text.",
+        "own",
+        "medium",
+    )
+    add(
+        "brand_in_title_mismatch",
+        g,
+        "A brand name from the brand list is in the title but the page's own domain label is not that brand; NaN if no title text or no brand list.",
+        "own",
+        "medium",
+    )
+    add(
+        "n_brands_in_text_mismatch",
+        g,
+        "Distinct brands mentioned at least twice in the visible text where the page's own domain label is not that brand; NaN if no brand list.",
+        "own",
+        "medium",
+    )
+    add("n_social_links", g, "Links to well-known social networks.", "H")
+
+    g = "structure"
+    add("page_size", g, "Characters in the HTML before truncation to the first 500,000.", "H,P")
+    add("n_lines", g, "Lines of HTML (first 500,000 characters).", "H,P")
+    add("longest_line", g, "Characters in the longest line (first 500,000 characters).", "P")
+    add(
+        "visible_text_len",
+        g,
+        "Characters of visible text after collapsing whitespace (script, style, noscript and title excluded).",
+        "H",
+    )
+    add("text_to_code_ratio", g, "Visible text characters divided by HTML characters.", "H,P")
+    add("n_tags", g, "Number of start tags.", "own")
+    add(
+        "max_dom_depth",
+        g,
+        "Deepest nesting of open elements, estimated from start and end tags (capped at 512).",
+        "own",
+    )
+    add("n_iframes", g, "Number of `<iframe>` and `<frame>` elements.", "H,P,U")
+    add(
+        "n_hidden_iframes",
+        g,
+        "Frames that are hidden (0 or 1 pixel, `display:none`, `visibility:hidden` or `hidden`).",
+        "H,U",
+    )
+    add("has_meta_refresh", g, "A `<meta http-equiv=refresh>` exists.", "H")
+    add(
+        "meta_refresh_external",
+        g,
+        "The refresh target is on another registrable domain; NaN if there is no refresh.",
+        "H",
+    )
+    add(
+        "right_click_disabled",
+        g,
+        "The page blocks the context menu (`oncontextmenu` returning false, or a script that cancels `contextmenu`).",
+        "H,U",
+    )
+    add("n_onmouseover", g, "Elements with an `onmouseover` attribute (status-bar tricks).", "H,U")
+    add(
+        "n_window_open",
+        g,
+        "Calls to `window.open(` in scripts and inline handlers (popups).",
+        "H,U",
+        "medium",
+    )
+    add(
+        "n_js_redirects",
+        g,
+        "Assignments to `location` / `location.href` and calls to `location.replace` or `location.assign` in scripts.",
+        "H",
+        "medium",
+    )
+    add("has_viewport_meta", g, "A `<meta name=viewport>` exists (responsive page).", "P")
+    add("robots_noindex", g, "A robots meta tag contains `noindex`.", "own")
+
+    g = "scripts"
+    add("n_scripts_inline", g, "Inline JavaScript blocks with content.", "H,P")
+    add("script_chars_ratio", g, "Characters of inline JavaScript divided by HTML characters.", "P")
+    add(
+        "n_eval",
+        g,
+        "Calls to `eval(` and `new Function(` in scripts and inline handlers.",
+        "H",
+        "medium",
+    )
+    add("n_atob", g, "Calls to `atob(` in scripts and inline handlers.", "own", "medium")
+    add("n_unescape", g, "Calls to `unescape(` in scripts and inline handlers.", "own", "medium")
+    add("n_document_write", g, "Calls to `document.write(` and `document.writeln(`.", "H", "medium")
+    add("n_fromcharcode", g, "Uses of `String.fromCharCode`.", "own", "medium")
+    add(
+        "script_entropy",
+        g,
+        "Shannon entropy (bits) of the first 50,000 characters of inline JavaScript; NaN if under 100 characters of script.",
+        "own",
+        "medium",
+    )
+    add(
+        "script_escape_ratio",
+        g,
+        "Share of inline JavaScript characters that sit inside `\\xNN`, `\\uNNNN` or octal escapes; NaN if no inline script.",
+        "own",
+        "medium",
+    )
+    add(
+        "n_ajax_calls",
+        g,
+        "Uses of XMLHttpRequest, `fetch(`, jQuery ajax/post and `sendBeacon`.",
+        "own",
+        "medium",
+    )
+    add(
+        "n_telegram_endpoints",
+        g,
+        "Mentions of the Telegram bot API (`api.telegram.org`) in scripts and form actions.",
+        "own",
+        "medium",
+    )
+    add(
+        "n_webhook_endpoints",
+        g,
+        "Mentions of Discord and Slack webhooks, webhook.site, form relays and similar endpoints in scripts and form actions.",
+        "own",
+        "medium",
+    )
+    return f
+
+
+C_AVAILABILITY = "live-feed hosts at first-seen"
+
+
+def _rows_c() -> list[Feature]:
+    """Tier C: registration, DNS and TLS facts of a live-feed host (``features/domain_features.py``).
+
+    Captured once, when the host first appeared in a feed (``collector/domain_capture.py``);
+    never computed later for old URLs. Every age is in days relative to the host's capture
+    time. Missing is NaN: no RDAP data, a DNS query that errored for that record type, or a TLS
+    handshake that gave no certificate (certificate fields exist only for a verified handshake).
+    """
+    f: list[Feature] = []
+
+    def add(name: str, group: str, definition: str, papers: str = "own"):
+        f.append(
+            Feature(
+                name,
+                group,
+                definition,
+                papers,
+                tier="C",
+                availability=C_AVAILABILITY,
+                runtime_cost="high",
+                in_browser=False,
+            )
+        )
+
+    g = "registration"
+    add("domain_age_days", g, "Days from the RDAP registration date to the capture.", "H,U")
+    add("days_to_expiry", g, "Days from the capture to the RDAP expiration date.", "H,U")
+    add(
+        "registration_length_days",
+        g,
+        "Days between the RDAP registration and expiration dates.",
+        "U",
+    )
+    add("days_since_rdap_change", g, "Days from the RDAP `last changed` event to the capture.")
+    add(
+        "rdap_found",
+        g,
+        "1 if RDAP returned the domain, 0 if it answered 404 (not registered, or no RDAP server "
+        "for the TLD), NaN for any other error (rate limit, timeout).",
+        "H",
+    )
+    add(
+        "whois_redacted",
+        g,
+        "RDAP registrant data is redacted for privacy (or the registrar is a privacy service).",
+    )
+    add("rdap_status_count", g, "Number of RDAP status values (EPP locks, holds, add period).")
+    add(
+        "rdap_client_hold",
+        g,
+        "RDAP status contains `client hold` or `server hold` (the domain is suspended).",
+    )
+
+    g = "dns"
+    add("n_a", g, "A records of the host.")
+    add("n_aaaa", g, "AAAA records of the host.")
+    add("has_cname", g, "The host has a CNAME record.")
+    add("mx_count", g, "MX records of the registrable domain.")
+    add("has_mx", g, "The registrable domain has at least one MX record.")
+    add("has_spf", g, "A TXT record of the registrable domain starts an SPF policy (`v=spf1`).")
+    add("has_dmarc", g, "`_dmarc.<registrable domain>` has a DMARC TXT record.")
+    add(
+        "n_ns",
+        g,
+        "NS records of the registrable domain (`dns_record` in H counts any record).",
+        "H",
+    )
+    add(
+        "ns_in_own_domain",
+        g,
+        "A name server lies inside the host's own registrable domain; NaN with no NS records.",
+    )
+    add(
+        "ns_cloudflare",
+        g,
+        "A name server is a Cloudflare one (`*.ns.cloudflare.com`); NaN with no NS records.",
+    )
+    add("min_ttl_s", g, "Smallest TTL (seconds) among the A, AAAA, CNAME, NS and MX answers.")
+
+    g = "tls"
+    add(
+        "tls_ok",
+        g,
+        "A TLS handshake with port 443 completed (1) or failed (0); NaN when the name could not "
+        "be looked up for the handshake.",
+    )
+    add("tls_verified", g, "The certificate verified for the host; NaN if no handshake.", "U")
+    add(
+        "cert_free_issuer",
+        g,
+        "Issuer organisation or common name is a free automated CA (Let's Encrypt, ZeroSSL, "
+        "Buypass, cPanel, Google Trust Services, Cloudflare).",
+        "U",
+    )
+    add("cert_validity_days", g, "Days between the certificate's notBefore and notAfter.")
+    add("cert_age_days", g, "Days from the certificate's notBefore to the capture.")
+    add("cert_days_left", g, "Days from the capture to the certificate's notAfter.")
+    add("cert_san_count", g, "DNS names in the certificate's subjectAltName.")
+    add("cert_wildcard", g, "A subjectAltName or the subject common name is a wildcard (`*.`).")
+    add(
+        "cert_cn_matches_host",
+        g,
+        "The subject common name equals the host or is a wildcard covering it (one label).",
+    )
+    add(
+        "brand_in_cert_sans",
+        g,
+        "A brand from the brand list (4+ letters) appears inside a label of a subjectAltName "
+        "whose registrable domain is not the brand's own.",
+    )
+    return f
+
+
+# Tier A is the default everywhere (REGISTRY, NAMES, GROUPS); models and experiments read only
+# these. Tier B has its own names so a tier B column can never leak into a tier A table.
 REGISTRY: tuple[Feature, ...] = tuple(_rows())
 NAMES: tuple[str, ...] = tuple(f.name for f in REGISTRY)
 GROUPS: tuple[str, ...] = tuple(dict.fromkeys(f.group for f in REGISTRY))
 
+REGISTRY_B: tuple[Feature, ...] = tuple(_rows_b())
+NAMES_B: tuple[str, ...] = tuple(f.name for f in REGISTRY_B)
+GROUPS_B: tuple[str, ...] = tuple(dict.fromkeys(f.group for f in REGISTRY_B))
+
+REGISTRY_C: tuple[Feature, ...] = tuple(_rows_c())
+NAMES_C: tuple[str, ...] = tuple(f.name for f in REGISTRY_C)
+GROUPS_C: tuple[str, ...] = tuple(dict.fromkeys(f.group for f in REGISTRY_C))
+
 assert len(set(NAMES)) == len(NAMES), "duplicate feature name in registry"
+assert len(set(NAMES_B)) == len(NAMES_B), "duplicate tier B feature name in registry"
+assert len(set(NAMES_C)) == len(NAMES_C), "duplicate tier C feature name in registry"
+assert not set(NAMES) & set(NAMES_B), "a name is registered in both tier A and tier B"
+assert not set(GROUPS) & set(GROUPS_B), "a group is used by both tier A and tier B"
+assert not set(NAMES_C) & (set(NAMES) | set(NAMES_B)), "a tier C name is also in tier A or B"
+assert not set(GROUPS_C) & (set(GROUPS) | set(GROUPS_B)), "a tier C group is also in tier A or B"

@@ -35,11 +35,20 @@ INDEX_COLUMNS = [
 ]
 
 
-def write_daily(df: pd.DataFrame, raw_dir: Path, day: date, source: str) -> Path:
-    out = Path(raw_dir) / day.isoformat() / f"{source}.parquet"
+def atomic_parquet(df: pd.DataFrame, out: Path) -> Path:
+    """Write ``df`` to ``out`` through a temporary file, so a run stopped half-way never
+    leaves a cut-off parquet file that the next run (or a loader) fails to read. The
+    temporary name does not end in ``.parquet``, so globs for ``*.parquet`` skip it."""
+    out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(out, index=False)
+    tmp = out.with_name(out.name + ".tmp")
+    df.to_parquet(tmp, index=False)
+    os.replace(tmp, out)
     return out
+
+
+def write_daily(df: pd.DataFrame, raw_dir: Path, day: date, source: str) -> Path:
+    return atomic_parquet(df, Path(raw_dir) / day.isoformat() / f"{source}.parquet")
 
 
 CRAWL_COLUMNS = ["url", "html", "seed_source", "seed_domain", "crawled_at"]
@@ -47,11 +56,9 @@ CRAWL_COLUMNS = ["url", "html", "seed_source", "seed_domain", "crawled_at"]
 
 def write_crawl(df: pd.DataFrame, crawl_dir: Path, day: date, seed_source: str) -> Path:
     out = Path(crawl_dir) / day.isoformat() / f"{seed_source}.parquet"
-    out.parent.mkdir(parents=True, exist_ok=True)
     if out.exists():  # a second run on the same day appends
         df = pd.concat([pd.read_parquet(out), df], ignore_index=True)
-    df[CRAWL_COLUMNS].to_parquet(out, index=False)
-    return out
+    return atomic_parquet(df[CRAWL_COLUMNS], out)
 
 
 ATTEMPT_COLUMNS = ["seed_source", "seed_domain", "status", "pages", "attempted_at"]

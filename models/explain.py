@@ -211,6 +211,16 @@ REASONS: dict[str, tuple[str, float, float]] = {
         -math.inf,
         math.inf,
     ),
+    "char_path": (
+        "The page path of the address resembles known phishing links.",
+        -math.inf,
+        math.inf,
+    ),
+    "word_url": (
+        "The words in the address resemble known phishing links.",
+        -math.inf,
+        math.inf,
+    ),
     "tld_risk": (
         "Sites with this domain ending were often phishing in the training data.",
         -math.inf,

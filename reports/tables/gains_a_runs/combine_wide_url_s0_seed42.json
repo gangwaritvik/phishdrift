@@ -1,0 +1,18 @@
+{
+ "kind": "combine",
+ "name": "wide_url",
+ "scorers": "char_url_w26 char_host",
+ "gbdt": "base",
+ "seed": 42,
+ "split": 0,
+ "seconds": 44,
+ "n_urls": 33614,
+ "n_pos": 9065,
+ "n_neg": 24549,
+ "roc_auc": 0.9514128827793045,
+ "pr_auc": 0.9155189442591112,
+ "recall_1pct": 0.6860452289023717,
+ "fpr_1pct": 0.009939305063342702,
+ "recall_0p1pct": 0.48494208494208496,
+ "fpr_0p1pct": 0.0009776365636074789
+}

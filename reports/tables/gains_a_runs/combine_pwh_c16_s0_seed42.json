@@ -1,0 +1,18 @@
+{
+ "kind": "combine",
+ "name": "pwh_c16",
+ "scorers": "char_url_c16 char_host_c16 char_path word_url word_host",
+ "gbdt": "base",
+ "seed": 42,
+ "split": 0,
+ "seconds": 48,
+ "n_urls": 33614,
+ "n_pos": 9065,
+ "n_neg": 24549,
+ "roc_auc": 0.9530217905420852,
+ "pr_auc": 0.9184856205671462,
+ "recall_1pct": 0.7034749034749035,
+ "fpr_1pct": 0.009898570206525724,
+ "recall_0p1pct": 0.5146166574738004,
+ "fpr_0p1pct": 0.0009776365636074789
+}

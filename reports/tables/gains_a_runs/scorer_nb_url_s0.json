@@ -1,0 +1,15 @@
+{
+ "kind": "scorer",
+ "name": "nb_url",
+ "split": 0,
+ "seconds": 310,
+ "n_urls": 33614,
+ "n_pos": 9065,
+ "n_neg": 24549,
+ "roc_auc": 0.878740267026086,
+ "pr_auc": 0.7917169580817732,
+ "recall_1pct": 0.4570325427468285,
+ "fpr_1pct": 0.00998003992015968,
+ "recall_0p1pct": 0.0,
+ "fpr_0p1pct": 0.0
+}

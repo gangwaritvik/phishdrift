@@ -105,19 +105,28 @@ def test_reasons_follow_rules():
     assert reasons(phi, x, names, rules, top=3, min_logodds=3.0) == []
 
 
-def _char_prob(payload: dict, text: str) -> float:
-    """Reference for js/src/chargram.js: sklearn's char TF-IDF + LR from the exported arrays."""
+def _text_prob(payload: dict, text: str) -> float:
+    """Reference for js/src/chargram.js: the exported char or word TF-IDF + LR arrays."""
     import re
     from collections import Counter
 
     index = {t: i for i, t in enumerate(payload["terms"])}
     lo, hi = payload["ngram_range"]
-    text = re.sub(r"\s\s+", " ", text)
-    counts: Counter = Counter()
-    for n in range(lo, min(hi, len(text)) + 1):
-        for i in range(len(text) - n + 1):
-            if text[i : i + n] in index:
-                counts[index[text[i : i + n]]] += 1
+    if payload["kind"] == "word":
+        tokens = re.findall(r"[a-z0-9]+", text.lower())
+        grams = [
+            " ".join(tokens[i : i + n])
+            for n in range(lo, hi + 1)
+            for i in range(len(tokens) - n + 1)
+        ]
+    else:
+        text = re.sub(r"\s\s+", " ", text)
+        grams = [
+            text[i : i + n]
+            for n in range(lo, min(hi, len(text)) + 1)
+            for i in range(len(text) - n + 1)
+        ]
+    counts = Counter(index[g] for g in grams if g in index)
     w = {i: (1 + np.log(c)) * payload["idf"][i] for i, c in counts.items()}
     norm = np.sqrt(sum(v * v for v in w.values()))
     z = payload["intercept"]
@@ -126,9 +135,22 @@ def _char_prob(payload: dict, text: str) -> float:
     return float(1 / (1 + np.exp(-z)))
 
 
-def test_char_payload_reproduces_sklearn():
-    from models.char_ngram import CharNgramLR
-    from models.export_hybrid import char_payload
+@pytest.mark.parametrize(
+    ("spec", "probe"),
+    [
+        (
+            {"name": "c", "piece": "url", "kind": "char"},
+            ["paypal-login.xyz/verify", "", "zz", "a  b"],
+        ),
+        (
+            {"name": "w", "piece": "url", "kind": "word", "params": {"min_df": 1, "C": 4.0}},
+            ["paypal-login.xyz/verify", "", "Zz", "unseen.org/q?a=b", "secure-bank.top"],
+        ),
+    ],
+)
+def test_text_payload_reproduces_sklearn(spec, probe):
+    from models.export_hybrid import text_payload
+    from models.text_scorers import make_text_model
 
     texts = [
         "paypal-login.xyz/verify",
@@ -137,15 +159,15 @@ def test_char_payload_reproduces_sklearn():
         "github.io/p",
     ] * 20
     y = np.array([1, 0, 1, 0] * 20)
-    params = dict(
+    base = dict(
         ngram_range=[3, 5], min_df=1, max_features=60, sublinear_tf=True, C=4.0, max_iter=100
     )
-    model = CharNgramLR(params, 0).fit(texts, y)
-    payload = char_payload(model)
-    assert len(payload["terms"]) == 60
-    probe = ["paypal-login.xyz/verify", "", "zz", "unseen.org/q?a=b", "a  b"]
+    spec = spec | {"params": {**base, **spec.get("params", {})}}
+    model = make_text_model(spec, base, 0).fit(texts, y)
+    payload = text_payload(model, spec)
+    assert len(payload["terms"]) <= 60
     ref = model.score(probe)
-    got = np.array([_char_prob(payload, t) for t in probe])
+    got = np.array([_text_prob(payload, t) for t in probe])
     assert np.max(np.abs(got - ref)) < 1e-6
     assert got[1] == pytest.approx(1 / (1 + np.exp(-payload["intercept"])))
 
@@ -154,6 +176,7 @@ def test_char_payload_reproduces_sklearn():
 def test_hybrid_bundle_reproduces_fitted_model_on_parity_urls():
     from features.urlparts import parse
     from models.stack import logit
+    from models.text_scorers import PIECES
 
     bundle = json.loads(HYBRID_BUNDLE.read_text(encoding="utf-8"))
     parity = json.loads(HYBRID_PARITY_FILE.read_text(encoding="utf-8"))
@@ -161,19 +184,20 @@ def test_hybrid_bundle_reproduces_fitted_model_on_parity_urls():
     lists, fitted = lists_from_payload(bundle["lists"])
     urls = [c["url"] for c in parity["cases"]]
     names = bundle["names"]
-    x = feature_matrix(urls, lists, fitted, names[:-2])
+    scorers = bundle["scorers"]
+    x = feature_matrix(urls, lists, fitted, names[: -len(scorers)])
     parts = [parse(u, lists.platforms) for u in urls]
-    texts = {
-        "char_url": [p.canon if p else "" for p in parts],
-        "char_host": [p.host if p else "" for p in parts],
-    }
-    char = np.column_stack(
+    scores = np.column_stack(
         [
-            logit(np.array([_char_prob(bundle["char"][n], t) for t in texts[n]]))
-            for n in ("char_url", "char_host")
+            logit(
+                np.array(
+                    [_text_prob(payload, PIECES[payload["piece"]](p) if p else "") for p in parts]
+                )
+            )
+            for payload in scorers.values()
         ]
     ).astype(np.float32)
-    got = probability(bundle["trees"], np.hstack([x, char]))
+    got = probability(bundle["trees"], np.hstack([x, scores]))
     expected = np.array([c["prob"] for c in parity["cases"]])
     assert len(urls) >= 200
     assert np.max(np.abs(got - expected)) < 1e-6

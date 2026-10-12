@@ -1,7 +1,8 @@
-// Char n-gram TF-IDF + logistic regression, as sklearn's TfidfVectorizer(analyzer="char",
-// sublinear_tf) followed by LogisticRegression (models/char_ngram.py). The vocabulary is cut to
-// the bundle's terms and the L2 norm runs over those terms only, as in the fitted vectorizer.
-// Values are rounded to float32 where sklearn stores float32 (dtype=np.float32).
+// Text scorers: TF-IDF + logistic regression, as sklearn's TfidfVectorizer(analyzer="char") or
+// the word variant (lowercase [a-z0-9]+ tokens and token pairs; models/text_scorers.py) followed
+// by LogisticRegression. The vocabulary is cut to the bundle's terms and the L2 norm runs over
+// those terms only, as in the fitted vectorizer. Values are rounded to float32 where sklearn
+// stores float32 (dtype=np.float32).
 
 const fround = Math.fround;
 
@@ -17,7 +18,19 @@ export function loadChar(payload) {
     maxN: payload.ngram_range[1],
     sublinear: payload.sublinear_tf,
     eps: payload.eps,
+    kind: payload.kind ?? "char",
+    piece: payload.piece ?? "url",
   };
+}
+
+const WORD = /[a-z0-9]+/g;
+
+// Word terms as sklearn's analyzer="word": tokens of the lowercased text, then pairs joined by a space.
+function* wordTerms(text, minN, maxN) {
+  const tokens = text.toLowerCase().match(WORD) ?? [];
+  for (let n = minN; n <= maxN; n++) {
+    for (let i = 0; i + n <= tokens.length; i++) yield tokens.slice(i, i + n).join(" ");
+  }
 }
 
 // sklearn _char_ngrams: runs of 2+ white-space characters become one space; n-grams of every
@@ -32,7 +45,8 @@ function* ngrams(text, minN, maxN) {
 // Probability of the positive class for one text.
 export function charProb(model, text) {
   const counts = new Map();
-  for (const g of ngrams(text, model.minN, model.maxN)) {
+  const terms = model.kind === "word" ? wordTerms(text, model.minN, model.maxN) : ngrams(text, model.minN, model.maxN);
+  for (const g of terms) {
     const i = model.index.get(g);
     if (i !== undefined) counts.set(i, (counts.get(i) ?? 0) + 1);
   }

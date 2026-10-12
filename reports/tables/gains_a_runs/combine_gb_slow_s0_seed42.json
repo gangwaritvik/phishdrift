@@ -1,0 +1,18 @@
+{
+ "kind": "combine",
+ "name": "gb_slow",
+ "scorers": "char_url char_host",
+ "gbdt": "slow",
+ "seed": 42,
+ "split": 0,
+ "seconds": 74,
+ "n_urls": 33614,
+ "n_pos": 9065,
+ "n_neg": 24549,
+ "roc_auc": 0.9506307915029829,
+ "pr_auc": 0.9142456271558825,
+ "recall_1pct": 0.6863761720904578,
+ "fpr_1pct": 0.00998003992015968,
+ "recall_0p1pct": 0.4936569222283508,
+ "fpr_0p1pct": 0.0009776365636074789
+}

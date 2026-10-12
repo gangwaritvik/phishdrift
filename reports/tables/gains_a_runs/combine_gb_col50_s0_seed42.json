@@ -1,0 +1,18 @@
+{
+ "kind": "combine",
+ "name": "gb_col50",
+ "scorers": "char_url char_host",
+ "gbdt": "col50",
+ "seed": 42,
+ "split": 0,
+ "seconds": 58,
+ "n_urls": 33614,
+ "n_pos": 9065,
+ "n_neg": 24549,
+ "roc_auc": 0.9506298253701406,
+ "pr_auc": 0.9141647655662426,
+ "recall_1pct": 0.6860452289023717,
+ "fpr_1pct": 0.00998003992015968,
+ "recall_0p1pct": 0.4950910093767237,
+ "fpr_0p1pct": 0.0009776365636074789
+}
