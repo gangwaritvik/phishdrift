@@ -6,8 +6,14 @@ never silently turned into 0.
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pandas as pd
+
+# Threads per booster: all cores by default; set PHISHDRIFT_THREADS=1 to run several
+# experiment processes side by side without oversubscribing the CPUs.
+THREADS = int(os.environ.get("PHISHDRIFT_THREADS", "-1"))
 
 
 class GBDT:
@@ -19,11 +25,11 @@ class GBDT:
         if kind == "lightgbm":
             import lightgbm as lgb
 
-            self.model = lgb.LGBMClassifier(**params, random_state=seed, n_jobs=-1, verbose=-1)
+            self.model = lgb.LGBMClassifier(**params, random_state=seed, n_jobs=THREADS, verbose=-1)
         elif kind == "xgboost":
             import xgboost as xgb
 
-            self.model = xgb.XGBClassifier(**params, random_state=seed, n_jobs=-1)
+            self.model = xgb.XGBClassifier(**params, random_state=seed, n_jobs=THREADS)
         else:
             raise ValueError(f"unknown booster {kind!r}")
 

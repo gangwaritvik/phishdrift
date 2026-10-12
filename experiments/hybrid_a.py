@@ -1,15 +1,17 @@
-"""Tier A blend: LightGBM and the char n-gram model, log-odds averaged, over the 10 splits.
+"""Hybrid tier A model over the 10 domain-grouped splits (LightGBM + char n-gram scores).
 
-python -m experiments.blend_a [--processed data/processed] [--reports reports] [--splits ...]
+python -m experiments.hybrid_a [--processed data/processed] [--reports reports] [--splits ...]
 
-On split 0's calibration slice the plain average of the two models' log-odds beat either
-model alone (recall at FPR 1% 65.4% vs 58.2% LightGBM and 60.4% char n-gram; selection on the
-cal side only, the held-out source and the time slice were not looked at). The blend has no
-fitted weights, so it needs no out-of-fold scores: each split trains the two models on its
-train side, picks the FPR thresholds on its cal side, and reports test, the held-out source,
-the time slice and test per source. ``experiments.stack_a`` is the fitted alternative.
+Chosen on split 0's calibration slice, where it beat every other variant tried (recall at FPR
+1% / 0.1%: LightGBM 58.2% / 40.0%, bigger LightGBM 59.1% / 41.4%, unweighted 59.0% / 41.6%,
+char n-gram 60.4% / 37.8%, log-odds average of the two 65.4% / 45.1%, hybrid 68.4% / 50.1%).
+The held-out source and the time slice were not looked at to choose it.
 
-Writes ``tables/blend_a_runs.csv`` and ``blend_a.md``; finished splits are skipped on a rerun.
+Per split k: ``models.hybrid.HybridA`` is trained on the train side, FPR thresholds come from
+the cal side, and the metrics are reported on test, test per source, the held-out source and
+the time slice. Each split writes its own ``tables/hybrid_a_runs/split_<k>.csv`` (so several
+splits can run in parallel processes) and ``hybrid_a.md`` is rebuilt from all of them.
+Finished splits are skipped on a rerun.
 """
 
 from __future__ import annotations
@@ -19,35 +21,23 @@ import logging
 import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from data_pipeline.split import CAL, TEST, TRAIN
 from experiments.metrics import evaluate, operating_point
-from experiments.tier_a import (
-    PARTS,
-    Spec,
-    _append,
-    _fmt,
-    apply_fitted,
-    assert_no_overlap,
-    load_part,
-    make_model,
-    model_input,
-    refit,
-)
+from experiments.tier_a import PARTS, _fmt, apply_fitted, assert_no_overlap, load_part, refit
 from features.lists import Lists, load_lists
-from models.stack import logit
+from features.registry import NAMES
+from models.hybrid import HybridA
 from phishdrift.config import load_config
 
-log = logging.getLogger("blend_a")
-MEMBERS = (Spec("lightgbm", "all"), Spec("char_ngram", "url_text"))
+log = logging.getLogger("hybrid_a")
 
 
-def blend(scores: list[np.ndarray]) -> np.ndarray:
-    """Mean log-odds turned back into a probability."""
-    z = np.mean([logit(s) for s in scores], axis=0)
-    return 1.0 / (1.0 + np.exp(-z))
+def make_hybrid(cfg: dict) -> HybridA:
+    return HybridA(
+        cfg["lightgbm"], cfg["char_ngram"], list(NAMES), cfg["stack"]["n_folds"], cfg["seed"]
+    )
 
 
 def run_split(
@@ -66,40 +56,36 @@ def run_split(
     fitted = refit(train, lists)
     train, cal, test = (apply_fitted(f, fitted) for f in (train, cal, test))
     holdouts = {n: apply_fitted(h, fitted) for n, h in holdouts.items()}
-    y, w = train["label"].to_numpy(), train["weight"].to_numpy()
-    models = [make_model(s, cfg).fit(model_input(s, train), y, w) for s in MEMBERS]
+    model = make_hybrid(cfg).fit(train, train["label"].to_numpy(), train["weight"].to_numpy())
 
-    def score(frame: pd.DataFrame) -> np.ndarray:
-        return blend([m.score(model_input(s, frame)) for m, s in zip(models, MEMBERS, strict=True)])
-
-    s_cal = score(cal)
+    s_cal = model.score(cal)
     thresholds = {t: operating_point(cal["label"], s_cal, t, min_neg)["threshold"] for t in targets}
-    base = {"split": k, "model": "blend", "features": "+".join(s.name for s in MEMBERS)}
+    base = {"split": k, "model": "hybrid", "features": "all+char_url+char_host"}
     rows = []
-    sets = {"test": test, **holdouts}
-    for set_name, frame in sets.items():
-        s = score(frame)
-        y_set = frame["label"].to_numpy()
-        row = evaluate(y_set, s, targets, min_neg, thresholds)
+    for set_name, frame in {"test": test, **holdouts}.items():
+        s = model.score(frame)
+        y = frame["label"].to_numpy()
+        row = evaluate(y, s, targets, min_neg, thresholds)
         rows.append(base | {"eval_set": set_name, "n_domains": frame["domain"].nunique()} | row)
         if set_name == "test":
             for src in sorted(frame["source"].unique()):
                 m = (frame["source"] == src).to_numpy()
-                r = evaluate(y_set[m], s[m], targets, min_neg, thresholds)
+                r = evaluate(y[m], s[m], targets, min_neg, thresholds)
                 n_dom = frame.loc[m, "domain"].nunique()
                 rows.append(base | {"eval_set": f"test:{src}", "n_domains": n_dom} | r)
-    log.info("split %d blend: %.0fs", k, time.monotonic() - t0)
+    log.info("split %d hybrid: %.0fs", k, time.monotonic() - t0)
     return rows
 
 
-def render(runs: pd.DataFrame) -> str:
+def render(runs: pd.DataFrame, cfg: dict) -> str:
     lines = [
-        "# Tier A blend: LightGBM + char n-gram (log-odds average)",
+        "# Hybrid tier A model: LightGBM + char n-gram scores (URL only)",
         "",
-        "Generated by `python -m experiments.blend_a`. Do not edit by hand.",
-        "Median over splits [min, max]. `cal` columns: thresholds chosen on the cal side and",
-        "applied to the set. `test:<source>` rows are the test set by source; a source with one",
-        "class has no ROC-AUC or FPR.",
+        "Generated by `python -m experiments.hybrid_a`. Do not edit by hand.",
+        "LightGBM on the 99 URL features plus two out-of-fold char n-gram scores (masked URL,",
+        "host). Median over splits [min, max]. `cal` columns: thresholds chosen on the cal side",
+        "and applied to the set. `test:<source>` rows split the test set by source; a source",
+        "with one class has no ROC-AUC or FPR.",
         "",
         "| set | splits | URLs | domains | ROC-AUC | recall @1% FPR | recall @0.1% FPR "
         "| cal 1%: recall / FPR | cal 0.1%: recall / FPR |",
@@ -117,7 +103,22 @@ def render(runs: pd.DataFrame) -> str:
             f"| {_fmt(g['cal_1pct_recall'].median())} / {_fmt(g['cal_1pct_fpr'].median())} "
             f"| {_fmt(g['cal_0p1pct_recall'].median())} / {_fmt(g['cal_0p1pct_fpr'].median())} |"
         )
+    trip = cfg["eval"]["leakage_tripwire"]
+    held = runs[runs["eval_set"].isin(["heldout_source", "time_slice"])]
+    if (held["roc_auc"] > trip).any():
+        lines += ["", f"**Leakage tripwire:** holdout ROC-AUC above {trip:.0%}. Investigate."]
     return "\n".join(lines + [""])
+
+
+def write_reports(reports: Path, cfg: dict) -> Path:
+    parts = sorted((reports / "tables" / "hybrid_a_runs").glob("split_*.csv"))
+    runs = pd.concat([pd.read_csv(p) for p in parts], ignore_index=True).sort_values(
+        ["split"], kind="stable"
+    )
+    runs.to_csv(reports / "tables" / "hybrid_a_runs.csv", index=False)
+    out = reports / "hybrid_a.md"
+    out.write_text(render(runs, cfg), encoding="utf-8")
+    return out
 
 
 def run(
@@ -129,26 +130,27 @@ def run(
 ) -> Path:
     cfg = cfg or load_config("models")
     lists = lists or load_lists()
-    tables = reports / "tables"
-    tables.mkdir(parents=True, exist_ok=True)
-    out = tables / "blend_a_runs.csv"
-    done = set(pd.read_csv(out)["split"]) if out.exists() else set()
+    per_split = reports / "tables" / "hybrid_a_runs"
+    per_split.mkdir(parents=True, exist_ok=True)
     frames = {p: load_part(processed, p, lists) for p in PARTS}
     pool = frames.pop("pool")
     splits = pd.read_parquet(processed / "splits.parquet")
     splits = pool[["uid"]].merge(splits, on="uid", how="left", validate="one_to_one")
     n_splits = sum(c.startswith("split_") for c in splits.columns)
     for k in split_ids if split_ids is not None else range(n_splits):
-        if k in done:
+        out = per_split / f"split_{k}.csv"
+        if out.exists():
             continue
-        _append(out, run_split(k, pool, splits, frames, lists, cfg))
-        (reports / "blend_a.md").write_text(render(pd.read_csv(out)), encoding="utf-8")
+        tmp = out.with_suffix(".tmp")
+        pd.DataFrame(run_split(k, pool, splits, frames, lists, cfg)).to_csv(tmp, index=False)
+        tmp.replace(out)
+        write_reports(reports, cfg)
         log.info("split %d written", k)
-    return reports / "blend_a.md"
+    return write_reports(reports, cfg)
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="experiments.blend_a")
+    ap = argparse.ArgumentParser(prog="experiments.hybrid_a")
     ap.add_argument("--processed", type=Path, default=Path("data/processed"))
     ap.add_argument("--reports", type=Path, default=Path("reports"))
     ap.add_argument("--splits", type=int, nargs="*", default=None)
