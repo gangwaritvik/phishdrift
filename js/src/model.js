@@ -2,6 +2,7 @@
 // isotonic map of js/data/tier_a_model.json (written by `python -m models.export`). The tree walk
 // follows LightGBM's numerical decision exactly, on float32 feature values as in training.
 
+import { contributions, reasons } from "./explain.js";
 import { buildLists, extract } from "./features.js";
 
 const ZERO_THRESHOLD = 1e-35; // LightGBM's kZeroThreshold
@@ -16,6 +17,9 @@ export function loadModel(bundle, pslRules) {
     trees: bundle.trees,
     thresholds: bundle.thresholds,
     isotonic: bundle.isotonic,
+    expectedValue: bundle.expected_value,
+    reasonRules: bundle.reasons,
+    explainOptions: bundle.explain,
   };
 }
 
@@ -68,9 +72,19 @@ export function scoreFeatures(model, features) {
   return { prob, calibrated, verdict };
 }
 
+// Plain-English reasons (with their log-odds contributions) for one feature dict.
+export function explain(model, features) {
+  const values = model.names.map((n) => features[n]);
+  const phi = contributions(model.trees, values);
+  return reasons(phi, values, model.names, model.reasonRules, model.explainOptions);
+}
+
 // Score one URL: `prob` is the model output the thresholds apply to, `calibrated` the isotonic
-// probability for display and the runtime combiner, `verdict` 0 safe / 1 suspicious / 2 dangerous.
-export function scoreUrl(model, url) {
+// probability for display and the runtime combiner, `verdict` 0 safe / 1 suspicious / 2 dangerous,
+// `reasons` the plain-English reasons for a warning (empty when safe, unless `withReasons`).
+export function scoreUrl(model, url, { withReasons = false } = {}) {
   const features = extract(url, model.lists, model.names);
-  return { ...scoreFeatures(model, features), features };
+  const scored = scoreFeatures(model, features);
+  const why = withReasons || scored.verdict !== SAFE ? explain(model, features) : [];
+  return { ...scored, reasons: why, features };
 }

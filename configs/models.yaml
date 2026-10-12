@@ -66,3 +66,7 @@ loso:                                 # leave-one-source-out (experiments/loso.p
 stack:                                # experiments/stack_a.py
   n_folds: 5                          # domain-grouped folds for out-of-fold base scores
   meta_c: 1.0                         # inverse regularisation of the logistic-regression meta model
+
+explain:                              # models/explain.py: reasons shown with a warning
+  top: 3                              # at most this many reasons per URL
+  min_logodds: 0.1                    # a feature must add at least this much log-odds to count
