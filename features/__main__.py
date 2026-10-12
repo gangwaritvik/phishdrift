@@ -4,6 +4,8 @@ python -m features dictionary           # regenerate docs/FEATURE_DICTIONARY.md
 python -m features lists [names...]     # collect word lists from the internet (needs network)
 python -m features fit                  # fit bigram and TLD numbers on the training folds
 python -m features build [--split NAME]  # tier A features for one processed part (default pool)
+python -m features export-js            # js/data/ (public-suffix rules, lists, fitted numbers)
+python -m features parity               # tests/fixtures/url_parity.json (Python-JS parity cases)
 """
 
 from __future__ import annotations
@@ -77,7 +79,9 @@ def fit_command(split_index: int = 0) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="features")
-    parser.add_argument("command", choices=["dictionary", "lists", "fit", "build"])
+    parser.add_argument(
+        "command", choices=["dictionary", "lists", "fit", "build", "export-js", "parity"]
+    )
     parser.add_argument("names", nargs="*")
     parser.add_argument("--split", default="pool", help="part to build features for (build only)")
     args = parser.parse_args(argv)
@@ -90,6 +94,14 @@ def main(argv: list[str] | None = None) -> int:
         from features import scrape
 
         print(scrape.run(args.names or None))
+    elif args.command == "export-js":
+        from features import js_export
+
+        print(*js_export.export_js(), sep="\n")
+    elif args.command == "parity":
+        from features import js_export
+
+        print(js_export.write_parity())
     elif args.command == "fit":
         print(fit_command())
     else:
