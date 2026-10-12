@@ -1,5 +1,5 @@
 # Datasets and caches: never commit data
-data/
+/data/
 .cache/
 *.parquet
 
