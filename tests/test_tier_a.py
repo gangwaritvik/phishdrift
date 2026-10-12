@@ -169,3 +169,21 @@ def test_hybrid_small(tmp_path):
     assert "char n-gram scores" in md.read_text(encoding="utf-8")
     hybrid_a.run(tmp_path, tmp_path / "reports", [0], cfg=cfg, lists=lists)  # rerun skips
     assert len(pd.read_csv(tmp_path / "reports" / "tables" / "hybrid_a_runs.csv")) == len(runs)
+
+
+def test_hybrid_checks_small(tmp_path):
+    from experiments import hybrid_checks
+
+    lists = Lists.build(keywords=["login", "verify"], suspicious_tlds=["xyz"])
+    pool = _write_part(tmp_path, "pool", _rows("a", 400, 0), lists)
+    splits = grouped_splits(pool, 1, 0.25, 0.2, seed=0).assign(uid=pool["uid"])
+    splits.to_parquet(tmp_path / "splits.parquet", index=False)
+    cfg = tier_a.load_config("models")
+    cfg["lightgbm"] = cfg["lightgbm"] | {"n_estimators": 10, "min_child_samples": 5}
+    cfg["char_ngram"] = cfg["char_ngram"] | {"min_df": 1, "max_features": 2000}
+    cfg["stack"] = cfg["stack"] | {"n_folds": 3}
+    md = hybrid_checks.run(tmp_path, tmp_path / "reports", [0], cfg=cfg, lists=lists)
+    runs = pd.read_csv(tmp_path / "reports" / "tables" / "hybrid_checks.csv")
+    assert set(runs["check"]) == {"test_normalised", "control"}
+    text = md.read_text(encoding="utf-8")
+    assert "Shuffled-label control" in text and "flagged" in text
