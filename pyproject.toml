@@ -25,7 +25,8 @@ dependencies = [
 
 [project.optional-dependencies]
 datasets = ["datasets>=2.18", "ucimlrepo>=0.0.7"]
-dev = ["pytest>=8", "ruff>=0.5", "huggingface_hub>=0.23"]
+backend = ["fastapi>=0.110", "uvicorn>=0.29"]
+dev = ["pytest>=8", "ruff>=0.5", "huggingface_hub>=0.23", "httpx>=0.27"]
 
 [project.scripts]
 phishdrift-collect = "collector.__main__:main"
@@ -33,7 +34,7 @@ phishdrift-build = "data_pipeline.__main__:main"
 phishdrift-features = "features.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["phishdrift*", "collector*", "data_pipeline*", "features*", "models*", "experiments*"]
+include = ["phishdrift*", "collector*", "data_pipeline*", "features*", "models*", "experiments*", "backend*"]
 
 [tool.ruff]
 line-length = 100

@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "PhishDrift",
+  "version": "0.1.0",
+  "description": "Warns about phishing pages. Scores the address on your device; sends only a domain name to the backend, and only for addresses already flagged.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "alarms", "webNavigation"],
+  "host_permissions": ["http://127.0.0.1:8000/*", "http://localhost:8000/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": { "default_title": "PhishDrift", "default_popup": "popup.html" }
+}

@@ -1,0 +1,46 @@
+# FastAPI backend. DNS/TLS timeouts and the RDAP URL are reused from configs/collector.yaml
+# (domain_capture); the HTTP client settings below override collector.yaml's `http` section so a
+# live request never waits through the collector's slow retries.
+#
+# The thresholds under `rules` are PLACEHOLDERS for a tier C model (cut list item 3). They have
+# not been validated against labelled data.
+
+lookup:
+  overall_timeout_s: 12          # whole domain check; on expiry the answer is "low" + error
+  workers: 8                     # threads that run domain checks
+  rdap_cache_ttl_s: 86400        # on-disk cache of RDAP responses (domain only, no URLs)
+  rdap_min_interval_s: 0.2       # politeness delay between requests to rdap.org
+  dns_control_host: a.root-servers.net   # always resolves; if it does not, the resolver is down
+  http:
+    timeout_s: 6
+    retries: 1
+    backoff_factor: 1.0
+    connect_timeout_s: 4
+
+cache:                           # per-domain, in memory
+  ttl_s: 3600
+  max_entries: 20000
+
+rate_limit:                      # token bucket per client address
+  capacity: 30
+  refill_per_s: 0.5
+  max_clients: 10000
+
+feedback:
+  dir: data/feedback             # one JSON line per report: domain, kind, verdict, timestamp
+
+lists:
+  out_dir: data/lists
+  prefix_bytes: 6                # hash = sha256(key)[:2 * prefix_bytes] as hex
+  allowlist_top_n: 50000         # Tranco rank only cuts the list; never a model feature
+
+rules:                           # placeholder heuristics, see backend/checks.py
+  very_young_domain_days: 7
+  young_domain_days: 30
+  free_issuers:                  # substrings of the certificate issuer (lowercase)
+    - let's encrypt
+    - zerossl
+    - buypass
+  risk:
+    elevated_warn_count: 1       # this many "warn" signals -> elevated
+    high_warn_count: 3           # this many "warn" signals (or any "high") -> high
