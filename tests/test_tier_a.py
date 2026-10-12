@@ -146,3 +146,24 @@ def test_stack_small(tmp_path):
     assert (runs["roc_auc"] > 0.9).all()
     assert (runs["threshold_dangerous"] >= runs["threshold_suspicious"]).all()
     assert "Meta-model weights" in md.read_text(encoding="utf-8")
+
+
+def test_blend_small(tmp_path):
+    from experiments import blend_a
+
+    assert blend_a.blend([np.array([0.5, 0.9]), np.array([0.5, 0.1])]) == pytest.approx([0.5, 0.5])
+    lists = Lists.build(keywords=["login", "verify"], suspicious_tlds=["xyz"])
+    pool = _write_part(tmp_path, "pool", _rows("a", 400, 0), lists)
+    _write_part(tmp_path, "time_slice", _rows("a", 60, 1000), lists)
+    _write_part(tmp_path, "heldout_source", _rows("b", 60, 2000), lists)
+    splits = grouped_splits(pool, 1, 0.25, 0.2, seed=0).assign(uid=pool["uid"])
+    splits.to_parquet(tmp_path / "splits.parquet", index=False)
+    cfg = tier_a.load_config("models")
+    cfg["lightgbm"] = cfg["lightgbm"] | {"n_estimators": 10, "min_child_samples": 5}
+    cfg["char_ngram"] = cfg["char_ngram"] | {"min_df": 1, "max_features": 2000}
+    md = blend_a.run(tmp_path, tmp_path / "reports", [0], cfg=cfg, lists=lists)
+    runs = pd.read_csv(tmp_path / "reports" / "tables" / "blend_a_runs.csv")
+    assert {"test", "heldout_source", "time_slice"} <= set(runs["eval_set"])
+    assert any(s.startswith("test:") for s in runs["eval_set"])
+    assert (runs.loc[runs["eval_set"] == "test", "roc_auc"] > 0.9).all()
+    assert "log-odds average" in md.read_text(encoding="utf-8")
