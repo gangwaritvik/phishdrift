@@ -200,3 +200,29 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   they sat at 0.43-0.45 through a leaf-size artifact (unweighted 0.49-0.50 in a scratch check).
 - Gap: no out-of-distribution FPR yet; there is no naturally browsed legitimate set (needs a crawl).
 - Next: LOSO table and stacked + calibrated model (running), PR #15, then the tier A browser export.
+
+### 2026-10-12 — Why tier A recall was low, and the hybrid model (cloud)
+- Diagnosis (`reports/loso.md`, split 0 error analysis): 70% of missed phishing URLs are bare domains with
+  no path, mostly PhiUSIIL (recall at FPR 1%: PhiUSIIL 47%, PhreshPhish 66%, URL-Phish 79%). A model with
+  only the domain name to judge has a ceiling; the HTML tier is where this should improve.
+  Leave-one-source-out shows thresholds do not transfer: holding out PhreshPhish the cal-side 1% threshold
+  gives 20.6% FPR, and the trivial `tld_risk` baseline (43% recall at 1% FPR) beats both models there
+  (30%, 8%), so the models also learn source style.
+- Tried on split 0, chosen on its calibration slice only (recall at FPR 1% / 0.1%): LightGBM 58.2 / 40.0,
+  bigger LightGBM 59.1 / 41.4, unweighted 59.0 / 41.6, char n-gram 60.4 / 37.8, host-only char n-gram
+  47.5 / 31.7, log-odds average 65.4 / 45.1, **LightGBM with out-of-fold char n-gram scores (URL and
+  host) as two extra features 68.4 / 50.1**.
+- Changed: `models/hybrid.py`, `experiments/hybrid_a.py` (10 splits, one result file per split so
+  processes run in parallel; `PHISHDRIFT_THREADS` limits threads per booster), `experiments/hybrid_checks.py`
+  (normalised-URL check, shuffled-label control), `models/explain.py` and `js/src/explain.js` (TreeSHAP
+  reasons), `models/export.py` and `js/src/model.js` (browser LightGBM with parity test).
+- Results (`reports/hybrid_a.md`, median of 10 splits, recall at FPR 1% / 0.1%): test 69.0 / 50.3
+  (LightGBM 57.5 / 39.6); held-out PhishStorm 69.0 / 48.8 (58.6 / 40.0); newest time slice 73.1 / 52.0
+  (66.0 / 52.9). Cal-side thresholds give 3.6% FPR on PhishStorm and 1.6% on the time slice. PhiUSIIL
+  stays weakest (55.5 / 38.4). Nothing above 99%.
+- Rule added to CLAUDE.md: run independent work in parallel (Ritvik's request).
+- Next: shuffled-label control and normalised check for the hybrid, stacked model, then put the hybrid in
+  the browser (char n-gram vocabulary needs to be small enough; 500k terms is about 14 MB of JSON).
+- Open: the thresholds do not hold across sources (a per-source or conservative threshold is needed);
+  no naturally browsed legitimate set yet for the OOD FPR; the HTML tier needs the PC.
+
