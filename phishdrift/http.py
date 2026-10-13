@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -17,6 +18,14 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 log = logging.getLogger(__name__)
+
+
+def _atomic_write(path: Path, data: bytes) -> None:
+    """Write ``data`` to ``path`` so a reader (or a run stopped half-way) never sees a partial
+    file. The temporary name is unique per process and thread."""
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
 
 
 @dataclass
@@ -99,11 +108,11 @@ class HttpClient:
         response. ``timeout_s`` overrides the client's read timeout for slow endpoints.
         """
         body_path, meta_path = self._cache_paths(url)
-        if cache_ttl_s > 0 and meta_path.exists() and body_path.exists():
-            meta = json.loads(meta_path.read_text())
-            if time.time() - meta["fetched_at"] < cache_ttl_s:
+        if cache_ttl_s > 0:
+            cached = self._read_cache(body_path, meta_path, cache_ttl_s)
+            if cached is not None:
                 log.debug("cache hit %s", url)
-                return body_path.read_bytes()
+                return cached
 
         interval = self.default_min_interval_s
         if min_interval_s is not None:
@@ -125,14 +134,29 @@ class HttpClient:
             body = b"".join(chunks)
 
         if cache_ttl_s > 0:
-            body_path.write_bytes(body)
+            # Body first, then metadata, each replaced atomically: a run stopped half-way
+            # leaves either the old entry or no entry, never a cut-off file the next run trusts.
             # No URL in the metadata: it may hold an API key.
-            meta_path.write_text(json.dumps({"fetched_at": time.time()}))
+            _atomic_write(body_path, body)
+            _atomic_write(meta_path, json.dumps({"fetched_at": time.time()}).encode())
         return body
+
+    @staticmethod
+    def _read_cache(body_path: Path, meta_path: Path, cache_ttl_s: float) -> bytes | None:
+        """The cached body if it is younger than ``cache_ttl_s``; None on a miss or when the
+        cache entry is unreadable (treated as a miss, then overwritten by the fresh fetch)."""
+        try:
+            meta = json.loads(meta_path.read_text())
+            if time.time() - meta["fetched_at"] < cache_ttl_s:
+                return body_path.read_bytes()
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+        return None
 
     def last_fetch_time(self, url: str) -> float | None:
         """Epoch seconds of the last cached fetch of ``url`` (None if never)."""
         _, meta_path = self._cache_paths(url)
-        if not meta_path.exists():
+        try:
+            return json.loads(meta_path.read_text())["fetched_at"]
+        except (OSError, ValueError, KeyError, TypeError):
             return None
-        return json.loads(meta_path.read_text())["fetched_at"]

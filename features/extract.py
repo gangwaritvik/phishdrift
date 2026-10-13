@@ -1,12 +1,16 @@
 """The one feature entry point: ``extract(url, html, domain_info) -> dict[str, float]``.
 
-Tier A uses only the URL. ``html`` (tier B) and ``domain_info`` (tier C) are accepted so the
-signature never changes; they add features in later milestones. Missing values are NaN.
+Tier A uses only the URL and is always returned, exactly as before. Tier B (``html``) is added
+only when the page has usable HTML (see ``features/html_features.py``); with no HTML, or a parked
+or error page, the result has no tier B keys at all, so tier A rows never contain tier B names.
+``domain_info`` (tier C) is accepted so the signature never changes; it adds features in a later
+milestone. Missing values are NaN.
 """
 
 from __future__ import annotations
 
 from features.fit import Fitted, load_fitted
+from features.html_features import analyze
 from features.lists import Lists, load_lists
 from features.registry import NAMES
 from features.url_features import NAN, compute
@@ -27,4 +31,9 @@ def extract(
     if parts is None:
         return dict.fromkeys(NAMES, NAN)
     values = compute(parts, lists, fitted)
-    return {name: values[name] for name in NAMES}
+    out = {name: values[name] for name in NAMES}
+    if html:
+        page, _ = analyze(url, html, parts, lists=lists)
+        if page is not None:
+            out.update(page)
+    return out

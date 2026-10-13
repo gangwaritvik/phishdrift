@@ -166,9 +166,36 @@ def test_hybrid_small(tmp_path):
     assert {"test", "heldout_source", "time_slice"} <= set(runs["eval_set"])
     assert any(s.startswith("test:") for s in runs["eval_set"])
     assert (runs.loc[runs["eval_set"] == "test", "roc_auc"] > 0.9).all()
-    assert "char n-gram scores" in md.read_text(encoding="utf-8")
+    assert "text scores" in md.read_text(encoding="utf-8")
     hybrid_a.run(tmp_path, tmp_path / "reports", [0], cfg=cfg, lists=lists)  # rerun skips
     assert len(pd.read_csv(tmp_path / "reports" / "tables" / "hybrid_a_runs.csv")) == len(runs)
+
+
+def test_hybrid2_small(tmp_path):
+    from experiments import hybrid_a
+
+    lists = Lists.build(keywords=["login", "verify"], suspicious_tlds=["xyz"])
+    pool = _write_part(tmp_path, "pool", _rows("a", 400, 0), lists)
+    _write_part(tmp_path, "time_slice", _rows("a", 60, 1000), lists)
+    _write_part(tmp_path, "heldout_source", _rows("b", 60, 2000), lists)
+    splits = grouped_splits(pool, 1, 0.25, 0.2, seed=0).assign(uid=pool["uid"])
+    splits.to_parquet(tmp_path / "splits.parquet", index=False)
+    cfg = tier_a.load_config("models")
+    cfg["lightgbm"] = cfg["lightgbm"] | {"n_estimators": 10, "min_child_samples": 5}
+    cfg["stack"] = cfg["stack"] | {"n_folds": 3}
+    small = {"min_df": 1, "max_features": 2000}
+    cfg["hybrid2"] = {
+        "scorers": [
+            {"name": "char_url", "piece": "url", "kind": "char", "params": small},
+            {"name": "char_path", "piece": "path", "kind": "char", "params": small},
+            {"name": "word_url", "piece": "url", "kind": "word", "params": small | {"C": 4.0}},
+        ]
+    }
+    md = hybrid_a.run(tmp_path, tmp_path / "reports", [0], cfg=cfg, lists=lists, variant="hybrid2")
+    runs = pd.read_csv(tmp_path / "reports" / "tables" / "hybrid2_runs.csv")
+    assert (runs.loc[runs["eval_set"] == "test", "roc_auc"] > 0.9).all()
+    assert set(runs["model"]) == {"hybrid2"}
+    assert "word_url" in md.read_text(encoding="utf-8")
 
 
 def test_hybrid_checks_small(tmp_path):

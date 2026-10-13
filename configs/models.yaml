@@ -70,3 +70,35 @@ stack:                                # experiments/stack_a.py
 explain:                              # models/explain.py: reasons shown with a warning
   top: 3                              # at most this many reasons per URL
   min_logodds: 0.1                    # a feature must add at least this much log-odds to count
+
+hybrid2:                              # second hybrid: adds path and word text models (gains_a, cal slices of splits 0-2)
+  scorers:                            # each is an extra LightGBM input (out-of-fold log-odds)
+    - {name: char_url, piece: url, kind: char, params: {max_features: 100000}}
+    - {name: char_host, piece: host, kind: char, params: {max_features: 100000}}
+    - {name: char_path, piece: path, kind: char, params: {min_df: 3, max_features: 60000}}
+    - {name: word_url, piece: url, kind: word, params: {min_df: 2, C: 4.0, max_features: 60000}}
+
+tier_c:                               # experiments/tier_c.py: domain/DNS/TLS features of live-feed hosts
+  n_splits: 10                        # registrable-domain-grouped train/cal/test splits
+  seed: 0                             # split k uses seed + k
+  test_fraction: 0.2                  # 60/20/20 train/cal/test by rows (whole domains)
+  cal_fraction: 0.25                  # share of the train side held for thresholds (0.25 * 0.8 = 0.2)
+  min_rows_per_class: 20              # fewer eligible rows than this in either class: report counts only
+  time_check:
+    min_days: 3                       # distinct capture days needed for the newest-days check
+    test_fraction: 0.25               # newest capture days holding about this share of rows are test
+  no_age_drop:                        # the "no age" variant drops these
+    - domain_age_days
+    - registration_length_days
+    - days_to_expiry
+    - days_since_rdap_change
+    - cert_age_days
+  lightgbm:                           # small-data settings
+    n_estimators: 300
+    learning_rate: 0.05
+    num_leaves: 15
+    min_child_samples: 10
+    subsample: 0.8
+    subsample_freq: 1
+    colsample_bytree: 0.8
+    reg_lambda: 1.0

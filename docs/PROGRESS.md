@@ -9,7 +9,7 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   Ritvik's go and PC access.
 - Waiting on the PC (Ritvik has no PC access for now): 12-hourly collector schedule (live feed has 245 URLs),
   tier B HTML extraction from the 10 GB pool, a held-out source with HTML, Phish360, one-time list review.
-- Deadline: assumed 2026-10-23 (about 3 weeks from 2026-10-02; confirm)
+- Deadline: Monday 2026-10-19 (Ritvik, 2026-10-12). Tier C is kept (cut the LLM layer first).
 
 ## Open decisions
 
@@ -258,3 +258,37 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   (sandbox offline); the list builder has not run on real feeds or Tranco; a dangerous page can start loading
   before the warning replaces it (webNavigation cannot block).
 - Next: run the collector and `build-lists` on the PC when Ritvik is back, try on real sites; tier B waits for the PC.
+
+### 2026-10-12 — Tier C features and experiment (cloud, milestone 7 code)
+- Changed: `features/domain_features.py` (`compute_c`, 29 features in groups registration / dns / tls),
+  `REGISTRY_C` / `NAMES_C` / `GROUPS_C` in `features/registry.py`, tier C section in
+  `docs/FEATURE_DICTIONARY.md`, `features/build_c.py` + `python -m features build --tier C [--info-dir] [--out]`,
+  `experiments/tier_c.py` (eligibility filters, 10 domain-grouped splits, LightGBM / no-age / age baseline /
+  shuffled control, optional `--with-a` bare-host hybrid2 score, time check, importance), `tier_c` block in
+  `configs/models.yaml`, `tests/test_domain_features.py`, `tests/test_tier_c.py`.
+- Decisions: latest host record per host and latest RDAP record with data per domain; a record answered by
+  the collector PC's filtering resolver (sinkhole addresses) has NaN DNS/TLS values and is ineligible; a TLS
+  `gaierror` gives NaN, not `tls_ok = 0`; certificate fields only for verified handshakes.
+- Results: 2026-10-12 capture = 350 phishing hosts / 142 domains, no benign. Eligible: 50 phishing hosts
+  (165 platform, 130 filtered by the PC's resolver, 5 not resolving removed), so the experiment wrote the
+  counts-only report (no model).
+- Next: benign captures (Tranco live crawl) on the PC, then `python -m features build --tier C` and
+  `python -m experiments.tier_c`.
+
+### 2026-10-13 — Tier B, blended detector, false-alarm check, collector fixes for tier C (cloud)
+- Changed: `features/html_features.py` + `features/build_b.py` (84 page features), `models/text_scorers.py` and the
+  `hybrid2` variant (URL, host, path and word scorers), `experiments/{tier_b,blend,ood_fpr,ood_fpr_b}.py`,
+  `collector/{ood,lock}.py` and the Windows scripts, brand list trimmed by 14 generic words (tier A rebuilt),
+  browser bundle re-exported (11.7 MB, hybrid2). Collector: legitimate-host capture for tier C, DNS over HTTPS
+  (the PC's resolver answers 0.0.0.0 for known phishing hosts), per-host deadline, RDAP retries, Tranco cache race fix.
+- Results (median of 10 splits, recall at FPR 1% / 0.1%; `reports/blend.md`, `reports/tier_b.md`, `reports/ood_fpr.md`,
+  `reports/hybrid2.md`): blended detector (page model when the page has HTML, address model otherwise) test 73.7 / 58.6,
+  held-out PhishStorm 71.5 / 53.2, newest time slice 84.2 / 62.2; address-only hybrid2 on the same sets 68.8 / 50.4,
+  71.5 / 53.2, 73.2 / 48.0. On pages with HTML: 94.2 / 82.0 (address-only 78.3 / 60.8). Pages without HTML: 64.7 / 47.3.
+  False alarms on 2,555 ordinary legitimate pages from 562 sites outside every set: 3.6% at the 1% threshold and
+  0.7% at 0.1% (pages with HTML), 4.3-5.3% and 0.6-1.0% by address alone; no homepage-shortcut spike.
+- Caveats: HTML coverage depends on the source (PhiUSIIL, URL-Phish and PhishStorm saved none), so the pooled number
+  is a lower bound; usable HTML is more common on legitimate than phishing pages (PhreshPhish 91% vs 63%), so the
+  page-model figures may be optimistic; the held-out source has no HTML, so the page-model gain is not measured there.
+- Next: tier C needs benign captures from the PC (collector update delivered; first run 2026-10-13 06:15 IST), then
+  `python -m features build --tier C` and `python -m experiments.tier_c`; stack/LOSO still on the old brand list.

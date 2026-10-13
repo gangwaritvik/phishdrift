@@ -1,19 +1,18 @@
-"""Hybrid tier A browser export: LightGBM trees plus the two char n-gram models.
+"""Hybrid tier A browser export: LightGBM trees plus the text models (``hybrid2`` scorers).
 
-python -m models.export_hybrid [--processed data/processed] [--split 0] [--max-features 100000]
+python -m models.export_hybrid [--processed data/processed] [--split 0]
 
 Writes ``js/data/tier_a_hybrid.json`` and ``tests/fixtures/hybrid_parity.json``. The bundle
 holds what the browser needs to score a URL exactly as ``models.hybrid.HybridA`` does: the
-feature order (99 URL features, then ``char_url`` and ``char_host``), the lists and fitted
-values, the LightGBM trees, and for each char model its vocabulary, IDF weights, logistic-
-regression weights and intercept; plus thresholds, isotonic map, reason rules and the model's
-metrics on the split's test side, the held-out source and the newest time slice.
+feature order (99 URL features, then one score per text scorer), the lists and fitted values,
+the LightGBM trees, and for each text model its kind, the URL piece it reads, vocabulary, IDF
+weights, logistic-regression weights and intercept; plus thresholds, isotonic map, reason rules
+and the model's metrics on the split's test side, the held-out source and the newest time slice.
 
-The char models are refitted with a vocabulary of ``--max-features`` terms (the evaluated
-experiment, ``experiments.hybrid_a``, uses ``char_ngram.max_features`` = 500,000, about 14 MB of
-JSON per model); a vocabulary cut after fitting would change the L2 norm the browser can
-compute. The smaller vocabulary is its own model: its metrics are in the bundle and in
-``reports/tables/hybrid_export.csv``.
+The scorers and their vocabulary caps (``max_features``) are those of ``configs/models.yaml``
+``hybrid2``, the model ``python -m experiments.hybrid_a --variant hybrid2`` evaluates, so the
+exported model is the evaluated one; a vocabulary cut after fitting would change the L2 norm the
+browser can compute. Its metrics are in the bundle and in ``reports/tables/hybrid_export.csv``.
 
 ``tests/fixtures/hybrid_parity.json``: probability and reasons from Python for every parity URL.
 pytest and the JS suite both reproduce it.
@@ -48,14 +47,13 @@ from features.urlparts import parse
 from models.calibrate import Calibrator
 from models.explain import expected_value, reason_rules, reasons
 from models.export import _clean, compact_trees, lists_from_payload, probability
-from models.hybrid import TEXTS
 from models.stack import EPS
 from phishdrift.config import load_config
 
 log = logging.getLogger("export_hybrid")
 BUNDLE_FILE = JS_DATA / "tier_a_hybrid.json"
 PARITY_FILE = ROOT / "tests" / "fixtures" / "hybrid_parity.json"
-CHAR_NAMES = tuple(TEXTS)  # char_url, char_host
+VARIANT = "hybrid2"
 
 
 def f32(a: np.ndarray) -> list[float]:
@@ -63,13 +61,15 @@ def f32(a: np.ndarray) -> list[float]:
     return [float(np.format_float_scientific(x, unique=True)) for x in np.asarray(a, np.float32)]
 
 
-def char_payload(model) -> dict:
+def text_payload(model, spec: dict) -> dict:
+    """Vocabulary, IDF, weights of one fitted text scorer (character or word TF-IDF + LR)."""
     vec, lr = model.vectorizer, model.model
-    vocab = vec.vocabulary_
-    terms = [None] * len(vocab)
-    for term, i in vocab.items():
+    terms = [None] * len(vec.vocabulary_)
+    for term, i in vec.vocabulary_.items():
         terms[i] = term
     return {
+        "kind": spec["kind"],
+        "piece": spec["piece"],
         "ngram_range": list(vec.ngram_range),
         "sublinear_tf": bool(vec.sublinear_tf),
         "terms": terms,
@@ -88,12 +88,11 @@ def frame_for_urls(urls: list[str], lists: Lists, fitted, names: list[str]) -> p
     return frame
 
 
-def bundle_names() -> list[str]:
-    return list(NAMES) + list(CHAR_NAMES)
+def bundle_names(cfg: dict) -> list[str]:
+    return list(NAMES) + [s["name"] for s in cfg[VARIANT]["scorers"]]
 
 
-def build(processed: Path, k: int, lists: Lists, cfg: dict, max_features: int) -> tuple[dict, dict]:
-    cfg = cfg | {"char_ngram": cfg["char_ngram"] | {"max_features": max_features}}
+def build(processed: Path, k: int, lists: Lists, cfg: dict) -> tuple[dict, dict]:
     ev = cfg["eval"]
     targets, min_neg = ev["target_fprs"], ev["min_negatives"]
     frames = {p: load_part(processed, p, lists) for p in PARTS}
@@ -108,7 +107,9 @@ def build(processed: Path, k: int, lists: Lists, cfg: dict, max_features: int) -
     train, cal, test = (apply_fitted(f, fitted) for f in (train, cal, test))
     held = {n: apply_fitted(h, fitted) for n, h in frames.items()}
 
-    model = make_hybrid(cfg).fit(train, train["label"].to_numpy(), train["weight"].to_numpy())
+    model = make_hybrid(cfg, VARIANT).fit(
+        train, train["label"].to_numpy(), train["weight"].to_numpy()
+    )
     s_cal = model.score(cal)
     calib = Calibrator({"suspicious": targets[0], "dangerous": targets[1]}, min_neg)
     calib.fit(cal["label"].to_numpy(), s_cal)
@@ -118,20 +119,21 @@ def build(processed: Path, k: int, lists: Lists, cfg: dict, max_features: int) -
         row = evaluate(frame["label"].to_numpy(), model.score(frame), targets, min_neg, thresholds)
         metrics[set_name] = {key: _clean(v) for key, v in row.items()}
 
-    names = bundle_names()
+    names = bundle_names(cfg)
     booster = model.gbdt.model.booster_
     trees = compact_trees(booster)
     bundle = {
         "note": "Generated by `python -m models.export_hybrid`. Do not edit by hand.",
         "created": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "model": "hybrid tier A: lightgbm/all + char_url + char_host",
+        "model": "hybrid tier A: lightgbm/all + " + " + ".join(model.scorer_names),
         "split": k,
-        "max_features": max_features,
         "names": names,
         "lists": lists_payload(lists, fitted),
         "trees": trees,
         "expected_value": expected_value(trees),
-        "char": {n: char_payload(model.chars[n]) for n in CHAR_NAMES},
+        "scorers": {
+            spec["name"]: text_payload(model.models[spec["name"]], spec) for spec in model.scorers
+        },
         "reasons": reason_rules(names),
         "explain": dict(cfg["explain"]),
         "thresholds": dict(calib.thresholds),
@@ -147,7 +149,7 @@ def parity(bundle: dict, model, booster, lists: Lists, fitted) -> dict:
     urls = parity_cases()
     frame = frame_for_urls(urls, lists, fitted, list(NAMES))
     probs = model.score(frame)
-    full = frame.assign(**model.char_scores(frame))
+    full = frame.assign(**model.text_scores(frame))
     x = full[names].to_numpy(dtype=np.float32)
     contrib = booster.predict(x, pred_contrib=True)
     walked = probability(bundle["trees"], x)
@@ -179,7 +181,7 @@ def metrics_table(bundle: dict) -> pd.DataFrame:
     rows = []
     for set_name, m in bundle["metrics"].items():
         rows.append(
-            {"split": bundle["split"], "max_features": bundle["max_features"], "eval_set": set_name}
+            {"split": bundle["split"], "model": bundle["model"], "eval_set": set_name}
             | {k: v for k, v in m.items() if isinstance(v, int | float | type(None))}
         )
     return pd.DataFrame(rows)
@@ -189,7 +191,6 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="models.export_hybrid")
     ap.add_argument("--processed", type=Path, default=Path("data/processed"))
     ap.add_argument("--split", type=int, default=0)
-    ap.add_argument("--max-features", type=int, default=100_000)
     ap.add_argument("--lists-dir", default=None)
     ap.add_argument("--platforms-file", default=None)
     ap.add_argument("--out", type=Path, default=BUNDLE_FILE)
@@ -198,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
     lists = load_lists(a.lists_dir, a.platforms_file)
-    bundle, fitted_objs = build(a.processed, a.split, lists, load_config("models"), a.max_features)
+    bundle, fitted_objs = build(a.processed, a.split, lists, load_config("models"))
     doc = parity(bundle, fitted_objs["model"], fitted_objs["booster"], lists, fitted_objs["fitted"])
     # The bundle's lists are the ones used to train; parity uses the same.
     assert lists_from_payload(bundle["lists"])[0].platforms == lists.platforms

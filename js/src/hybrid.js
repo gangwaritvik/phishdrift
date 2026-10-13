@@ -1,6 +1,6 @@
-// Hybrid tier A model in the browser: the 99 URL features plus two char n-gram scores (masked URL,
-// host) feed the LightGBM trees, as models/hybrid.py. Bundle: js/data/tier_a_hybrid.json, written
-// by `python -m models.export_hybrid`.
+// Hybrid tier A model in the browser: the 99 URL features plus the text-scorer scores (char n-gram
+// models of the masked URL, host and path; a word model of the URL) feed the LightGBM trees, as
+// models/hybrid.py. Bundle: js/data/tier_a_hybrid.json, written by `python -m models.export_hybrid`.
 
 import { charProb, loadChar, logit } from "./chargram.js";
 import { contributions, reasons } from "./explain.js";
@@ -17,17 +17,26 @@ export function loadHybrid(bundle, pslRules) {
     isotonic: bundle.isotonic,
     reasonRules: bundle.reasons,
     explainOptions: bundle.explain,
-    char: Object.fromEntries(Object.entries(bundle.char).map(([k, v]) => [k, loadChar(v)])),
+    scorers: Object.fromEntries(Object.entries(bundle.scorers).map(([k, v]) => [k, loadChar(v)])),
   };
 }
 
-// Feature values in model.names order: URL features, then char_url and char_host.
+// The part of the masked URL a scorer reads (models/text_scorers.py PIECES).
+function pieceText(parts, piece) {
+  if (!parts) return "";
+  if (piece === "url") return parts.canon;
+  if (piece === "host") return parts.host;
+  if (piece === "domain") return parts.domain;
+  if (piece === "path") return parts.path + (parts.query ? `?${parts.query}` : "");
+  throw new Error(`unknown scorer piece ${piece}`);
+}
+
+// Feature values in model.names order: URL features, then one score per text scorer.
 export function featureValues(model, url) {
   const features = extract(url, model.lists, model.names);
   const parts = typeof url === "string" ? parse(url, model.lists.platforms, model.lists.psl) : null;
-  const texts = { char_url: parts ? parts.canon : "", char_host: parts ? parts.host : "" };
-  for (const [name, c] of Object.entries(model.char)) {
-    features[name] = logit(charProb(c, texts[name]), c.eps);
+  for (const [name, c] of Object.entries(model.scorers)) {
+    features[name] = logit(charProb(c, pieceText(parts, c.piece)), c.eps);
   }
   return model.names.map((n) => features[n]);
 }

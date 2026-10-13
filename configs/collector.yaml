@@ -1,15 +1,20 @@
 # Live collector. Secrets come from environment variables, never from this file.
-# Run every 12 hours (scripts/cron_example.txt). Feeds are cached for their polling interval,
-# so running more often does not poll them faster.
+# Run every 12 hours (scripts/schedule_collector.ps1 on Windows, scripts/cron_example.txt elsewhere).
+# Feeds are cached for their polling interval, so running more often does not poll them faster.
 
 paths:
   raw_dir: data/raw/feeds              # training feeds: data/raw/feeds/YYYY-MM-DD/<feed>.parquet
   blocklist_dir: data/raw/blocklists   # blocklist-only feeds; never training data
   crawl_dir: data/raw/crawl            # benign inner pages: data/raw/crawl/YYYY-MM-DD/<seed_source>.parquet
+  ood_dir: data/raw/ood                # out-of-distribution legitimate pages (evaluation only); the corpus build never reads it
   seed_dir: data/interim/seeds         # crawl seed lists written by `python -m data_pipeline seeds`
   index_path: data/interim/feeds_first_seen.parquet
   domain_info_dir: data/interim/domain_info   # first-seen RDAP/DNS/TLS captures (JSONL per day)
   http_cache_dir: .cache/http
+
+run:                                   # one collector run at a time (a scheduled and a manual run would race on the index)
+  lock_path: data/interim/collector.lock
+  lock_stale_s: 11400                  # a lock older than this was left by a killed run (task limit is 3 h)
 
 http:
   timeout_s: 20
@@ -24,24 +29,24 @@ feeds:
     enabled: true
     role: training
     url: https://openphish.com/feed.txt
-    cache_ttl_s: 43200                 # 12 h: also the minimum polling interval
+    cache_ttl_s: 41400                 # 11.5 h, just under the 12 h schedule: a run a few seconds early must still refetch
   phishing_database:                   # secondary live source; MIT license
     enabled: true
     role: training
     url: https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-NEW-today.txt
-    cache_ttl_s: 43200
+    cache_ttl_s: 41400
   phishtank:                           # secondary only: registration closed, survivorship bias
     enabled: true
     role: training
     url_with_key: "http://data.phishtank.com/data/{key}/online-valid.csv"
     key_env: PHISHTANK_APP_KEY         # skipped (with a log line) when unset
-    cache_ttl_s: 43200
+    cache_ttl_s: 41400
   urlhaus:                             # blocklist only: mostly malware, not phishing training data
     enabled: true
     role: blocklist
     url: https://urlhaus.abuse.ch/downloads/csv_recent/
     auth_key_env: URLHAUS_AUTH_KEY     # sent as the Auth-Key header when set
-    cache_ttl_s: 43200
+    cache_ttl_s: 41400
 
 crawler:                               # benign inner pages; robots.txt and Crawl-delay obeyed
   enabled: true
@@ -76,8 +81,53 @@ crawler:                               # benign inner pages; robots.txt and Craw
 
 domain_capture:                        # tier C raw facts, captured once per new live domain
   enabled: true
-  max_domains_per_run: 500
+  max_domains_per_run: 1500            # hosts per run: feed phishing first, then legitimate hosts
+  workers: 8                           # hosts captured at once (RDAP servers still get the 1 s politeness delay)
+  job_deadline_s: 300                  # a host still being looked up after this is abandoned (retried next run)
+  checkpoint_every: 25                 # captured hosts are appended to the JSONL after every this many
+  time_budget_s: 5400                  # no new host is started after 1.5 h (the rest waits for the next run)
+  backlog_hours: 48                    # hosts first seen within this window and not yet captured are retried
   rdap_url: "https://rdap.org/domain/{domain}"
+  rdap_retries: 2                      # a failed lookup (rate limit, timeout) is retried on up to 2 later runs
+  dns_resolver: doh                    # DNS over HTTPS to public resolvers that do not filter: the PC's own
+  doh_urls:                            # resolver answers 0.0.0.0 for known phishing hosts (a blocklist verdict)
+    - https://8.8.8.8/resolve          # by IP, so the filtering resolver is never asked for the DoH host
+    - https://1.1.1.1/dns-query
   dns_timeout_s: 5
   tls: true                            # TLS handshake only (no page fetch) to read the certificate
   tls_timeout_s: 8
+  benign:                              # legitimate hosts captured the same way (label 0), so tier C has both classes
+    enabled: true
+    per_run: 400                       # registrable domains per run; each is captured as <domain> and www.<domain>
+    seed: 20261013                     # varied per run (date and half-day), so every run draws new domains
+    skip_top_n: 1000                   # the head of the list is allowlist territory
+    bands:                             # Tranco rank ranges to spread the sample over; rank is never stored or a feature
+      - {from_rank: 1001, to_rank: 10000, share: 0.15}
+      - {from_rank: 10001, to_rank: 100000, share: 0.25}
+      - {from_rank: 100001, to_rank: 1000000, share: 0.60}
+
+ood:                                   # `python -m collector crawl-ood`: legitimate inner pages for the OOD false-positive set
+  seed: 20261012                       # fixed: the same Tranco list and exclusions give the same sample
+  sample_size: 1500                    # registrable domains
+  skip_top_n: 1000                     # head of the Tranco list is skipped (allowlist territory)
+  bands:                               # rank ranges (1-based, inclusive) the sample is spread over; rank is never stored
+    - {from_rank: 1001, to_rank: 10000, share: 0.25}
+    - {from_rank: 10001, to_rank: 50000, share: 0.25}
+    - {from_rank: 50001, to_rank: 200000, share: 0.25}
+    - {from_rank: 200001, to_rank: 1000000, share: 0.25}
+  skip_platforms: true                 # hosting platforms (configs/platforms.yaml) are not sampled
+  exclude_files:                       # in paths.processed_dir (datasets.yaml); the `domain` column is read; missing files are skipped
+    - meta_pool.parquet
+    - meta_time_slice.parquet
+    - meta_heldout_source.parquet
+    - pool.parquet
+    - time_slice.parquet
+    - heldout_source.parquet
+    - eval_only.parquet
+  exclude_crawl_attempts: true         # also skip every site the training crawl tried (paths.crawl_dir)
+  exclude_feed_index: true             # and every domain in the live-feed first-seen index
+  store_html: false                    # URLs and crawl status only; true also fetches and keeps each page's HTML
+  inner_pages_min: 3
+  inner_pages_max: 5
+  checkpoint_every: 25                 # results are saved and a progress line printed after every this many sites
+  lock_stale_s: 3600                   # a lock not refreshed for this long was left by a killed run

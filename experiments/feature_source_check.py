@@ -49,8 +49,9 @@ def eta_squared_within_class(df: pd.DataFrame, name: str) -> float:
     return total / weight if weight else float("nan")
 
 
-def run(processed: Path, out: Path) -> pd.DataFrame:
-    feats = pd.read_parquet(processed / "features_a.parquet")
+def run(processed: Path, out: Path, features_file: str = "features_a.parquet") -> pd.DataFrame:
+    """``features_file``: features_a.parquet (tier A) or features_b.parquet (tier B, HTML rows)."""
+    feats = pd.read_parquet(processed / features_file)
     meta = pd.read_parquet(processed / "pool.parquet", columns=["uid", "label", "source"])
     df = feats.merge(meta, on="uid")
     rows = []
@@ -80,5 +81,10 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--processed", type=Path, default=Path("data/processed"))
     ap.add_argument("--out", type=Path, default=Path("reports/tables/feature_source_check.csv"))
+    ap.add_argument(
+        "--features-file",
+        default="features_a.parquet",
+        help="features_b.parquet checks tier B (also pass --out ..._b.csv)",
+    )
     a = ap.parse_args()
-    run(a.processed, a.out)
+    run(a.processed, a.out, a.features_file)
