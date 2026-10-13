@@ -366,3 +366,12 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   the size of the gain is not established. Needs more captured days (the time check needs 3).
 - Next: let the collector run for more days; rerun `python -m features build --tier C` and
   `python -m experiments.tier_c --with-a` on the staged files.
+
+### 2026-10-13 — Latency of the in-browser model
+- `python -m experiments.latency` (runs `js/bench/latency.mjs` in Node/V8 over the 272 parity URLs, 5 runs):
+  scoring one URL takes a median 1.6 ms (95th percentile 2.3 ms); scoring and explaining it (TreeSHAP reasons)
+  156.5 ms (196.1 ms); start-up per browser session parses the 11.7 MB bundle in 166 ms and builds the model in
+  73 ms (`reports/latency.md`). Backend response times are not measured (network lookups, cached per domain).
+- Blocklist coverage is not measurable on the corpus (the test URLs come from datasets collected in other
+  periods than our live feeds); it can only be measured forward, as the share of newly listed feed URLs whose
+  domain was already on an earlier list, once the collector has run for several days.
