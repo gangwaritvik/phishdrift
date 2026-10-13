@@ -8,6 +8,21 @@ function toSet(list) {
   return new Set(list ?? []);
 }
 
+// The extension ships with an allowlist built at packaging time (extension/data/allowlist.json, from
+// `python -m backend build-lists`), so the most visited sites are allowlisted even before the
+// first sync or when no backend runs. A synced allowlist replaces it once there is one, and a
+// domain on the synced blocklist is never allowed by the bundled list (as in backend/lists.py).
+export function withBundledAllowlist(payload, bundled) {
+  if (payload?.allowlist?.domains?.length || !bundled?.domains?.length) return payload ?? null;
+  const block = payload?.blocklist;
+  let allowlist = bundled;
+  if (block?.domains?.length && block.prefix_bytes === bundled.prefix_bytes) {
+    const blocked = new Set(block.domains);
+    allowlist = { ...bundled, domains: bundled.domains.filter((d) => !blocked.has(d)) };
+  }
+  return { ...(payload ?? {}), allowlist };
+}
+
 export class ListSet {
   // payload: { blocklist: {prefix_bytes, domains, urls}, allowlist: {prefix_bytes, domains} } | null
   constructor(payload, { platforms, psl }) {

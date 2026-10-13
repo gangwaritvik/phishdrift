@@ -9,7 +9,7 @@ import { combine, DANGEROUS, SAFE, SUSPICIOUS } from "./combine.js";
 import { listUrlKey } from "./keys.js";
 import { loadHybrid, scoreUrl } from "./lib/hybrid.js";
 import { isIpHost } from "./lib/urlparts.js";
-import { ListSet } from "./lists.js";
+import { ListSet, withBundledAllowlist } from "./lists.js";
 import { pageFlags } from "./pagefacts.js";
 
 const SYNC_ALARM = "sync-lists";
@@ -51,7 +51,14 @@ function getLists() {
   listsPromise ??= (async () => {
     const model = await getModel();
     const { lists } = await chrome.storage.local.get("lists");
-    return new ListSet(lists ?? null, { platforms: model.lists.platforms, psl: model.lists.psl });
+    let bundled = null;
+    try {
+      bundled = await (await fetch(chrome.runtime.getURL("data/allowlist.json"))).json();
+    } catch {
+      // built without a bundled allowlist: only the synced lists apply
+    }
+    const payload = withBundledAllowlist(lists ?? null, bundled);
+    return new ListSet(payload, { platforms: model.lists.platforms, psl: model.lists.psl });
   })();
   return listsPromise;
 }

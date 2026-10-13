@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { hashPrefix, listDomainKey, listUrlKey } from "../dist/keys.js";
-import { ListSet } from "../dist/lists.js";
+import { readFileSync } from "node:fs";
+
+import { ListSet, withBundledAllowlist } from "../dist/lists.js";
 import { psl as loadPsl } from "./helpers.js";
 import { buildTrie } from "../dist/lib/psl.js";
 
@@ -49,4 +51,22 @@ test("empty or missing lists match nothing; unparsable URLs give no domain", asy
   });
   assert.equal((await empty.check("")).domain, null);
   assert.equal(listDomainKey("http://192.168.0.1/x", psl), "192.168.0.1");
+});
+
+test("the bundled allowlist applies until a synced one exists, and covers big sites", async () => {
+  const bundled = JSON.parse(readFileSync(new URL("../dist/data/allowlist.json", import.meta.url)));
+  const set = new ListSet(withBundledAllowlist(null, bundled), { platforms, psl });
+  for (const url of ["https://web.whatsapp.com/", "https://www.google.com/search?q=x"]) {
+    assert.equal((await set.check(url)).allow, true, url);
+  }
+  assert.equal((await set.check("https://badguy.github.io/")).allow, false);
+  const synced = { allowlist: { prefix_bytes: BYTES, domains: [await h("example.com")] } };
+  assert.equal(withBundledAllowlist(synced, bundled), synced);
+  const blockOnly = { blocklist: { prefix_bytes: BYTES, domains: [], urls: [] }, allowlist: { domains: [] } };
+  assert.equal(withBundledAllowlist(blockOnly, bundled).allowlist, bundled);
+  const google = await h("google.com");
+  const blocked = { blocklist: { prefix_bytes: BYTES, domains: [google], urls: [] } };
+  const merged = withBundledAllowlist(blocked, bundled).allowlist.domains;
+  assert.equal(merged.includes(google), false);
+  assert.equal(merged.length, bundled.domains.length - 1);
 });

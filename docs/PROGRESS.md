@@ -292,3 +292,18 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   page-model figures may be optimistic; the held-out source has no HTML, so the page-model gain is not measured there.
 - Next: tier C needs benign captures from the PC (collector update delivered; first run 2026-10-13 06:15 IST), then
   `python -m features build --tier C` and `python -m experiments.tier_c`; stack/LOSO still on the old brand list.
+
+### 2026-10-13 — False alarm on web.whatsapp.com: bundled allowlist
+- Found by Ritvik's first real-site test: the extension called web.whatsapp.com dangerous. Reproduced with the
+  exported model (score 0.991 against the 0.990 dangerous threshold; reasons all from the char/word text scores).
+  The URL model alone flags 161 of the Tranco top 1,000 homepages (10 as dangerous): the most impersonated brands
+  (facebook, instagram, whatsapp, netflix, microsoftonline) look like phishing to a URL model. Without a backend
+  the extension had no allowlist at all, because lists only arrived by sync.
+- Changed: the extension ships `extension/data/allowlist.json` (Tranco top 50,000 hashed, 49,648 domains after
+  platform removal, built with `python -m backend build-lists --tranco-file`); `withBundledAllowlist` in
+  `extension/src/lists.js` uses it until a synced allowlist exists and drops any synced-blocklist domain from it.
+  Smoke test page-check URL changed from `/b` to `/login` (the re-exported hybrid2 model scores `/b` just under the
+  suspicious threshold). `npm test` 17 pass, e2e smoke passes.
+- Open: sites outside the top 50,000 still meet the model's measured false-alarm rate on natural pages
+  (`reports/blend_ood.md`, about 4-5% at the 1% threshold), and brand sites outside the list (regional banks)
+  are the riskiest. Reported OOD FPR stays measured with the allowlist disabled, as the spec requires.
