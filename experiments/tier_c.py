@@ -75,8 +75,18 @@ CLASS_NAMES = {0: "benign", 1: "phishing"}
 # --- data ------------------------------------------------------------------------------
 
 
-def eligible(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """(eligible rows, removals per filter and class). Filters run in this order."""
+def capture_lag_h(df: pd.DataFrame) -> pd.Series:
+    """Hours from first seen (feed or benign draw) to the capture used; NaN when unknown."""
+    first = pd.to_datetime(df["first_seen"], utc=True, errors="coerce")
+    captured = pd.to_datetime(df["captured_at"], utc=True, errors="coerce")
+    return (captured - first).dt.total_seconds() / 3600
+
+
+def eligible(df: pd.DataFrame, max_lag_h: float | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(eligible rows, removals per filter and class). Filters run in this order.
+    ``max_lag_h``: drop hosts captured more than this many hours after they were first seen,
+    so both classes are measured at the same age (a host re-captured a day later, e.g. after
+    the PC's resolver blocked the first try, may already be suspended or taken down)."""
     steps = [
         ("label not 0/1", lambda d: ~d["label"].isin([0, 1])),
         ("hosting platform", lambda d: d["is_hosting_platform"].astype(bool)),
@@ -84,6 +94,13 @@ def eligible(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         ("filtered by the PC's resolver", lambda d: d["filtered"].astype(bool)),
         ("not resolving", lambda d: ~d["resolves"].fillna(False).astype(bool)),
     ]
+    if max_lag_h is not None:
+        steps.append(
+            (
+                f"captured more than {max_lag_h:g} h after first seen",
+                lambda d: (capture_lag_h(d) > max_lag_h).fillna(False),
+            ),
+        )
     rows = []
     cur = df
     for name, drop in steps:
@@ -512,7 +529,7 @@ def run(
     tables = reports / "tables"
     tables.mkdir(parents=True, exist_ok=True)
     out_md = reports / "tier_c.md"
-    df, filters = eligible(pd.read_parquet(features))
+    df, filters = eligible(pd.read_parquet(features), cc.get("max_capture_lag_h"))
     notes: list[str] = []
     if with_a:
         if processed is None:

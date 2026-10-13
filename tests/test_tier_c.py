@@ -193,3 +193,28 @@ def test_with_a_on_a_tiny_pool(features_c, tmp_path):
     assert {"a_host", "c+a_host"} <= set(runs["model"]) | set(runs["features"])
     filters = pd.read_csv(reports / "tables" / "tier_c_filters.csv").set_index("filter")
     assert filters.loc["domain in the tier A pool (--with-a)", "phishing"] == 1
+
+
+def test_hosts_captured_long_after_first_seen_are_dropped():
+    df = pd.DataFrame(
+        {
+            "host": ["a.xyz", "b.xyz", "c.com"],
+            "domain": ["a.xyz", "b.xyz", "c.com"],
+            "label": [1, 1, 0],
+            "is_hosting_platform": [False] * 3,
+            "is_ip": [False] * 3,
+            "filtered": [False] * 3,
+            "resolves": [True] * 3,
+            "first_seen": ["2026-10-12T00:00:00+00:00", "2026-10-12T00:00:00+00:00", None],
+            "captured_at": [
+                "2026-10-12T00:30:00+00:00",  # 0.5 h: kept
+                "2026-10-12T10:00:00+00:00",  # 10 h: dropped
+                "2026-10-12T05:00:00+00:00",  # first seen unknown: kept
+            ],
+        }
+    )
+    out, filters = tier_c.eligible(df, max_lag_h=2)
+    assert sorted(out["host"]) == ["a.xyz", "c.com"]
+    assert filters.iloc[-1]["phishing"] == 1
+    out, _ = tier_c.eligible(df)  # no limit: all kept
+    assert len(out) == 3
