@@ -366,3 +366,29 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   the size of the gain is not established. Needs more captured days (the time check needs 3).
 - Next: let the collector run for more days; rerun `python -m features build --tier C` and
   `python -m experiments.tier_c --with-a` on the staged files.
+
+### 2026-10-13 — Latency of the in-browser model
+- `python -m experiments.latency` (runs `js/bench/latency.mjs` in Node/V8 over the 272 parity URLs, 5 runs):
+  scoring one URL takes a median 1.6 ms (95th percentile 2.3 ms); scoring and explaining it (TreeSHAP reasons)
+  156.5 ms (196.1 ms); start-up per browser session parses the 11.7 MB bundle in 166 ms and builds the model in
+  73 ms (`reports/latency.md`). Backend response times are not measured (network lookups, cached per domain).
+- Blocklist coverage is not measurable on the corpus (the test URLs come from datasets collected in other
+  periods than our live feeds); it can only be measured forward, as the share of newly listed feed URLs whose
+  domain was already on an earlier list, once the collector has run for several days.
+
+### 2026-10-13 — Shipped extension on natural legitimate pages (offline real-world check)
+- `python -m experiments.shipped_verdicts` (runs `js/bench/verdicts.mjs`: bundled allowlist, then the tier A
+  model at its suspicious and dangerous thresholds, in the order of `background.js`; blocklist, backend and
+  page layers not applied; no page visited). On the 2,555 usable natural pages (562 sites): allowlist covers
+  1,072 (42.0%); model alone flags 115 (4.5%); shipped 71 (2.8%: 64 suspicious, 7 dangerous, 38 domains);
+  71 of the 1,483 pages on sites outside the top 50,000 (4.8%). On the Tranco top 1,000 homepages 941 are
+  allowlisted; the other 59 are shared-hosting/CDN/shortener domains left out by design (`reports/shipped_verdicts.md`).
+- This is a measurement on known-legitimate URLs, not a browsing test: the real-site check still needs
+  Ritvik's own browsing (false-alarm screenshots) and the sandbox cannot open real sites.
+
+### 2026-10-13 — Tier B leakage checks on the HTML rows
+- `python -m experiments.tier_b_checks` (10 splits, one file per split in `reports/tables/tier_b_checks/`):
+  `ab_lgbm` test ROC-AUC 0.9928; shuffled-label control mean 0.5071 (not flagged); the 84 HTML features alone
+  0.9853 on test and 0.9573 on the time slice; 2.15% of test rows have an exact HTML-feature twin in train,
+  and without them the ROC-AUC is 0.9921 (`reports/tier_b_checks.md`). No sign of leakage, but still a
+  single-source result (PhreshPhish) with no held-out source that has HTML.

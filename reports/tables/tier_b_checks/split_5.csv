@@ -1,0 +1,8 @@
+split,model,eval_set,n_urls,n_domains,roc_auc,n_twins
+5,ab_lgbm,test,25969,18339,0.9941308741691057,
+5,ab_lgbm,time_slice,62388,46891,0.982429627511679,
+5,ab_lgbm,test:no_twin,25422,18009,0.9936535360086763,547.0
+5,ab_lgbm_shuffled,test,25969,18339,0.46980244535264926,
+5,ab_lgbm_shuffled,time_slice,62388,46891,0.4543787698209488,
+5,b_only,test,25969,18339,0.9876159301528574,
+5,b_only,time_slice,62388,46891,0.956804564161676,
