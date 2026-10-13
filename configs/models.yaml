@@ -103,3 +103,11 @@ tier_c:                               # experiments/tier_c.py: domain/DNS/TLS fe
     subsample_freq: 1
     colsample_bytree: 0.8
     reg_lambda: 1.0
+
+robustness:                           # experiments/robustness.py: URL evasion families (attacks/), hybrid2 model
+  splits: [0, 1, 2, 3, 4, 5]          # split k trains the adversarial model without family families[k % 6]
+  seed: 7                             # transform seed
+  train_fraction: 0.12                # share of train rows (both classes) given one variant per training family
+  eval_phishing: 4000                 # test phishing URLs per family (same rows for every family)
+  eval_benign: 6000                   # test benign URLs per family for the false-alarm side
+  long_url_quantile: 0.95             # "long legitimate URLs" = benign test URLs above this length quantile
