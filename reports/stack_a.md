@@ -8,8 +8,8 @@ applied to the set.
 
 | set | splits | URLs | domains | ROC-AUC | recall @1% FPR | recall @0.1% FPR | suspicious: recall / FPR | dangerous: recall / FPR | Brier | ECE |
 |---|---|---|---|---|---|---|---|---|---|---|
-| test | 10 | 84,036 | 71,044 | 0.9490 [0.9465, 0.9499] | 66.5 [65.0, 67.2] | 46.3 [44.2, 47.8] | 66.3 / 1.0 | 45.7 / 0.1 | 0.0682 | 0.0038 |
-| time_slice | 10 | 80,653 | 58,054 | 0.9706 [0.9701, 0.9711] | 72.3 [71.9, 72.9] | 54.6 [53.7, 55.1] | 75.5 / 1.4 | 55.2 / 0.1 | 0.0568 | 0.0109 |
-| heldout_source | 10 | 59,485 | 33,056 | 0.9560 [0.9542, 0.9569] | 70.8 [69.1, 72.2] | 47.1 [45.8, 48.2] | 78.3 / 2.4 | 48.3 / 0.1 | 0.0821 | 0.0371 |
+| test | 10 | 84,036 | 71,044 | 0.9490 [0.9465, 0.9499] | 66.5 [65.1, 67.4] | 46.3 [44.5, 47.8] | 66.3 / 1.0 | 45.8 / 0.1 | 0.0681 | 0.0039 |
+| time_slice | 10 | 80,653 | 58,054 | 0.9706 [0.9702, 0.9710] | 72.4 [71.9, 72.7] | 54.5 [53.7, 55.4] | 75.3 / 1.4 | 55.1 / 0.1 | 0.0569 | 0.0110 |
+| heldout_source | 10 | 59,485 | 33,056 | 0.9562 [0.9546, 0.9572] | 71.2 [68.7, 72.5] | 47.9 [46.0, 49.3] | 78.3 / 2.4 | 48.7 / 0.1 | 0.0819 | 0.0369 |
 
-Meta-model weights (median over splits; inputs are base-learner log-odds): lightgbm 0.186, xgboost 0.407, char_ngram 0.762, intercept 0.525.
+Meta-model weights (median over splits; inputs are base-learner log-odds): lightgbm 0.168, xgboost 0.424, char_ngram 0.761, intercept 0.526.

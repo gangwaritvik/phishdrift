@@ -16,8 +16,15 @@ address is `http://127.0.0.1:8000` (`src/config.js`, overridable in `chrome.stor
 
 ## How a page is checked (cheapest first)
 
-1. User trust ("Trust this site" in the popup) and the synced allowlist: safe, nothing else runs.
-   Shared hosting platforms are never allowlisted.
+1. User trust ("Trust this site" in the popup) and the allowlist: safe, nothing else runs.
+   Shared hosting platforms are never allowlisted. The extension ships with an allowlist
+   (`extension/data/allowlist.json`, Tranco top 50,000, hashed) so it works before the first sync
+   and without a backend; a synced allowlist replaces it, and a synced blocklist entry always
+   removes a domain from it. Rebuild it with
+   `python -m backend build-lists --tranco-file FILE --out DIR` and copy `DIR/allowlist.json`.
+   The URL model alone flags 161 of the Tranco top 1,000 homepages (facebook.com, instagram.com,
+   whatsapp.com, netflix.com, ...: the most impersonated brands look like phishing to it), so this
+   layer is load-bearing, not optional.
 2. Synced hashed blocklist (6-byte sha256 prefixes of the registrable domain; on shared hosts of the
    full URL): dangerous.
 3. URL model on the device (`lib/hybrid.js`, the hybrid tier A model, about 2 ms per URL): safe,

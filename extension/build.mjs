@@ -24,6 +24,13 @@ cpSync(join(jsRoot, "src"), join(dist, "lib"), { recursive: true });
 for (const file of ["tier_a_hybrid.json", "psl_icann.json"]) {
   cpSync(join(jsRoot, "data", file), join(dist, "data", file));
 }
+// Allowlist shipped with the extension (Tranco top N, hashed), written by
+// `python -m backend build-lists --tranco-file FILE --out DIR` and copied to extension/data/.
+if (existsSync(join(here, "data", "allowlist.json"))) {
+  cpSync(join(here, "data", "allowlist.json"), join(dist, "data", "allowlist.json"));
+} else {
+  console.warn("extension/data/allowlist.json is missing: the extension relies on synced lists only");
+}
 // Node needs this to treat dist/*.js as modules in the tests; Chrome ignores it.
 writeFileSync(join(dist, "package.json"), '{ "type": "module" }\n');
 console.log("built", dist);

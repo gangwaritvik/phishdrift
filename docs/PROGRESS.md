@@ -4,20 +4,18 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 
 ## Status
 
-- Current step: milestone 9 skeleton (backend + extension, local smoke-tested) added after PR #15 merged; milestones 4-5 for tier A (training, stacking, calibration) and milestone 8 (JS port +
-  parity) done in the cloud on files copied from the PC. Milestones 1-2 done. Milestone 3 (HTML) waits for
-  Ritvik's go and PC access.
-- Waiting on the PC (Ritvik has no PC access for now): 12-hourly collector schedule (live feed has 245 URLs),
-  tier B HTML extraction from the 10 GB pool, a held-out source with HTML, Phish360, one-time list review.
+- Done: milestones 1-5 (data, tier A and tier B features, training, stack, calibration), 8 (JS port +
+  parity), the blend (tier B when a page has usable HTML, else tier A) and the false-alarm check on natural
+  pages; milestone 9 skeleton (backend + extension), first real-site test on 2026-10-13; tier C capture and
+  features (milestone 7) with a preliminary, granularity-limited experiment. Report draft written.
+- Running on the PC: collector every 12 h (06:15 and 18:15 IST) capturing both classes for tier C.
+- Next: tier C on the fresh captures, real-site extension check, robustness section, report.
 - Deadline: Monday 2026-10-19 (Ritvik, 2026-10-12). Tier C is kept (cut the LLM layer first).
 
 ## Open decisions
 
-- Exact deadline date
-- Prior study artifacts (crawler benign pools, natural legitimate harvest, platform list): available?
-  If not, `configs/platforms.yaml` is built from published lists and the OOD set is crawled fresh.
-- Phish360 download access (held-out source; Phish-Blitz is the fallback)
-- Brand list for squatting features (which Indian banks / payment apps)
+- Phish360 has no public download, so the held-out source is PhishStorm (URL only); tier B has no held-out
+  source.
 - Whether to attempt Tier 4 (brand matching) or keep it as future work
 
 ## Log
@@ -292,3 +290,33 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   page-model figures may be optimistic; the held-out source has no HTML, so the page-model gain is not measured there.
 - Next: tier C needs benign captures from the PC (collector update delivered; first run 2026-10-13 06:15 IST), then
   `python -m features build --tier C` and `python -m experiments.tier_c`; stack/LOSO still on the old brand list.
+
+### 2026-10-13 — False alarm on web.whatsapp.com: bundled allowlist
+- Found by Ritvik's first real-site test: the extension called web.whatsapp.com dangerous. Reproduced with the
+  exported model (score 0.991 against the 0.990 dangerous threshold; reasons all from the char/word text scores).
+  The URL model alone flags 161 of the Tranco top 1,000 homepages (10 as dangerous): the most impersonated brands
+  (facebook, instagram, whatsapp, netflix, microsoftonline) look like phishing to a URL model. Without a backend
+  the extension had no allowlist at all, because lists only arrived by sync.
+- Changed: the extension ships `extension/data/allowlist.json` (Tranco top 50,000 hashed, 49,648 domains after
+  platform removal, built with `python -m backend build-lists --tranco-file`); `withBundledAllowlist` in
+  `extension/src/lists.js` uses it until a synced allowlist exists and drops any synced-blocklist domain from it.
+  Smoke test page-check URL changed from `/b` to `/login` (the re-exported hybrid2 model scores `/b` just under the
+  suspicious threshold). `npm test` 17 pass, e2e smoke passes.
+- Open: sites outside the top 50,000 still meet the model's measured false-alarm rate on natural pages
+  (`reports/blend_ood.md`, about 4-5% at the 1% threshold), and brand sites outside the list (regional banks)
+  are the riskiest. Reported OOD FPR stays measured with the allowlist disabled, as the spec requires.
+
+### 2026-10-13 — Stack and LOSO refreshed on the reviewed brand list; summary tables; report draft
+- Reran `experiments.stack_a` (10 splits) and `experiments.loso` (splits 0-2) on the rebuilt features with the
+  reviewed brand list, 4 processes in parallel (`PHISHDRIFT_THREADS=1`, one reports dir each, then merged).
+  Changes are small: stack test 66.5 / 46.3 (unchanged), held-out PhishStorm 71.2 / 47.9 (was 70.8 / 47.1),
+  time slice 72.4 / 54.5 (`reports/stack_a.md`); leaving out PhreshPhish the cal-side 1% threshold now gives
+  20.1% FPR (was 20.6%) and the `tld_risk` baseline still beats both models there (`reports/loso.md`).
+- New `experiments/summary_tables.py` -> `reports/summary.md`: precision, F1, recall and FPR at the cal-side
+  thresholds for every model and set, and the depth-matched tier A table, built from the per-split run tables
+  only (no training). Test in `tests/test_summary_tables.py`.
+- `reports/hybrid_checks.md` labelled the URL count as domains; it now gives both.
+- Report draft (all sections, numbers copied from `reports/` with a source line each, TODO list and a list of
+  inconsistencies between result files) in the project folder: `phishdrift/report/report_draft.md`.
+- Running: address-only (normalised URL) check and shuffled-label control for hybrid2 (`--variant hybrid2`).
+- Next: tier C rerun after the 18:15 IST collector run; fix the report draft's open inconsistencies.
