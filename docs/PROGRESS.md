@@ -4,20 +4,18 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 
 ## Status
 
-- Current step: milestone 9 skeleton (backend + extension, local smoke-tested) added after PR #15 merged; milestones 4-5 for tier A (training, stacking, calibration) and milestone 8 (JS port +
-  parity) done in the cloud on files copied from the PC. Milestones 1-2 done. Milestone 3 (HTML) waits for
-  Ritvik's go and PC access.
-- Waiting on the PC (Ritvik has no PC access for now): 12-hourly collector schedule (live feed has 245 URLs),
-  tier B HTML extraction from the 10 GB pool, a held-out source with HTML, Phish360, one-time list review.
+- Done: milestones 1-5 (data, tier A and tier B features, training, stack, calibration), 8 (JS port +
+  parity), the blend (tier B when a page has usable HTML, else tier A) and the false-alarm check on natural
+  pages; milestone 9 skeleton (backend + extension), first real-site test on 2026-10-13; tier C capture and
+  features (milestone 7) with a preliminary, granularity-limited experiment. Report draft written.
+- Running on the PC: collector every 12 h (06:15 and 18:15 IST) capturing both classes for tier C.
+- Next: tier C on the fresh captures, real-site extension check, robustness section, report.
 - Deadline: Monday 2026-10-19 (Ritvik, 2026-10-12). Tier C is kept (cut the LLM layer first).
 
 ## Open decisions
 
-- Exact deadline date
-- Prior study artifacts (crawler benign pools, natural legitimate harvest, platform list): available?
-  If not, `configs/platforms.yaml` is built from published lists and the OOD set is crawled fresh.
-- Phish360 download access (held-out source; Phish-Blitz is the fallback)
-- Brand list for squatting features (which Indian banks / payment apps)
+- Phish360 has no public download, so the held-out source is PhishStorm (URL only); tier B has no held-out
+  source.
 - Whether to attempt Tier 4 (brand matching) or keep it as future work
 
 ## Log

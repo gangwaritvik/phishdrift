@@ -6,8 +6,8 @@ settings in `configs/backend.yaml` (RDAP URL and DNS/TLS timeouts are reused fro
 
 **Status: placeholder.** The signals and risk levels come from hand-set threshold rules
 (`backend/checks.py`, thresholds in `configs/backend.yaml` under `rules`). They are not a trained
-tier C model (that model is on the cut list) and nothing here has been validated against labelled
-data. `/score` therefore always returns `"tier_c_model": false`.
+tier C model (tier C is built offline in `experiments/tier_c.py` and is not wired into the
+backend yet), and nothing here has been validated against labelled data. `/score` therefore always returns `"tier_c_model": false`.
 
 ## Run
 
