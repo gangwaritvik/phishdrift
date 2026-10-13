@@ -320,3 +320,49 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   inconsistencies between result files) in the project folder: `phishdrift/report/report_draft.md`.
 - Running: address-only (normalised URL) check and shuffled-label control for hybrid2 (`--variant hybrid2`).
 - Next: tier C rerun after the 18:15 IST collector run; fix the report draft's open inconsistencies.
+
+### 2026-10-13 — Hybrid2 representation check and shuffled-label control
+- `python -m experiments.hybrid_checks --variant hybrid2` over 10 splits (4 processes in parallel):
+  test URLs normalised to `https://www.<registrable domain>` give ROC-AUC 0.8697 [0.8682, 0.8715], recall
+  44.3 / 29.8 at FPR 1% / 0.1% (raw test 0.9536); shuffled-label control mean ROC-AUC 0.4940, not flagged
+  (`reports/hybrid2_checks.md`, per-split files in `reports/tables/hybrid2_checks/`). Same picture as the first hybrid.
+- Still missing for the evaluation list: checks for the tier B model and the blend, the adversarial section,
+  blocklist coverage, latency, real-site check.
+
+### 2026-10-13 — Robustness section: six URL evasion families (milestone 6 item)
+- New `attacks/` (homoglyph/punycode, subdomain stuffing, brand injection, path/query padding and encoding,
+  shortener wrapping, TLD swap + hyphenation; deterministic, tests in `tests/test_attacks.py`) and
+  `experiments/robustness.py` (`robustness` block in `configs/models.yaml`). Per split: hybrid2 trained clean
+  (`base`, the model in the extension) and hybrid2 trained with one variant of 12% of the train rows (both
+  classes) for every family except the held-out one (split k holds out family k mod 6); variants keep their
+  parent's domain and are in training only. Thresholds are the clean cal-side 1% / 0.1% FPR points.
+  Evaluated on 4,000 test phishing and 6,000 test legitimate URLs per family. 6 splits (not 10: each split
+  trains two models, about 1 hour); one run was killed by the container's memory limit and rerun.
+- Results (`reports/robustness.md`, median over 6 splits): clean recall at FPR 1% / 0.1% is 69.6 / 52.1 for
+  `base` and 68.6 / 50.2 for `adv`. The base model is hard to evade with these rewrites (subdomain stuffing
+  2.4% evade, padding 1.3%, shortener 2.9% at the suspicious threshold, against 30.5% for unmodified phishing)
+  because it flags the artefacts themselves: it also flags 63.5% (subdomain stuffing), 72.5% (padding) and
+  97.2% (shortener) of legitimate URLs rewritten the same way. Adversarial training with both classes removes
+  that (1.1-2.1% false alarms on seen families, shortener 0.0%) and brings evasion back to the clean rate
+  (32-41%; shortener 100%, a short link carries nothing for a URL model). A held-out family gets neither
+  benefit: false alarms and evasion stay at the base model's level (one split per family).
+- Reading: the base model's apparent robustness is over-suspicion, not understanding; the extension needs the
+  allowlist and shortener expansion / blocklist layers for real traffic. Rewrites are synthetic (random lure
+  words, brands from our own list); real attacker URLs may differ.
+- Not done: blocklist coverage, latency, real-site check, tier B robustness.
+
+### 2026-10-13 — Tier C on the 12:45 UTC capture (first run with both classes and the capture-lag filter)
+- Capture (`data/interim/domain_info/2026-10-12.jsonl`, `2026-10-13.jsonl`): 1,668 legitimate and 460 phishing
+  hosts. Eligible after filters (platform 331 phishing, PC resolver 49, not resolving 269 benign / 18 phishing,
+  captured more than 2 h after first seen 83 phishing, tier A pool overlap 29 / 21): 1,369 benign hosts
+  (741 domains) and 119 phishing hosts (91 domains); median capture 0.2 h / 0.1 h after first seen.
+- Results (`reports/tier_c.md`, median of 10 domain-grouped splits, test side 24 phishing / 275 benign hosts):
+  tier C LightGBM ROC-AUC 0.778 [0.623, 0.905]; domain age alone 0.614; the tier A model on the bare host
+  0.797; tier C plus that score 0.866 [0.658, 0.909]. Shuffled-label control 0.519, not flagged. Recall at FPR
+  1% / 0.1% is 25.0 / 20.8 for tier C and 25.0 / 22.9 combined, but every fixed-FPR point is granularity-limited
+  (2 false positives allowed at 1% on the cal side), so treat them as unmeasured. Top features:
+  `days_since_rdap_change` 16.1%, `domain_age_days` 13.2%, `cert_age_days` 11.7%.
+- Reading: tier C carries signal beyond domain age and adds to the address model, but with 119 phishing hosts
+  the size of the gain is not established. Needs more captured days (the time check needs 3).
+- Next: let the collector run for more days; rerun `python -m features build --tier C` and
+  `python -m experiments.tier_c --with-a` on the staged files.

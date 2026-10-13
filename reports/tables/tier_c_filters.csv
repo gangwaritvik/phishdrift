@@ -1,0 +1,8 @@
+filter,benign,phishing,other
+label not 0/1,0,0,0
+hosting platform,1,331,0
+IP host,0,0,0
+filtered by the PC's resolver,0,49,0
+not resolving,269,18,0
+captured more than 2 h after first seen,0,83,0
+domain in the tier A pool (--with-a),29,21,0

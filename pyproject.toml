@@ -34,7 +34,7 @@ phishdrift-build = "data_pipeline.__main__:main"
 phishdrift-features = "features.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["phishdrift*", "collector*", "data_pipeline*", "features*", "models*", "experiments*", "backend*"]
+include = ["phishdrift*", "collector*", "data_pipeline*", "features*", "models*", "experiments*", "backend*", "attacks*"]
 
 [tool.ruff]
 line-length = 100
