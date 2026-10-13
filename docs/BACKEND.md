@@ -29,9 +29,9 @@ non-ASCII (send punycode). It is lowercased and one trailing dot is dropped; any
 | `POST /domain-info` | `{"domain"}` | `{"domain", "cached", "facts", "signals", "risk", "error"}` |
 | `POST /score` | `{"domain", "local_verdict": 0\|1\|2}` | `{"domain", "risk", "signals", "tier_c_model": false, "cached"}` |
 | `POST /feedback` | `{"domain", "kind": "false_positive"\|"missed_phish", "verdict": 0\|1\|2}` | `{"ok": true}` |
-| `GET /lists/manifest` | | `{"version", "built_at", "prefix_bytes", "counts": {"blocklist_domains", "blocklist_urls", "allowlist_domains"}}` |
+| `GET /lists/manifest` | | `{"version", "built_at", "prefix_bytes", "counts": {"blocklist_domains", "blocklist_urls", "allowlist_domains", "open_hosting_domains"}}` |
 | `GET /lists/blocklist.json` | | `{"version", "prefix_bytes", "domains": [hex], "urls": [hex]}` |
-| `GET /lists/allowlist.json` | | `{"version", "prefix_bytes", "domains": [hex]}` |
+| `GET /lists/allowlist.json` | | `{"version", "prefix_bytes", "domains": [hex], "open_hosting": [zone]}` |
 
 `facts`: `age_days, registered, resolves, has_mx, has_spf, has_dmarc, tls_ok, tls_verified,
 cert_age_days, cert_free_issuer, san_count`; each is `null` when unknown (a failed lookup is
@@ -89,9 +89,22 @@ list), or the host itself when it has no registrable domain (`localhost`, a bare
 
 Blocklist: phishing URLs (label 1 or threat `phishing`) from `data/raw/feeds/*/*.parquet`, plus all
 URLs of `data/raw/blocklists/*/*.parquet` (blocklist-only feeds such as URLhaus), de-duplicated. A
-URL whose registrable domain is in `configs/platforms.yaml` goes to `urls` (hash of
-`list_url_key`) and its domain is not listed; every other URL adds its domain hash to `domains`.
+URL goes to `urls` (hash of `list_url_key`) when its registrable domain is in
+`configs/platforms.yaml`, is an allowlist candidate, or its host lies in an open-hosting zone;
+every other URL adds its domain hash to `domains`.
 Allowlist: the first `lists.allowlist_top_n` Tranco entries (from `--tranco-file`, one `domain` or
 `rank,domain` per line, or the `tranco` package; with neither, the allowlist is empty and the build
-continues), minus platform domains, minus any blocklisted domain. Rank only cuts the list; it is
-never a feature.
+continues), minus platform domains, minus whole-domain open-hosting zones, minus any blocklisted
+domain. Rank only cuts the list; it is never a feature.
+
+Open hosting (learned, `lists.open_hosting` in `configs/backend.yaml`): every phishing host below an
+allowlist candidate marks the child of the registrable domain that contains it as a zone
+(`x.swedencentral.cloudapp.azure.com` -> `cloudapp.azure.com`, `drive.google.com`). When phishing
+sits under at least `min_tenant_children` different children with at least `min_children_per_url`
+children per phishing URL (one tenant per subdomain, as on `weebly.com`), the whole registrable
+domain is the zone. Inside a zone the allowlist does not apply and bad URLs are listed one by one,
+so `www.google.com` stays allowlisted while `drive.google.com` is judged by the model. The phishing
+URLs are the blocklist's plus any `--phishing-file` (for example the corpus's
+`data/processed/meta_pool.parquet`, used only for this, never blocklisted). The zones are plain
+public hosting names in `open_hosting`. A host nobody has abused yet in the data is not a zone.
+The extension lets an exact `urls` hit override the allowlist (one bad download on `github.com`).

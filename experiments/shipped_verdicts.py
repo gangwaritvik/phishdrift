@@ -105,8 +105,9 @@ def render(rows: list[dict], flagged: pd.DataFrame) -> str:
         "is higher than for an average browsing history; the last column is the rate a visitor "
         "meets on sites outside the top 50,000.",
         "- The Tranco rows not on the allowlist are shared-hosting, CDN and shortener domains "
-        "(amazonaws.com, github.io, bit.ly, ...) that the allowlist leaves out by design, so a "
-        "page there is judged by the model or the blocklist.",
+        "(amazonaws.com, github.io, bit.ly, ...) and open-hosting domains learned from phishing "
+        "hosts (weebly.com, ...) that the allowlist leaves out by design, so a page there is "
+        "judged by the model or the blocklist.",
         "- The model's own false-alarm rate on these pages with the allowlist off is the "
         "`model alone` column (also in `reports/ood_fpr.md`).",
         "",

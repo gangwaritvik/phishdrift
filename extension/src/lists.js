@@ -1,11 +1,23 @@
 // Allowlist and blocklist lookups against the synced hashed lists (backend/lists.py builds them).
 // Matching never leaves the device. On shared hosting platforms the blocklist is matched on the
-// full URL, never the domain, and the allowlist does not apply.
+// full URL, never the domain, and the allowlist does not apply. Shared hosting is the platform list
+// (configs/platforms.yaml, bundled with the model) plus the "open hosting" zones the list builder
+// learned from phishing hosts below allowlisted domains (allowlist.open_hosting, for example
+// cloudapp.azure.com or drive.google.com; backend/lists.py `open_hosting_zones`).
 
 import { hashPrefix, listDomainKey, listUrlKey } from "./keys.js";
 
 function toSet(list) {
   return new Set(list ?? []);
+}
+
+// Mirrors backend/lists.py `in_zone`: the host is a zone or lies below one.
+export function inZone(host, zones) {
+  if (zones.has(host)) return true;
+  for (let i = host.indexOf("."); i !== -1; i = host.indexOf(".", i + 1)) {
+    if (zones.has(host.slice(i + 1))) return true;
+  }
+  return false;
 }
 
 // The extension ships with an allowlist built at packaging time (extension/data/allowlist.json, from
@@ -24,7 +36,8 @@ export function withBundledAllowlist(payload, bundled) {
 }
 
 export class ListSet {
-  // payload: { blocklist: {prefix_bytes, domains, urls}, allowlist: {prefix_bytes, domains} } | null
+  // payload: { blocklist: {prefix_bytes, domains, urls},
+  //            allowlist: {prefix_bytes, domains, open_hosting} } | null
   constructor(payload, { platforms, psl }) {
     this.version = payload?.blocklist?.version ?? null;
     this.blockBytes = payload?.blocklist?.prefix_bytes ?? 0;
@@ -32,6 +45,7 @@ export class ListSet {
     this.blockDomains = toSet(payload?.blocklist?.domains);
     this.blockUrls = toSet(payload?.blocklist?.urls);
     this.allowDomains = toSet(payload?.allowlist?.domains);
+    this.openHosting = toSet(payload?.allowlist?.open_hosting);
     this.platforms = platforms;
     this.psl = psl;
   }
@@ -40,15 +54,16 @@ export class ListSet {
   async check(url) {
     const domain = listDomainKey(url, this.psl);
     if (!domain) return { domain: null, shared: false, trustKey: null, allow: false, blocked: null };
-    const shared = this.platforms.has(domain);
+    const host = listUrlKey(url).split(/[/?:]/)[0];
+    const shared = this.platforms.has(domain) || inZone(host, this.openHosting);
     let blocked = null;
     let allow = false;
-    if (shared) {
-      if (this.blockBytes && this.blockUrls.size) {
-        if (this.blockUrls.has(await hashPrefix(listUrlKey(url), this.blockBytes))) blocked = "url";
-      }
-    } else {
-      if (this.blockBytes && this.blockDomains.size) {
+    // Full-URL entries: platform and open-hosting URLs, and bad URLs on allowlisted sites.
+    if (this.blockBytes && this.blockUrls.size) {
+      if (this.blockUrls.has(await hashPrefix(listUrlKey(url), this.blockBytes))) blocked = "url";
+    }
+    if (!shared) {
+      if (!blocked && this.blockBytes && this.blockDomains.size) {
         if (this.blockDomains.has(await hashPrefix(domain, this.blockBytes))) blocked = "domain";
       }
       if (this.allowBytes && this.allowDomains.size) {
@@ -56,7 +71,7 @@ export class ListSet {
       }
     }
     // A user's own "trust this site" is keyed by domain, or by the exact host on shared platforms.
-    const trustKey = shared ? listUrlKey(url).split(/[/?:]/)[0] : domain;
+    const trustKey = shared ? host : domain;
     return { domain, shared, trustKey, allow, blocked };
   }
 }

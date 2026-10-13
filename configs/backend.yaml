@@ -33,6 +33,13 @@ lists:
   out_dir: data/lists
   prefix_bytes: 6                # hash = sha256(key)[:2 * prefix_bytes] as hex
   allowlist_top_n: 50000         # Tranco rank only cuts the list; never a model feature
+  # Open hosting (backend/lists.py): a phishing host below an allowlisted domain makes the child
+  # zone that contains it (cloudapp.azure.com, drive.google.com) open: no allowlist there, blocklist
+  # by full URL. The whole domain is open when phishing sits under this many different children
+  # with at least this many children per phishing URL (one tenant per subdomain, as on weebly.com).
+  open_hosting:
+    min_tenant_children: 3
+    min_children_per_url: 0.5
 
 rules:                           # placeholder heuristics, see backend/checks.py
   very_young_domain_days: 7

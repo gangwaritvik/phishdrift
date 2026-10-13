@@ -392,3 +392,38 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   0.9853 on test and 0.9573 on the time slice; 2.15% of test rows have an exact HTML-feature twin in train,
   and without them the ROC-AUC is 0.9921 (`reports/tier_b_checks.md`). No sign of leakage, but still a
   single-source result (PhreshPhish) with no held-out source that has HTML.
+
+### 2026-10-13 — Allowlist: learned open-hosting zones (Ritvik: "fix allow list")
+- Found with a 21-link sample test: a fresh OpenPhish URL on `*.swedencentral.cloudapp.azure.com` showed safe,
+  because the allowlist trusted all of `azure.com`. Also found: the list builder blocked a whole allowlisted domain
+  for one bad URL (URLhaus lists `github.com/<user>/.../a.exe`, so `github.com` would be blocked after a sync).
+- Changed (`backend/lists.py`, `configs/backend.yaml` `lists.open_hosting`, `extension/src/lists.js`,
+  `extension/src/combine.js`): every phishing host below an allowlisted domain marks the child zone that contains
+  it (`cloudapp.azure.com`, `drive.google.com`); many one-URL children make the whole domain a zone (`weebly.com`).
+  No addresses are written by hand: zones come from the feeds plus the corpus's phishing URLs
+  (`--phishing-file`, never blocklisted). Inside a zone the allowlist does not apply and bad URLs are listed one by
+  one; allowlisted domains are never blocked as a whole; an exact listed URL overrides the allowlist.
+- Results: bundled allowlist rebuilt from Tranco top 50,000 + the PC's feeds and URLhaus + pool phishing: 49,564
+  domains, 341 zones (42 whole domains); `www.google.com`, `web.whatsapp.com`, `portal.azure.com` stay allowlisted.
+  The azure link is now suspicious (it was used to learn its zone, so this is not an independent test). Natural
+  pages unchanged (71 of 2,555 flagged); Tranco top 1,000: 934 allowlisted, 58 flagged (`reports/shipped_verdicts.md`).
+- Limit: a hosting zone nobody has abused in our data is still trusted until it appears in a feed.
+
+### 2026-10-13 — Blend checks: normalised addresses and shuffled-label control
+- `python -m experiments.blend_checks` (10 splits, one file per split in `reports/tables/blend_checks/`). Test
+  ROC-AUC 0.9618 (HTML rows 0.9958, others 0.9335). With every address feature taken from
+  `https://www.<domain>` (page features kept): 0.9132 overall, 0.9830 on HTML rows, 0.8687 on the rest; recall
+  at 1% FPR 73.7% -> 53.8% (HTML rows 94.2% -> 84.0%). The page carries most of the signal where there is one.
+- Shuffled-label control mean ROC-AUC 0.5358, not flagged; likely raised above 0.5 by the isotonic step, which is
+  fitted with the true cal labels and can map source differences in a shuffled score onto source phishing rates
+  (inferred). The earlier hybrid2 control without calibration was 0.4940.
+- One split's normalised HTML recall at 0.1% FPR is 0 (`reports/blend_checks.md`); the median is 65.7%.
+- Loop learning from user reports: Ritvik chose "report only"; the design is in the report's future work.
+
+### 2026-10-13 — Depth-matched results for hybrid2; README
+- `python -m experiments.hybrid_depth` (10 splits, `reports/hybrid2_depth.md`): ROC-AUC per depth bucket for the
+  shipped model. Held-out PhishStorm: depth 1-3 give 0.954-0.960 against 0.9587 overall, so its result is not
+  PhishStorm's depth imbalance; depth 0 (91 benign URLs) is 0.7985 and the cal 1% threshold flags 30.2% of those
+  benign URLs. Depth 0 is the weakest bucket on test (0.9209) and the time slice (0.9270) too.
+- README rewritten: results table (from `reports/`), architecture diagram (Mermaid), repository layout, how to load
+  the extension.

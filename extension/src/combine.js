@@ -25,7 +25,9 @@ export const BLOCKLIST_REASON = "This address is on a list of known phishing sit
 export function combine(layers, page = null) {
   const out = { verdict: SAFE, layer: "url-model", reasons: [], notes: [], prob: null };
   if (layers.trusted) return { ...out, layer: "user-trusted" };
-  if (layers.allow) return { ...out, layer: "allowlist" };
+  // An exact listed URL is evidence about that page, so it overrides the allowlist (a big site
+  // can still host one bad file); a domain-level hit never co-occurs with an allowlist hit.
+  if (layers.allow && layers.blocked !== "url") return { ...out, layer: "allowlist" };
   if (layers.blocked) {
     return { ...out, verdict: DANGEROUS, layer: "blocklist", reasons: [BLOCKLIST_REASON] };
   }
