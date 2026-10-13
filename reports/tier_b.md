@@ -7,59 +7,59 @@ of the same rows. `a_hybrid2` is the address-only model; `ab_*` add the 84 HTML 
 
 | set | model | splits | URLs | domains | ROC-AUC | recall @1% FPR | recall @0.1% FPR | cal 1%: recall / FPR |
 |---|---|---|---|---|---|---|---|---|
-| test | a_hybrid2 | 6 | 26,065 | 18,334 | 0.9858 [0.9845, 0.9877] | 83.7 [81.9, 85.3] | 67.2 [64.2, 68.2] | 83.3 / 1.0 |
-| test:live | a_hybrid2 | 6 | 21 | 4 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 0.0 |
-| test:phishblitz | a_hybrid2 | 5 | 5 | 5 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 66.7 / n/a |
-| test:phishpedia | a_hybrid2 | 6 | 910 | 600 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 80.0 / n/a |
-| test:phiusiil | a_hybrid2 | 6 | 743 | 178 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 1.3 |
-| test:phreshphish | a_hybrid2 | 6 | 24,232 | 17,503 | 0.9869 [0.9844, 0.9884] | 84.4 [82.4, 85.9] | 68.2 [64.8, 68.9] | 83.9 / 1.0 |
-| test:urlphish | a_hybrid2 | 6 | 148 | 37 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 2.0 |
-| time_slice | a_hybrid2 | 6 | 62,388 | 46,891 | 0.9714 [0.9712, 0.9716] | 72.0 [71.5, 72.7] | 55.2 [53.7, 56.5] | 71.3 / 0.9 |
-| time_slice:phreshphish | a_hybrid2 | 6 | 62,388 | 46,891 | 0.9714 [0.9712, 0.9716] | 72.0 [71.5, 72.7] | 55.2 [53.7, 56.5] | 71.3 / 0.9 |
-| test | ab_lgbm | 6 | 26,065 | 18,334 | 0.9928 [0.9915, 0.9941] | 91.7 [91.3, 93.3] | 80.4 [78.6, 82.3] | 91.9 / 1.0 |
-| test:live | ab_lgbm | 6 | 21 | 4 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 2.9 |
-| test:phishblitz | ab_lgbm | 5 | 5 | 5 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 85.7 / n/a |
-| test:phishpedia | ab_lgbm | 6 | 910 | 600 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 95.2 / n/a |
-| test:phiusiil | ab_lgbm | 6 | 743 | 178 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 2.3 |
-| test:phreshphish | ab_lgbm | 6 | 24,232 | 17,503 | 0.9924 [0.9907, 0.9940] | 91.3 [90.8, 92.7] | 81.1 [78.7, 81.9] | 91.3 / 0.9 |
-| test:urlphish | ab_lgbm | 6 | 148 | 37 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 0.3 |
-| time_slice | ab_lgbm | 6 | 62,388 | 46,891 | 0.9822 [0.9817, 0.9824] | 81.8 [81.7, 82.0] | 63.8 [62.5, 64.3] | 80.3 / 0.8 |
-| time_slice:phreshphish | ab_lgbm | 6 | 62,388 | 46,891 | 0.9822 [0.9817, 0.9824] | 81.8 [81.7, 82.0] | 63.8 [62.5, 64.3] | 80.3 / 0.8 |
-| test | ab_hybrid2 | 6 | 26,065 | 18,334 | 0.9962 [0.9944, 0.9967] | 94.8 [94.2, 95.7] | 86.4 [84.2, 86.9] | 94.9 / 1.0 |
-| test:live | ab_hybrid2 | 6 | 21 | 4 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 1.2 |
-| test:phishblitz | ab_hybrid2 | 5 | 5 | 5 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 85.7 / n/a |
-| test:phishpedia | ab_hybrid2 | 6 | 910 | 600 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 96.0 / n/a |
-| test:phiusiil | ab_hybrid2 | 6 | 743 | 178 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 1.3 |
-| test:phreshphish | ab_hybrid2 | 6 | 24,232 | 17,503 | 0.9960 [0.9938, 0.9966] | 94.7 [93.8, 95.8] | 86.4 [84.8, 86.9] | 94.7 / 1.0 |
-| test:urlphish | ab_hybrid2 | 6 | 148 | 37 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 0.7 |
-| time_slice | ab_hybrid2 | 6 | 62,388 | 46,891 | 0.9871 [0.9868, 0.9878] | 85.2 [84.7, 85.7] | 66.9 [66.6, 67.4] | 84.5 / 0.9 |
-| time_slice:phreshphish | ab_hybrid2 | 6 | 62,388 | 46,891 | 0.9871 [0.9868, 0.9878] | 85.2 [84.7, 85.7] | 66.9 [66.6, 67.4] | 84.5 / 0.9 |
-| test | ab_lgbm_nopp | 6 | 26,065 | 18,334 | 0.9922 [0.9904, 0.9934] | 90.4 [90.1, 91.5] | 76.4 [75.0, 78.7] | 90.2 / 0.9 |
-| test:live | ab_lgbm_nopp | 6 | 21 | 4 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 0.0 |
-| test:phishblitz | ab_lgbm_nopp | 5 | 5 | 5 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 85.7 / n/a |
-| test:phishpedia | ab_lgbm_nopp | 6 | 910 | 600 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 84.3 / n/a |
-| test:phiusiil | ab_lgbm_nopp | 6 | 743 | 178 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 2.2 |
-| test:phreshphish | ab_lgbm_nopp | 6 | 24,232 | 17,503 | 0.9925 [0.9901, 0.9940] | 91.6 [91.0, 92.4] | 80.4 [79.1, 81.8] | 91.4 / 0.9 |
-| test:urlphish | ab_lgbm_nopp | 6 | 148 | 37 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 0.0 |
-| time_slice | ab_lgbm_nopp | 6 | 62,388 | 46,891 | 0.9826 [0.9816, 0.9829] | 82.2 [81.6, 82.4] | 62.9 [62.2, 63.7] | 80.5 / 0.8 |
-| time_slice:phreshphish | ab_lgbm_nopp | 6 | 62,388 | 46,891 | 0.9826 [0.9816, 0.9829] | 82.2 [81.6, 82.4] | 62.9 [62.2, 63.7] | 80.5 / 0.8 |
+| test | a_hybrid2 | 10 | 26,011 | 18,334 | 0.9858 [0.9834, 0.9877] | 83.0 [81.9, 85.3] | 66.3 [64.1, 69.1] | 83.3 / 1.0 |
+| test:live | a_hybrid2 | 10 | 29 | 5 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 4.1 |
+| test:phishblitz | a_hybrid2 | 9 | 5 | 5 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 60.0 / n/a |
+| test:phishpedia | a_hybrid2 | 10 | 865 | 588 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 79.9 / n/a |
+| test:phiusiil | a_hybrid2 | 10 | 743 | 179 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 1.8 |
+| test:phreshphish | a_hybrid2 | 10 | 24,232 | 17,503 | 0.9868 [0.9836, 0.9884] | 83.8 [82.4, 85.9] | 68.1 [64.8, 69.8] | 83.9 / 1.0 |
+| test:urlphish | a_hybrid2 | 10 | 149 | 37 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 2.1 |
+| time_slice | a_hybrid2 | 10 | 62,388 | 46,891 | 0.9714 [0.9711, 0.9721] | 72.0 [71.4, 72.7] | 54.4 [51.7, 56.5] | 71.3 / 0.9 |
+| time_slice:phreshphish | a_hybrid2 | 10 | 62,388 | 46,891 | 0.9714 [0.9711, 0.9721] | 72.0 [71.4, 72.7] | 54.4 [51.7, 56.5] | 71.3 / 0.9 |
+| test | ab_lgbm | 10 | 26,011 | 18,334 | 0.9928 [0.9909, 0.9941] | 91.7 [90.8, 93.3] | 80.8 [78.6, 84.3] | 91.9 / 1.0 |
+| test:live | ab_lgbm | 10 | 29 | 5 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 3.1 |
+| test:phishblitz | ab_lgbm | 9 | 5 | 5 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 85.7 / n/a |
+| test:phishpedia | ab_lgbm | 10 | 865 | 588 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 95.0 / n/a |
+| test:phiusiil | ab_lgbm | 10 | 743 | 179 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 1.9 |
+| test:phreshphish | ab_lgbm | 10 | 24,232 | 17,503 | 0.9923 [0.9901, 0.9940] | 91.3 [90.4, 92.7] | 80.9 [78.7, 84.0] | 91.3 / 0.9 |
+| test:urlphish | ab_lgbm | 10 | 149 | 37 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 0.3 |
+| time_slice | ab_lgbm | 10 | 62,388 | 46,891 | 0.9822 [0.9817, 0.9826] | 81.8 [81.3, 83.0] | 63.2 [61.8, 64.3] | 80.2 / 0.8 |
+| time_slice:phreshphish | ab_lgbm | 10 | 62,388 | 46,891 | 0.9822 [0.9817, 0.9826] | 81.8 [81.3, 83.0] | 63.2 [61.8, 64.3] | 80.2 / 0.8 |
+| test | ab_hybrid2 | 10 | 26,011 | 18,334 | 0.9960 [0.9944, 0.9967] | 94.5 [94.1, 95.7] | 86.2 [84.2, 86.9] | 94.8 / 1.0 |
+| test:live | ab_hybrid2 | 10 | 29 | 5 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 5.4 |
+| test:phishblitz | ab_hybrid2 | 9 | 5 | 5 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 80.0 / n/a |
+| test:phishpedia | ab_hybrid2 | 10 | 865 | 588 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 96.4 / n/a |
+| test:phiusiil | ab_hybrid2 | 10 | 743 | 179 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 1.4 |
+| test:phreshphish | ab_hybrid2 | 10 | 24,232 | 17,503 | 0.9958 [0.9938, 0.9966] | 94.4 [93.8, 95.8] | 86.1 [84.3, 86.9] | 94.6 / 1.0 |
+| test:urlphish | ab_hybrid2 | 10 | 149 | 37 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 0.7 |
+| time_slice | ab_hybrid2 | 10 | 62,388 | 46,891 | 0.9873 [0.9868, 0.9878] | 85.1 [84.5, 85.7] | 66.8 [65.2, 68.3] | 84.6 / 0.9 |
+| time_slice:phreshphish | ab_hybrid2 | 10 | 62,388 | 46,891 | 0.9873 [0.9868, 0.9878] | 85.1 [84.5, 85.7] | 66.8 [65.2, 68.3] | 84.6 / 0.9 |
+| test | ab_lgbm_nopp | 10 | 26,011 | 18,334 | 0.9923 [0.9903, 0.9934] | 90.4 [89.2, 91.5] | 77.1 [75.0, 80.5] | 90.2 / 0.9 |
+| test:live | ab_lgbm_nopp | 10 | 29 | 5 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 0.0 |
+| test:phishblitz | ab_lgbm_nopp | 9 | 5 | 5 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 85.7 / n/a |
+| test:phishpedia | ab_lgbm_nopp | 10 | 865 | 588 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | 83.5 / n/a |
+| test:phiusiil | ab_lgbm_nopp | 10 | 743 | 179 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 1.2 |
+| test:phreshphish | ab_lgbm_nopp | 10 | 24,232 | 17,503 | 0.9925 [0.9900, 0.9940] | 91.6 [90.0, 92.4] | 80.4 [79.1, 83.3] | 91.4 / 0.9 |
+| test:urlphish | ab_lgbm_nopp | 10 | 149 | 37 | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a [n/a, n/a] | n/a / 0.0 |
+| time_slice | ab_lgbm_nopp | 10 | 62,388 | 46,891 | 0.9826 [0.9816, 0.9829] | 82.0 [81.3, 82.5] | 62.6 [61.0, 63.7] | 80.3 / 0.8 |
+| time_slice:phreshphish | ab_lgbm_nopp | 10 | 62,388 | 46,891 | 0.9826 [0.9816, 0.9829] | 82.0 [81.3, 82.5] | 62.6 [61.0, 63.7] | 80.3 / 0.8 |
 
 ## Top LightGBM gain features (median rank share, `ab_lgbm`)
 
 | feature | share of top-25 gain |
 |---|---|
-| tld_risk | 33.1% |
+| tld_risk | 33.0% |
 | url_title_match | 10.8% |
-| n_external_link_domains | 9.5% |
-| link_internal_ratio | 9.4% |
-| longest_word_path | 5.7% |
-| n_external_resource_domains | 3.6% |
+| n_external_link_domains | 9.6% |
+| link_internal_ratio | 9.1% |
+| longest_word_path | 5.6% |
+| n_external_resource_domains | 3.8% |
 | n_script_src | 3.2% |
 | title_domain_match | 2.2% |
-| page_size | 1.9% |
 | link_external_ratio | 1.9% |
-| n_links | 1.7% |
+| page_size | 1.9% |
 | query_len | 1.7% |
+| n_links | 1.7% |
 | avg_word_path | 1.6% |
-| link_null_ratio | 1.5% |
+| link_null_ratio | 1.4% |
 | path_len | 1.3% |

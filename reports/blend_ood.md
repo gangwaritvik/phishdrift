@@ -9,11 +9,11 @@ target FPR. `ood_urls`: all usable pages, address only (no HTML kept in that cra
 
 | set | URLs | domains | model | target FPR | splits | OOD FPR |
 |---|---|---|---|---|---|---|
-| ood_urls | 2,555 | 562 | blend | 1.0% | 1 | 4.9 [4.9, 4.9] |
-| ood_urls | 2,555 | 562 | blend | 0.1% | 1 | 0.8 [0.8, 0.8] |
-| ood_urls | 2,555 | 562 | a_only | 1.0% | 1 | 4.2 [4.2, 4.2] |
-| ood_urls | 2,555 | 562 | a_only | 0.1% | 1 | 0.7 [0.7, 0.7] |
-| ood_html | 2,226 | 512 | blend | 1.0% | 1 | 3.7 [3.7, 3.7] |
-| ood_html | 2,226 | 512 | blend | 0.1% | 1 | 1.8 [1.8, 1.8] |
-| ood_html | 2,226 | 512 | a_only | 1.0% | 1 | 4.2 [4.2, 4.2] |
-| ood_html | 2,226 | 512 | a_only | 0.1% | 1 | 0.4 [0.4, 0.4] |
+| ood_urls | 2,555 | 562 | blend | 1.0% | 10 | 5.3 [4.1, 5.9] |
+| ood_urls | 2,555 | 562 | blend | 0.1% | 10 | 1.0 [0.8, 1.6] |
+| ood_urls | 2,555 | 562 | a_only | 1.0% | 10 | 4.3 [3.9, 4.9] |
+| ood_urls | 2,555 | 562 | a_only | 0.1% | 10 | 0.8 [0.5, 1.1] |
+| ood_html | 2,226 | 512 | blend | 1.0% | 10 | 3.6 [2.8, 5.1] |
+| ood_html | 2,226 | 512 | blend | 0.1% | 10 | 0.7 [0.2, 1.8] |
+| ood_html | 2,226 | 512 | a_only | 1.0% | 10 | 4.3 [4.0, 5.1] |
+| ood_html | 2,226 | 512 | a_only | 0.1% | 10 | 0.7 [0.4, 1.0] |
