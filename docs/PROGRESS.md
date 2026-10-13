@@ -385,3 +385,10 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   allowlisted; the other 59 are shared-hosting/CDN/shortener domains left out by design (`reports/shipped_verdicts.md`).
 - This is a measurement on known-legitimate URLs, not a browsing test: the real-site check still needs
   Ritvik's own browsing (false-alarm screenshots) and the sandbox cannot open real sites.
+
+### 2026-10-13 — Tier B leakage checks on the HTML rows
+- `python -m experiments.tier_b_checks` (10 splits, one file per split in `reports/tables/tier_b_checks/`):
+  `ab_lgbm` test ROC-AUC 0.9928; shuffled-label control mean 0.5071 (not flagged); the 84 HTML features alone
+  0.9853 on test and 0.9573 on the time slice; 2.15% of test rows have an exact HTML-feature twin in train,
+  and without them the ROC-AUC is 0.9921 (`reports/tier_b_checks.md`). No sign of leakage, but still a
+  single-source result (PhreshPhish) with no held-out source that has HTML.
