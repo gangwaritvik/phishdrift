@@ -59,6 +59,7 @@ class HybridA:
                 oof[b] = self._text_model(spec).fit(list(t[a]), y[a], w[a]).score(list(t[b]))
             extra[spec["name"]] = logit(oof)
             self.models[spec["name"]] = self._text_model(spec).fit(list(t), y, w)
+        self.oof = extra  # out-of-fold text scores of the training rows (reused by PageModel)
         cols = self.columns + self.scorer_names
         self.gbdt = GBDT("lightgbm", self.gbdt_params, cols, self.seed)
         self.gbdt.fit(train.assign(**extra), y, w)

@@ -1,11 +1,13 @@
 // Combiner: turns the layers' outputs into safe / suspicious / dangerous with plain-English reasons.
 //
 // Order follows CLAUDE.md (cheapest first): user trust and allowlist, blocklist, URL model, then
-// backend domain checks and page checks. This is a transparent rule-based combiner, not a learned
-// or calibrated one: domain and page evidence can only RAISE a verdict the URL model already
-// flagged (suspicious -> dangerous), never turn a safe URL into a warning, so the model's FPR
-// operating points (1% suspicious, 0.1% dangerous) stay the false-alarm budget. Its rules have
-// not been validated on data yet.
+// backend domain checks and page checks. Before the page has loaded only the URL model has run.
+// Once the content script sends the page, the page model's verdict (js/src/page.js, the
+// "shipped" rule measured in reports/blend2_rules.md) replaces the URL model's: it can lower a
+// suspicious address to safe or raise it, and the address model's dangerous verdict stands.
+// Domain evidence (backend, tier C rules checked in reports/domain_rules.md) can only raise
+// suspicious to dangerous, never turn a safe verdict into a warning. The password-form rule is
+// used only when the page model could not read the page (no usable HTML).
 
 export const SAFE = 0;
 export const SUSPICIOUS = 1;
@@ -22,7 +24,8 @@ export const BLOCKLIST_REASON = "This address is on a list of known phishing sit
 //   backendFailed: bool,
 // }
 // page: {hasPassword, credFormCrossDomain, credFormInsecure} | null
-export function combine(layers, page = null) {
+// pageModel: {hasHtml, blended, verdict, reasons:[{text}]} | null   (scorePage in page.js)
+export function combine(layers, page = null, pageModel = null) {
   const out = { verdict: SAFE, layer: "url-model", reasons: [], notes: [], prob: null };
   if (layers.trusted) return { ...out, layer: "user-trusted" };
   // An exact listed URL is evidence about that page, so it overrides the allowlist (a big site
@@ -37,7 +40,19 @@ export function combine(layers, page = null) {
   out.verdict = model.verdict;
   out.prob = model.prob;
   out.reasons = model.reasons.map((r) => r.text);
-  if (out.verdict === SAFE) return out;
+  const pageRead = Boolean(pageModel?.hasHtml);
+  if (pageModel) {
+    out.verdict = pageModel.verdict;
+    out.prob = pageModel.blended;
+    if (pageRead) {
+      out.layer = "page-model";
+      const pageReasons = pageModel.reasons.map((r) => r.text);
+      // address reasons first when the address alone is dangerous; page reasons otherwise
+      out.reasons = model.verdict === DANGEROUS ? [...out.reasons, ...pageReasons] : [...pageReasons, ...out.reasons];
+      out.reasons = [...new Set(out.reasons)];
+    }
+  }
+  if (out.verdict === SAFE) return { ...out, reasons: [] };
 
   // The URL model flagged it: add what the domain and the page say.
   if (layers.domain) {
@@ -50,7 +65,7 @@ export function combine(layers, page = null) {
   } else if (layers.backendFailed) {
     out.notes.push("Domain checks were unavailable, so this uses the address check only.");
   }
-  if (page?.hasPassword && (page.credFormCrossDomain || page.credFormInsecure)) {
+  if (!pageRead && page?.hasPassword && (page.credFormCrossDomain || page.credFormInsecure)) {
     out.reasons.push(
       page.credFormCrossDomain
         ? "This page asks for a password and sends it to a different website."

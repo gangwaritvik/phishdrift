@@ -2,6 +2,7 @@
 // Lengths and indexing in the features use code points (Array.from), like Python strings.
 
 import { splitHost } from "./psl.js";
+import { pyStrip } from "./pystr.js";
 
 export const PLATFORM_TOKEN = "hostingplatform.com";
 const SCHEME = /^[a-zA-Z][a-zA-Z0-9+.\-]*:\/\//;
@@ -69,7 +70,7 @@ export function isIpHost(host) {
 
 // Returns null when there is no host (Python returns None).
 export function parse(url, platforms, pslRoot) {
-  let s = url.trim();
+  let s = pyStrip(url); // Python str.strip(), not JS trim()
   const hash = s.indexOf("#");
   if (hash >= 0) s = s.slice(0, hash);
   const m = s.match(SCHEME);

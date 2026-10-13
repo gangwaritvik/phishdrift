@@ -3,6 +3,8 @@
 // (python -m features export-js); non-ASCII rules are also listed in punycode, so xn-- labels
 // match without an IDNA decoder.
 
+import { pyStrip } from "./pystr.js";
+
 const IPV4 =
   /^(?:(?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}(?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/;
 
@@ -60,7 +62,7 @@ function lenientHost(text) {
   }
   const colon = s.indexOf(":");
   if (colon >= 0) s = s.slice(0, colon);
-  s = s.trim();
+  s = pyStrip(s); // Python str.strip()
   return s.replace(/[.。．｡]+$/u, "");
 }
 

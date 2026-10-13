@@ -2,8 +2,9 @@
 # (domain_capture); the HTTP client settings below override collector.yaml's `http` section so a
 # live request never waits through the collector's slow retries.
 #
-# The thresholds under `rules` are PLACEHOLDERS for a tier C model (cut list item 3). They have
-# not been validated against labelled data.
+# The rules under `rules` are hand-made heuristics, not a trained tier C model. Their severities
+# are checked against the collector's first-seen captures by `python -m experiments.domain_rules`
+# (reports/domain_rules.md); the sample is small, so the intervals there are wide.
 
 lookup:
   overall_timeout_s: 12          # whole domain check; on expiry the answer is "low" + error
@@ -41,13 +42,20 @@ lists:
     min_tenant_children: 3
     min_children_per_url: 0.5
 
-rules:                           # placeholder heuristics, see backend/checks.py
+rules:                           # heuristics, see backend/checks.py and reports/domain_rules.md
   very_young_domain_days: 7
   young_domain_days: 30
   free_issuers:                  # substrings of the certificate issuer (lowercase)
     - let's encrypt
     - zerossl
     - buypass
+  severity_from_data:            # experiments/domain_rules.py: how the data picks a severity
+    high_max_benign_upper: 0.01  # "high" only if the legit rate's 95% upper bound is <= this
+    high_min_ratio: 10           # ... and phishing rate / legit upper bound >= this
+    warn_min_ratio: 2            # "warn" if that ratio >= this, else "info"
+  severity:                      # signal id -> high / warn / info, overrides the code's default;
+    domain_unregistered: info    # set from reports/domain_rules.md (2026-10-13 captures): fires on
+    tls_unverified: info         # 22.0% / 5.1% of legitimate hosts, no more often on phishing
   risk:
     elevated_warn_count: 1       # this many "warn" signals -> elevated
     high_warn_count: 3           # this many "warn" signals (or any "high") -> high

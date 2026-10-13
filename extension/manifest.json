@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "PhishDrift",
   "version": "0.1.0",
-  "description": "Warns about phishing pages. Scores the address on your device; sends only a domain name to the backend, and only for addresses already flagged.",
+  "description": "Warns about phishing pages. Scores the address and the page on your device; sends only a domain name to the backend, and only for sites already flagged.",
   "minimum_chrome_version": "116",
   "permissions": ["storage", "alarms", "webNavigation"],
   "host_permissions": ["http://127.0.0.1:8000/*", "http://localhost:8000/*"],
