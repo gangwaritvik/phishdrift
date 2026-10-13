@@ -408,3 +408,14 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   The azure link is now suspicious (it was used to learn its zone, so this is not an independent test). Natural
   pages unchanged (71 of 2,555 flagged); Tranco top 1,000: 934 allowlisted, 58 flagged (`reports/shipped_verdicts.md`).
 - Limit: a hosting zone nobody has abused in our data is still trusted until it appears in a feed.
+
+### 2026-10-13 — Blend checks: normalised addresses and shuffled-label control
+- `python -m experiments.blend_checks` (10 splits, one file per split in `reports/tables/blend_checks/`). Test
+  ROC-AUC 0.9618 (HTML rows 0.9958, others 0.9335). With every address feature taken from
+  `https://www.<domain>` (page features kept): 0.9132 overall, 0.9830 on HTML rows, 0.8687 on the rest; recall
+  at 1% FPR 73.7% -> 53.8% (HTML rows 94.2% -> 84.0%). The page carries most of the signal where there is one.
+- Shuffled-label control mean ROC-AUC 0.5358, not flagged; likely raised above 0.5 by the isotonic step, which is
+  fitted with the true cal labels and can map source differences in a shuffled score onto source phishing rates
+  (inferred). The earlier hybrid2 control without calibration was 0.4940.
+- One split's normalised HTML recall at 0.1% FPR is 0 (`reports/blend_checks.md`); the median is 65.7%.
+- Loop learning from user reports: Ritvik chose "report only"; the design is in the report's future work.
