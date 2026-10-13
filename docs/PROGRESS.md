@@ -350,3 +350,19 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   allowlist and shortener expansion / blocklist layers for real traffic. Rewrites are synthetic (random lure
   words, brands from our own list); real attacker URLs may differ.
 - Not done: blocklist coverage, latency, real-site check, tier B robustness.
+
+### 2026-10-13 — Tier C on the 12:45 UTC capture (first run with both classes and the capture-lag filter)
+- Capture (`data/interim/domain_info/2026-10-12.jsonl`, `2026-10-13.jsonl`): 1,668 legitimate and 460 phishing
+  hosts. Eligible after filters (platform 331 phishing, PC resolver 49, not resolving 269 benign / 18 phishing,
+  captured more than 2 h after first seen 83 phishing, tier A pool overlap 29 / 21): 1,369 benign hosts
+  (741 domains) and 119 phishing hosts (91 domains); median capture 0.2 h / 0.1 h after first seen.
+- Results (`reports/tier_c.md`, median of 10 domain-grouped splits, test side 24 phishing / 275 benign hosts):
+  tier C LightGBM ROC-AUC 0.778 [0.623, 0.905]; domain age alone 0.614; the tier A model on the bare host
+  0.797; tier C plus that score 0.866 [0.658, 0.909]. Shuffled-label control 0.519, not flagged. Recall at FPR
+  1% / 0.1% is 25.0 / 20.8 for tier C and 25.0 / 22.9 combined, but every fixed-FPR point is granularity-limited
+  (2 false positives allowed at 1% on the cal side), so treat them as unmeasured. Top features:
+  `days_since_rdap_change` 16.1%, `domain_age_days` 13.2%, `cert_age_days` 11.7%.
+- Reading: tier C carries signal beyond domain age and adds to the address model, but with 119 phishing hosts
+  the size of the gain is not established. Needs more captured days (the time check needs 3).
+- Next: let the collector run for more days; rerun `python -m features build --tier C` and
+  `python -m experiments.tier_c --with-a` on the staged files.
