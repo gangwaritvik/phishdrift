@@ -95,7 +95,8 @@ def render(runs: pd.DataFrame, cfg: dict, variant: str = "hybrid") -> str:
         "",
         "## Test URLs normalised to `https://www.<registrable domain>`",
         "",
-        f"{len(norm)} splits, {int(norm['n_urls'].median()):,} domains per split (median).",
+        f"{len(norm)} splits; per split (median) {int(norm['n_urls'].median()):,} URLs from "
+        f"{int(norm['n_domains'].median()):,} domains.",
         "Median [min, max].",
         "",
         "| ROC-AUC | recall @1% FPR | recall @0.1% FPR | cal 1%: recall / FPR |",

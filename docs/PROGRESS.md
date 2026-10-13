@@ -307,3 +307,18 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Open: sites outside the top 50,000 still meet the model's measured false-alarm rate on natural pages
   (`reports/blend_ood.md`, about 4-5% at the 1% threshold), and brand sites outside the list (regional banks)
   are the riskiest. Reported OOD FPR stays measured with the allowlist disabled, as the spec requires.
+
+### 2026-10-13 — Stack and LOSO refreshed on the reviewed brand list; summary tables; report draft
+- Reran `experiments.stack_a` (10 splits) and `experiments.loso` (splits 0-2) on the rebuilt features with the
+  reviewed brand list, 4 processes in parallel (`PHISHDRIFT_THREADS=1`, one reports dir each, then merged).
+  Changes are small: stack test 66.5 / 46.3 (unchanged), held-out PhishStorm 71.2 / 47.9 (was 70.8 / 47.1),
+  time slice 72.4 / 54.5 (`reports/stack_a.md`); leaving out PhreshPhish the cal-side 1% threshold now gives
+  20.1% FPR (was 20.6%) and the `tld_risk` baseline still beats both models there (`reports/loso.md`).
+- New `experiments/summary_tables.py` -> `reports/summary.md`: precision, F1, recall and FPR at the cal-side
+  thresholds for every model and set, and the depth-matched tier A table, built from the per-split run tables
+  only (no training). Test in `tests/test_summary_tables.py`.
+- `reports/hybrid_checks.md` labelled the URL count as domains; it now gives both.
+- Report draft (all sections, numbers copied from `reports/` with a source line each, TODO list and a list of
+  inconsistencies between result files) in the project folder: `phishdrift/report/report_draft.md`.
+- Running: address-only (normalised URL) check and shuffled-label control for hybrid2 (`--variant hybrid2`).
+- Next: tier C rerun after the 18:15 IST collector run; fix the report draft's open inconsistencies.

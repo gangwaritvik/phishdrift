@@ -11,12 +11,12 @@ Sources with only phishing rows have no FPR; read their `cal` recall.
 
 | source | model | URLs | domains | phishing | benign | ROC-AUC | recall @1% FPR | cal 1%: recall / FPR | cal 0.1%: recall / FPR |
 |---|---|---|---|---|---|---|---|---|---|
-| live | lightgbm | 50 | 18 | 21 | 13 | 0.9593 | 71.4 | 57.1 / 0.0 | 19.0 / 0.0 |
-| phishblitz | lightgbm | 42 | 37 | 42 | 0 | n/a | n/a | 64.6 / n/a | 40.5 / n/a |
-| phishpedia | lightgbm | 1,868 | 1,145 | 1,868 | 0 | n/a | n/a | 67.9 / n/a | 40.5 / n/a |
-| phiusiil | lightgbm | 34,240 | 31,548 | 10,478 | 23,941 | 0.8513 | 47.2 | 45.1 / 0.7 | 26.9 / 0.1 |
-| phreshphish | lightgbm | 29,609 | 21,414 | 9,491 | 20,067 | 0.9498 | 65.5 | 68.8 / 1.7 | 52.0 / 0.1 |
-| urlphish | lightgbm | 18,207 | 16,785 | 867 | 17,329 | 0.9732 | 79.2 | 76.3 / 0.7 | 60.3 / 0.1 |
+| live | lightgbm | 50 | 18 | 21 | 13 | 0.9548 | 71.4 | 58.8 / 0.0 | 23.1 / 0.0 |
+| phishblitz | lightgbm | 42 | 37 | 42 | 0 | n/a | n/a | 66.7 / n/a | 39.6 / n/a |
+| phishpedia | lightgbm | 1,868 | 1,145 | 1,868 | 0 | n/a | n/a | 68.4 / n/a | 43.4 / n/a |
+| phiusiil | lightgbm | 34,240 | 31,548 | 10,478 | 23,941 | 0.8512 | 47.4 | 44.9 / 0.7 | 28.2 / 0.1 |
+| phreshphish | lightgbm | 29,609 | 21,414 | 9,491 | 20,067 | 0.9499 | 65.9 | 69.5 / 1.6 | 52.1 / 0.1 |
+| urlphish | lightgbm | 18,207 | 16,785 | 867 | 17,329 | 0.9727 | 78.1 | 76.5 / 0.6 | 60.6 / 0.1 |
 | live | char_ngram | 50 | 18 | 21 | 13 | 0.9412 | 52.9 | 58.8 / 2.5 | 35.3 / 0.0 |
 | phishblitz | char_ngram | 42 | 37 | 42 | 0 | n/a | n/a | 69.2 / n/a | 50.0 / n/a |
 | phishpedia | char_ngram | 1,868 | 1,145 | 1,868 | 0 | n/a | n/a | 73.6 / n/a | 45.8 / n/a |
@@ -34,21 +34,21 @@ Sources with only phishing rows have no FPR; read their `cal` recall.
 
 | source | model | URLs | domains | phishing | benign | ROC-AUC | recall @1% FPR | cal 1%: recall / FPR | cal 0.1%: recall / FPR |
 |---|---|---|---|---|---|---|---|---|---|
-| live | lightgbm | 245 | 97 | 133 | 112 | 0.8907 | 28.6 | 60.2 / 7.1 | 24.8 / 0.0 |
+| live | lightgbm | 245 | 97 | 133 | 112 | 0.9056 | 36.1 | 61.7 / 9.8 | 29.3 / 0.0 |
 | live | char_ngram | 245 | 97 | 133 | 112 | 0.8851 | 39.8 | 66.2 / 13.4 | 45.1 / 2.7 |
 | live | baseline | 245 | 97 | 133 | 112 | 0.5234 | 11.3 | 20.3 / 11.6 | 14.3 / 5.4 |
-| phishblitz | lightgbm | 248 | 209 | 248 | 0 | n/a | n/a | 68.1 / n/a | 41.5 / n/a |
+| phishblitz | lightgbm | 248 | 209 | 248 | 0 | n/a | n/a | 67.7 / n/a | 41.9 / n/a |
 | phishblitz | char_ngram | 248 | 209 | 248 | 0 | n/a | n/a | 66.9 / n/a | 41.9 / n/a |
 | phishblitz | baseline | 248 | 209 | 248 | 0 | n/a | n/a | 40.7 / n/a | 31.5 / n/a |
-| phishpedia | lightgbm | 9,580 | 5,897 | 9,580 | 0 | n/a | n/a | 59.5 / n/a | 34.7 / n/a |
+| phishpedia | lightgbm | 9,580 | 5,897 | 9,580 | 0 | n/a | n/a | 60.2 / n/a | 35.8 / n/a |
 | phishpedia | char_ngram | 9,580 | 5,897 | 9,580 | 0 | n/a | n/a | 62.8 / n/a | 34.3 / n/a |
 | phishpedia | baseline | 9,580 | 5,897 | 9,580 | 0 | n/a | n/a | 10.9 / n/a | 7.2 / n/a |
-| phiusiil | lightgbm | 171,826 | 157,550 | 52,452 | 119,374 | 0.8013 | 35.3 | 38.4 / 1.5 | 21.1 / 0.1 |
+| phiusiil | lightgbm | 171,826 | 157,550 | 52,452 | 119,374 | 0.8013 | 35.3 | 38.7 / 1.5 | 21.8 / 0.1 |
 | phiusiil | char_ngram | 171,826 | 157,550 | 52,452 | 119,374 | 0.8089 | 27.5 | 34.3 / 2.1 | 14.5 / 0.1 |
 | phiusiil | baseline | 171,826 | 157,550 | 52,452 | 119,374 | 0.7189 | 21.8 | 24.9 / 1.7 | 17.5 / 0.1 |
-| phreshphish | lightgbm | 147,232 | 106,917 | 46,602 | 100,630 | 0.8576 | 30.5 | 73.9 / 20.6 | 53.4 / 5.8 |
+| phreshphish | lightgbm | 147,232 | 106,917 | 46,602 | 100,630 | 0.8603 | 29.5 | 73.8 / 20.1 | 53.5 / 5.6 |
 | phreshphish | char_ngram | 147,232 | 106,917 | 46,602 | 100,630 | 0.7984 | 8.2 | 62.4 / 16.4 | 29.6 / 4.4 |
 | phreshphish | baseline | 147,232 | 106,917 | 46,602 | 100,630 | 0.7945 | 43.4 | 44.7 / 1.3 | 38.4 / 0.3 |
-| urlphish | lightgbm | 91,041 | 84,130 | 4,367 | 86,674 | 0.9346 | 51.9 | 71.3 / 4.4 | 53.5 / 1.2 |
+| urlphish | lightgbm | 91,041 | 84,130 | 4,367 | 86,674 | 0.9350 | 51.3 | 71.1 / 4.4 | 52.4 / 1.1 |
 | urlphish | char_ngram | 91,041 | 84,130 | 4,367 | 86,674 | 0.9320 | 48.5 | 65.9 / 3.0 | 41.4 / 0.6 |
 | urlphish | baseline | 91,041 | 84,130 | 4,367 | 86,674 | 0.8427 | 43.9 | 46.4 / 2.3 | 30.3 / 0.1 |
