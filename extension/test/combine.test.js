@@ -12,6 +12,12 @@ test("user trust and allowlist win over everything, including a blocklist hit", 
   assert.deepEqual([allowed.verdict, allowed.layer], [SAFE, "allowlist"]);
 });
 
+test("an exact listed URL overrides the allowlist (one bad file on a big site)", () => {
+  const r = combine({ ...base, allow: true, blocked: "url", model: model(SAFE) });
+  assert.deepEqual([r.verdict, r.layer], [DANGEROUS, "blocklist"]);
+  assert.equal(combine({ ...base, trusted: true, allow: true, blocked: "url" }).layer, "user-trusted");
+});
+
 test("a blocklist hit is dangerous with its own reason and skips the model", () => {
   const r = combine({ ...base, blocked: "url", model: null });
   assert.deepEqual([r.verdict, r.layer, r.reasons], [DANGEROUS, "blocklist", [BLOCKLIST_REASON]]);

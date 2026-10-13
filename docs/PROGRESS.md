@@ -392,3 +392,19 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   0.9853 on test and 0.9573 on the time slice; 2.15% of test rows have an exact HTML-feature twin in train,
   and without them the ROC-AUC is 0.9921 (`reports/tier_b_checks.md`). No sign of leakage, but still a
   single-source result (PhreshPhish) with no held-out source that has HTML.
+
+### 2026-10-13 — Allowlist: learned open-hosting zones (Ritvik: "fix allow list")
+- Found with a 21-link sample test: a fresh OpenPhish URL on `*.swedencentral.cloudapp.azure.com` showed safe,
+  because the allowlist trusted all of `azure.com`. Also found: the list builder blocked a whole allowlisted domain
+  for one bad URL (URLhaus lists `github.com/<user>/.../a.exe`, so `github.com` would be blocked after a sync).
+- Changed (`backend/lists.py`, `configs/backend.yaml` `lists.open_hosting`, `extension/src/lists.js`,
+  `extension/src/combine.js`): every phishing host below an allowlisted domain marks the child zone that contains
+  it (`cloudapp.azure.com`, `drive.google.com`); many one-URL children make the whole domain a zone (`weebly.com`).
+  No addresses are written by hand: zones come from the feeds plus the corpus's phishing URLs
+  (`--phishing-file`, never blocklisted). Inside a zone the allowlist does not apply and bad URLs are listed one by
+  one; allowlisted domains are never blocked as a whole; an exact listed URL overrides the allowlist.
+- Results: bundled allowlist rebuilt from Tranco top 50,000 + the PC's feeds and URLhaus + pool phishing: 49,564
+  domains, 341 zones (42 whole domains); `www.google.com`, `web.whatsapp.com`, `portal.azure.com` stay allowlisted.
+  The azure link is now suspicious (it was used to learn its zone, so this is not an independent test). Natural
+  pages unchanged (71 of 2,555 flagged); Tranco top 1,000: 934 allowlisted, 58 flagged (`reports/shipped_verdicts.md`).
+- Limit: a hosting zone nobody has abused in our data is still trusted until it appears in a feed.

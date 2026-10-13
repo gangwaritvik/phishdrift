@@ -17,11 +17,14 @@ address is `http://127.0.0.1:8000` (`src/config.js`, overridable in `chrome.stor
 ## How a page is checked (cheapest first)
 
 1. User trust ("Trust this site" in the popup) and the allowlist: safe, nothing else runs.
-   Shared hosting platforms are never allowlisted. The extension ships with an allowlist
+   Shared hosting platforms and learned open-hosting zones (`cloudapp.azure.com`,
+   `drive.google.com`, `weebly.com`, ...; see docs/BACKEND.md) are never allowlisted, and an exact
+   blocklisted URL overrides the allowlist. The extension ships with an allowlist
    (`extension/data/allowlist.json`, Tranco top 50,000, hashed) so it works before the first sync
    and without a backend; a synced allowlist replaces it, and a synced blocklist entry always
    removes a domain from it. Rebuild it with
-   `python -m backend build-lists --tranco-file FILE --out DIR` and copy `DIR/allowlist.json`.
+   `python -m backend build-lists --tranco-file FILE --phishing-file data/processed/meta_pool.parquet --out DIR`
+   and copy `DIR/allowlist.json`.
    The URL model alone flags 161 of the Tranco top 1,000 homepages (facebook.com, instagram.com,
    whatsapp.com, netflix.com, ...: the most impersonated brands look like phishing to it), so this
    layer is load-bearing, not optional.

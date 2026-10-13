@@ -1,6 +1,6 @@
 """Backend CLI.
 
-    python -m backend build-lists [--tranco-file PATH] [--out DIR]
+    python -m backend build-lists [--tranco-file PATH] [--phishing-file PATH ...] [--out DIR]
 
 Serve the API with: ``uvicorn backend.app:create_app --factory``.
 """
@@ -38,7 +38,16 @@ def cmd_build_lists(args: argparse.Namespace) -> int:
     except Exception as exc:  # noqa: BLE001 - an empty allowlist is better than no build
         log.warning("no Tranco list (%s: %s); the allowlist will be empty", type(exc).__name__, exc)
 
-    docs = lists.build_lists(urls, candidates, read_platforms(), lcfg["prefix_bytes"])
+    extra = [u for path in args.phishing_file or [] for u in lists.read_phishing_file(Path(path))]
+    docs = lists.build_lists(
+        urls,
+        candidates,
+        read_platforms(),
+        lcfg["prefix_bytes"],
+        extra_phishing_urls=extra,
+        min_tenant_children=lcfg["open_hosting"]["min_tenant_children"],
+        min_children_per_url=lcfg["open_hosting"]["min_children_per_url"],
+    )
     out_dir = Path(args.out) if args.out else settings.lists_dir
     lists.write_lists(docs, out_dir)
     log.info("wrote %s: %s", out_dir, docs["manifest"])
@@ -50,6 +59,12 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     build = sub.add_parser("build-lists", help="build the hashed blocklist and allowlist")
     build.add_argument("--tranco-file", help="Tranco CSV/text file (default: the tranco package)")
+    build.add_argument(
+        "--phishing-file",
+        action="append",
+        help="extra phishing URLs (parquet/CSV with a url column) used only to find open-hosting "
+        "zones, e.g. data/processed/meta_pool.parquet; repeatable",
+    )
     build.add_argument("--out", help="output directory (default: lists.out_dir in backend.yaml)")
     build.set_defaults(func=cmd_build_lists)
     args = parser.parse_args(argv)

@@ -382,21 +382,97 @@ def test_build_lists_end_to_end(tmp_path):
     docs = lists.build_lists(urls, cands, frozenset({"github.io"}), 6, built_at=NOW)
     h = lambda k: lists.list_hash(k, 6)  # noqa: E731
     block_doc = docs["blocklist"]
-    assert block_doc["domains"] == sorted([h("example.com"), h("test.co.uk")])
-    assert block_doc["urls"] == [h("badsite.github.io/paypal/login")]
+    # example.com is an allowlist candidate with phishing on evil.example.com, so that zone is
+    # open hosting: its URLs are blocked by full URL and example.com itself stays allowlisted.
+    assert docs["allowlist"]["open_hosting"] == ["evil.example.com"]
+    assert block_doc["domains"] == [h("test.co.uk")]
+    assert block_doc["urls"] == sorted(
+        [
+            h("badsite.github.io/paypal/login"),
+            h("evil.example.com/login"),
+            h("evil.example.com/other"),
+        ]
+    )
     assert h("github.io") not in block_doc["domains"]
-    assert docs["allowlist"]["domains"] == sorted([h("google.com"), h("wikipedia.org")])
+    assert docs["allowlist"]["domains"] == sorted(
+        [h("google.com"), h("example.com"), h("wikipedia.org")]
+    )
     manifest = docs["manifest"]
     assert manifest["counts"] == {
-        "blocklist_domains": 2,
-        "blocklist_urls": 1,
-        "allowlist_domains": 2,
+        "blocklist_domains": 1,
+        "blocklist_urls": 3,
+        "allowlist_domains": 3,
+        "open_hosting_domains": 1,
     }
     assert manifest["prefix_bytes"] == 6
     assert manifest["built_at"] == "2026-10-12T12:00:00+00:00"
     assert len(manifest["version"]) == 12
     again = lists.build_lists(reversed(urls), reversed(cands), frozenset({"github.io"}), 6)
     assert again["manifest"]["version"] == manifest["version"]
+
+
+def test_open_hosting_zones_are_learned_from_phishing_hosts():
+    h = lambda k: lists.list_hash(k, 6)  # noqa: E731
+    cands = ["azure.com", "google.com", "weebly.com", "evil-brand.com"]
+    feed = [
+        "https://tenant1.swedencentral.cloudapp.azure.com/ch/login",
+        "https://drive.google.com/file/d/abc",
+        "https://drive.google.com/file/d/def",
+        "https://drive.google.com/file/d/ghi",
+        "https://drive.google.com/file/d/jkl",
+        "https://drive.google.com/file/d/mno",
+        "https://docs.google.com/forms/d/x",
+        "https://usercontent.google.com/y",
+        "https://shop-a.weebly.com/",
+        "https://bank-b.weebly.com/login",
+        "https://mail-c.weebly.com/",
+        "https://evil-brand.com/login",  # phishing on the registrable domain itself
+        "https://www.evil-brand.com/verify",  # www. is not a host below the domain
+        "http://bad-host.example.net/x",  # not an allowlist candidate: blocked as a domain
+    ]
+    docs = lists.build_lists(feed, cands, frozenset(), 6)
+    zones = docs["allowlist"]["open_hosting"]
+    # google.com has three children but 7 URLs (path tenancy), so only the children are zones
+    assert zones == sorted(
+        [
+            "cloudapp.azure.com",
+            "docs.google.com",
+            "drive.google.com",
+            "usercontent.google.com",
+            "weebly.com",
+        ]
+    )
+    # allowlist candidates are never blocked as a domain: their bad URLs are listed one by one
+    # (the extension lets an exact URL hit override the allowlist)
+    assert docs["allowlist"]["domains"] == sorted(
+        [h("azure.com"), h("google.com"), h("evil-brand.com")]
+    )
+    assert docs["blocklist"]["domains"] == [h("example.net")]
+    assert h("evil-brand.com/login") in docs["blocklist"]["urls"]
+    assert h("evil-brand.com/verify") in docs["blocklist"]["urls"]
+    assert h("tenant1.swedencentral.cloudapp.azure.com/ch/login") in docs["blocklist"]["urls"]
+    assert lists.in_zone("other.westeurope.cloudapp.azure.com", set(zones))
+    assert not lists.in_zone("portal.azure.com", set(zones))
+    assert not lists.in_zone("www.google.com", set(zones))
+    assert not lists.in_zone("xcloudapp.azure.com", set(zones))
+    # extra URLs only help find zones; they are never blocklisted
+    more = ["https://x.files.1drv.com/a"]
+    extra = lists.build_lists(
+        ["https://evil-brand.com/"], ["1drv.com"], frozenset(), 6, extra_phishing_urls=more
+    )
+    assert extra["allowlist"]["open_hosting"] == ["files.1drv.com"]
+    assert extra["blocklist"]["urls"] == []
+
+
+def test_read_phishing_file_keeps_phishing_rows(tmp_path):
+    csv = tmp_path / "p.csv"
+    csv.write_text("url,label\nhttps://a.x.com/,1\nhttps://b.y.com/,0\n")
+    assert lists.read_phishing_file(csv) == ["https://a.x.com/"]
+    pq_path = tmp_path / "p.parquet"
+    pd.DataFrame({"url": ["https://a.x.com/", "https://b.y.com/"], "label": [1, 0]}).to_parquet(
+        pq_path
+    )
+    assert lists.read_phishing_file(pq_path) == ["https://a.x.com/"]
 
 
 def test_list_endpoints(settings):
@@ -411,7 +487,7 @@ def test_list_endpoints(settings):
     assert client.get("/lists/blocklist.json").json() == docs["blocklist"]
     assert client.get("/lists/allowlist.json").json() == docs["allowlist"]
     assert set(docs["blocklist"]) == {"version", "prefix_bytes", "domains", "urls"}
-    assert set(docs["allowlist"]) == {"version", "prefix_bytes", "domains"}
+    assert set(docs["allowlist"]) == {"version", "prefix_bytes", "domains", "open_hosting"}
 
 
 def test_cli_build_lists_without_tranco_continues(tmp_path, monkeypatch, caplog):

@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { hashPrefix, listDomainKey, listUrlKey } from "../dist/keys.js";
 import { readFileSync } from "node:fs";
 
-import { ListSet, withBundledAllowlist } from "../dist/lists.js";
+import { inZone, ListSet, withBundledAllowlist } from "../dist/lists.js";
 import { psl as loadPsl } from "./helpers.js";
 import { buildTrie } from "../dist/lib/psl.js";
 
@@ -42,6 +42,54 @@ test("shared hosting matches the full URL only and is never allowlisted", async 
   assert.deepEqual([bad.shared, bad.blocked, bad.allow, bad.trustKey], [true, "url", false, "badguy.github.io"]);
   const other = await set.check("https://goodguy.github.io/login/");
   assert.equal(other.blocked, null);
+});
+
+test("open-hosting zones lift the allowlist inside the zone only", async () => {
+  const set = new ListSet(
+    {
+      blocklist: {
+        prefix_bytes: BYTES,
+        domains: [],
+        urls: [await h(listUrlKey("https://tenant.swedencentral.cloudapp.azure.com/ch/login"))],
+      },
+      allowlist: {
+        prefix_bytes: BYTES,
+        domains: [await h("azure.com"), await h("google.com")],
+        open_hosting: ["cloudapp.azure.com", "drive.google.com"],
+      },
+    },
+    { platforms, psl },
+  );
+  const bad = await set.check("https://tenant.swedencentral.cloudapp.azure.com/ch/login");
+  assert.deepEqual([bad.shared, bad.blocked, bad.allow], [true, "url", false]);
+  const other = await set.check("https://new.westeurope.cloudapp.azure.com/");
+  assert.deepEqual([other.shared, other.blocked, other.allow], [true, null, false]);
+  const drive = await set.check("https://drive.google.com/file/d/x");
+  assert.deepEqual([drive.shared, drive.allow, drive.trustKey], [true, false, "drive.google.com"]);
+  assert.equal((await set.check("https://portal.azure.com/")).allow, true);
+  assert.equal((await set.check("https://www.google.com/search?q=x")).allow, true);
+});
+
+test("a full-URL entry matches on any domain, also an allowlisted one", async () => {
+  const set = new ListSet(
+    {
+      blocklist: { prefix_bytes: BYTES, domains: [], urls: [await h(listUrlKey("https://github.com/x/y/raw/a.exe"))] },
+      allowlist: { prefix_bytes: BYTES, domains: [await h("github.com")], open_hosting: [] },
+    },
+    { platforms, psl },
+  );
+  const bad = await set.check("https://github.com/x/y/raw/a.exe");
+  assert.deepEqual([bad.shared, bad.blocked, bad.allow], [false, "url", true]);
+  const ok = await set.check("https://github.com/x/y");
+  assert.deepEqual([ok.blocked, ok.allow], [null, true]);
+});
+
+test("inZone matches a zone and hosts below it, never a longer label", () => {
+  const zones = new Set(["cloudapp.azure.com"]);
+  assert.equal(inZone("cloudapp.azure.com", zones), true);
+  assert.equal(inZone("a.b.cloudapp.azure.com", zones), true);
+  assert.equal(inZone("xcloudapp.azure.com", zones), false);
+  assert.equal(inZone("portal.azure.com", zones), false);
 });
 
 test("empty or missing lists match nothing; unparsable URLs give no domain", async () => {

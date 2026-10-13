@@ -6,11 +6,11 @@ Each URL goes through the bundled allowlist (Tranco top 50,000) and then the tie
 | set | URLs | domains | on allowlist | model alone: suspicious / dangerous | shipped: suspicious / dangerous | shipped flagged | not on allowlist: flagged |
 |---|---|---|---|---|---|---|---|
 | natural legitimate pages (ood_urls) | 2,555 | 562 | 1,072 (42.0%) | 97 / 18 (4.5%) | 64 / 7 | 71 (2.8%, 38 domains) | 71 of 1,483 (4.8%) |
-| Tranco top 1,000 homepages | 1,000 | 1,000 | 941 (94.1%) | 151 / 10 (16.1%) | 57 / 0 | 57 (5.7%, 57 domains) | 57 of 59 (96.6%) |
+| Tranco top 1,000 homepages | 1,000 | 1,000 | 934 (93.4%) | 151 / 10 (16.1%) | 58 / 0 | 58 (5.8%, 58 domains) | 58 of 66 (87.9%) |
 
 Caveats:
 - Some of the natural-page sites were seeded from Tranco, so the share on the allowlist is higher than for an average browsing history; the last column is the rate a visitor meets on sites outside the top 50,000.
-- The Tranco rows not on the allowlist are shared-hosting, CDN and shortener domains (amazonaws.com, github.io, bit.ly, ...) that the allowlist leaves out by design, so a page there is judged by the model or the blocklist.
+- The Tranco rows not on the allowlist are shared-hosting, CDN and shortener domains (amazonaws.com, github.io, bit.ly, ...) and open-hosting domains learned from phishing hosts (weebly.com, ...) that the allowlist leaves out by design, so a page there is judged by the model or the blocklist.
 - The model's own false-alarm rate on these pages with the allowlist off is the `model alone` column (also in `reports/ood_fpr.md`).
 
 ## Pages still flagged after the allowlist (natural pages)
