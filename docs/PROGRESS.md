@@ -375,3 +375,13 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Blocklist coverage is not measurable on the corpus (the test URLs come from datasets collected in other
   periods than our live feeds); it can only be measured forward, as the share of newly listed feed URLs whose
   domain was already on an earlier list, once the collector has run for several days.
+
+### 2026-10-13 — Shipped extension on natural legitimate pages (offline real-world check)
+- `python -m experiments.shipped_verdicts` (runs `js/bench/verdicts.mjs`: bundled allowlist, then the tier A
+  model at its suspicious and dangerous thresholds, in the order of `background.js`; blocklist, backend and
+  page layers not applied; no page visited). On the 2,555 usable natural pages (562 sites): allowlist covers
+  1,072 (42.0%); model alone flags 115 (4.5%); shipped 71 (2.8%: 64 suspicious, 7 dangerous, 38 domains);
+  71 of the 1,483 pages on sites outside the top 50,000 (4.8%). On the Tranco top 1,000 homepages 941 are
+  allowlisted; the other 59 are shared-hosting/CDN/shortener domains left out by design (`reports/shipped_verdicts.md`).
+- This is a measurement on known-legitimate URLs, not a browsing test: the real-site check still needs
+  Ritvik's own browsing (false-alarm screenshots) and the sandbox cannot open real sites.
