@@ -1,8 +1,87 @@
 # PhishDrift
 
-The best practical phishing detector we can build: maximum detection at low false-positive
-rates, trained on many pooled datasets with our own feature extraction. See
-[docs/PROJECT_SPEC.md](docs/PROJECT_SPEC.md).
+A phishing detector built to hold up outside its benchmark: six public datasets and live feeds
+pooled under domain-level leakage controls, one in-house feature engine, three model tiers, and an
+evaluation protocol (10 domain-grouped splits, a held-out source, the newest time slice and
+naturally browsed legitimate pages) that treats a single benchmark score as untrustworthy. It ships
+as a Chrome extension (Manifest V3) that scores addresses on the device, plus a FastAPI backend.
+Design: [docs/PROJECT_SPEC.md](docs/PROJECT_SPEC.md). Prior study it builds on:
+[docs/prior_work/](docs/prior_work/).
+
+## Results
+
+Medians over 10 domain-grouped splits; every number comes from a script in `experiments/` and its
+report in `reports/`. Recall is measured at a fixed false-positive rate (FPR), the primary metric.
+
+| model | evaluation set | URLs / domains | ROC-AUC | recall @1% FPR | recall @0.1% FPR | source |
+|---|---|---|---|---|---|---|
+| tier A hybrid2 (ships in the browser) | held-out source (PhishStorm) | 59,485 / 33,056 | 0.9587 | 73.6% | 56.0% | [hybrid2.md](reports/hybrid2.md) |
+| tier A hybrid2 | newest time slice (PhreshPhish) | 80,653 / 58,054 | 0.9753 | 74.4% | 51.0% | [hybrid2.md](reports/hybrid2.md) |
+| blend (page model where HTML exists) | test, rows with usable HTML | 26,011 / 18,334 | 0.9958 | 94.2% | 82.0% | [blend_checks.md](reports/blend_checks.md) |
+
+Also measured: false alarms on 2,555 naturally browsed legitimate pages
+([ood_fpr.md](reports/ood_fpr.md), [shipped_verdicts.md](reports/shipped_verdicts.md)),
+leave-one-source-out ([loso.md](reports/loso.md)), address normalisation and shuffled-label controls
+([hybrid2_checks.md](reports/hybrid2_checks.md), [blend_checks.md](reports/blend_checks.md),
+[tier_b_checks.md](reports/tier_b_checks.md)), URL evasion attacks ([robustness.md](reports/robustness.md)),
+domain/DNS/TLS facts at first sight ([tier_c.md](reports/tier_c.md)) and in-browser latency
+(1.6 ms per URL, [latency.md](reports/latency.md)). Known limits: the HTML results rest almost
+entirely on one source (PhreshPhish), thresholds do not transfer across sources
+([loso.md](reports/loso.md)), and the tier C sample is small.
+
+## How it works
+
+```mermaid
+flowchart LR
+    subgraph Browser["Chrome extension (on the device)"]
+        N[Navigation] --> T{User trust or allowlist?}
+        T -- yes --> S[Safe]
+        T -- no --> B{Blocklist hit?}
+        B -- yes --> D[Dangerous: warning page]
+        B -- no --> M[Tier A URL model, about 2 ms]
+        M -- safe --> S
+        M -- flagged --> C[Combiner]
+        P[Content script: password-form checks] --> C
+        C --> W[Suspicious banner or warning page, with reasons]
+    end
+    subgraph Backend["FastAPI backend"]
+        L[Hashed list builder: feeds, URLhaus, Tranco, open-hosting zones]
+        Q["/score: RDAP, DNS, TLS checks (domain name only)"]
+    end
+    L -- daily sync --> T
+    L -- daily sync --> B
+    M -- flagged domain only --> Q --> C
+```
+
+The extension sends the backend only a domain name, and only for an address the on-device model
+already flagged. The allowlist (Tranco top 50,000, hashed) skips learned open-hosting zones such as
+`cloudapp.azure.com` and `drive.google.com`. Details: [extension/README.md](extension/README.md),
+[docs/BACKEND.md](docs/BACKEND.md), every feature in
+[docs/FEATURE_DICTIONARY.md](docs/FEATURE_DICTIONARY.md).
+
+## Repository layout
+
+| folder | what it holds |
+|---|---|
+| `phishdrift/` | shared schema, registrable domains, canonical URLs, cached HTTP client |
+| `collector/` | live feeds every 12 h, benign inner-page crawler, first-seen RDAP/DNS/TLS capture |
+| `data_pipeline/` | source loaders, pooled corpus build (dedup, leakage removal, depth check), splits, data card |
+| `features/` | the feature engine: 99 URL (tier A), 84 HTML (tier B) and 29 domain (tier C) features |
+| `models/`, `experiments/` | models, and every reported number (writes `reports/`) |
+| `attacks/` | six URL evasion families for the robustness section |
+| `js/`, `extension/` | JavaScript port of tier A (identical to Python on 272 URLs) and the MV3 extension |
+| `backend/` | FastAPI service and hashed list builder |
+
+## Try the extension
+
+```bash
+cd extension && node build.mjs     # assembles extension/dist
+```
+
+Then open `chrome://extensions`, turn on Developer mode, choose **Load unpacked** and pick
+`extension/dist`. After an update, click the reload arrow on the PhishDrift card. The backend is
+optional (`uvicorn backend.app:create_app --factory`); without it the extension still scores
+addresses and uses its bundled allowlist.
 
 ## Setup
 
@@ -12,7 +91,7 @@ pip install -e ".[dev,datasets]"
 pytest && ruff check .
 ```
 
-## Data (milestone 1)
+## Reproduce the data (milestone 1)
 
 On Windows, `powershell -ExecutionPolicy Bypass -File scripts\run_milestone1.ps1` runs every step below from a fresh clone.
 

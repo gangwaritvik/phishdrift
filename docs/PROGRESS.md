@@ -419,3 +419,11 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   (inferred). The earlier hybrid2 control without calibration was 0.4940.
 - One split's normalised HTML recall at 0.1% FPR is 0 (`reports/blend_checks.md`); the median is 65.7%.
 - Loop learning from user reports: Ritvik chose "report only"; the design is in the report's future work.
+
+### 2026-10-13 — Depth-matched results for hybrid2; README
+- `python -m experiments.hybrid_depth` (10 splits, `reports/hybrid2_depth.md`): ROC-AUC per depth bucket for the
+  shipped model. Held-out PhishStorm: depth 1-3 give 0.954-0.960 against 0.9587 overall, so its result is not
+  PhishStorm's depth imbalance; depth 0 (91 benign URLs) is 0.7985 and the cal 1% threshold flags 30.2% of those
+  benign URLs. Depth 0 is the weakest bucket on test (0.9209) and the time slice (0.9270) too.
+- README rewritten: results table (from `reports/`), architecture diagram (Mermaid), repository layout, how to load
+  the extension.
