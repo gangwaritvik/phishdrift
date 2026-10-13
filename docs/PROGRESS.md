@@ -320,3 +320,11 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   inconsistencies between result files) in the project folder: `phishdrift/report/report_draft.md`.
 - Running: address-only (normalised URL) check and shuffled-label control for hybrid2 (`--variant hybrid2`).
 - Next: tier C rerun after the 18:15 IST collector run; fix the report draft's open inconsistencies.
+
+### 2026-10-13 — Hybrid2 representation check and shuffled-label control
+- `python -m experiments.hybrid_checks --variant hybrid2` over 10 splits (4 processes in parallel):
+  test URLs normalised to `https://www.<registrable domain>` give ROC-AUC 0.8697 [0.8682, 0.8715], recall
+  44.3 / 29.8 at FPR 1% / 0.1% (raw test 0.9536); shuffled-label control mean ROC-AUC 0.4940, not flagged
+  (`reports/hybrid2_checks.md`, per-split files in `reports/tables/hybrid2_checks/`). Same picture as the first hybrid.
+- Still missing for the evaluation list: checks for the tier B model and the blend, the adversarial section,
+  blocklist coverage, latency, real-site check.
