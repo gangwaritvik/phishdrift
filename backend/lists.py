@@ -24,7 +24,9 @@ registrable domain is the zone. A URL inside a zone is treated like a platform U
 allowlist does not apply and the blocklist lists it by full URL, so a tenant's phishing page
 neither passes as the trusted brand nor blocks the brand's own pages (``www.google.com`` stays
 allowlisted). The zones are listed in plain text in the allowlist document (``open_hosting``);
-they are public hosting names, not user data.
+they are public hosting names, not user data. Besides the feeds, a long phishing history
+(``lists.open_hosting.evidence_urls``) feeds the learner, because the corpus drops domains
+shared by several phishing sources and the live feeds cover only days.
 """
 
 from __future__ import annotations
@@ -144,12 +146,19 @@ def _read_urls(path: Path, phishing_only: bool) -> list[str]:
     return [u for u in df["url"].dropna().astype(str) if u.strip()]
 
 
+def parse_url_lines(text: str) -> list[str]:
+    """One URL per line; blank lines and ``#`` comments skipped (Phishing.Database lists)."""
+    return [s for s in (ln.strip() for ln in text.splitlines()) if s and not s.startswith("#")]
+
+
 def read_phishing_file(path: Path) -> list[str]:
     """Phishing URLs from a parquet or CSV file with a ``url`` column (and ``label``/``threat``
-    when present, keeping label 1 or phishing rows only)."""
+    when present, keeping label 1 or phishing rows only), or a ``.txt`` file of one URL per line."""
     path = Path(path)
     if path.suffix == ".parquet":
         return _read_urls(path, phishing_only=True)
+    if path.suffix == ".txt":
+        return parse_url_lines(path.read_text(encoding="utf-8", errors="replace"))
     df = pd.read_csv(path)
     if "label" in df:
         df = df[df["label"] == 1]

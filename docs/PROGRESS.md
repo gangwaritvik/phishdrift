@@ -473,3 +473,25 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   0.3%) as the default; the `_ws` threshold is set by PhreshPhish's cal slice and may not generalise to other new
   sources better than the pooled threshold does.
 - Next: update the report draft with these results; real-site check (Ritvik's browsing); tier C rerun.
+
+### 2026-10-14 — URL-layer test on fresh feed URLs; open-hosting zones learned from phishing history
+- Test (`js/bench/verdicts.mjs`, address layer + bundled allowlist, no page model): 200 active hosts from
+  Phishing.Database and 104 regional brand / login URLs (Indian, EU and Asian banks, payment apps, big login pages).
+  Before: 62.5% of phishing warned, 0 of 104 false alarms; 12 model-flagged phishing hosts shipped safe because
+  their hosting domain (`000webhostapp.com`, `blogspot.be`, `tw1.ru`, `xsph.ru`, `ydns.eu`, ...) was allowlisted.
+- Cause: the open-hosting learner had almost no evidence for these domains. The corpus drops domains shared by
+  several phishing sources (the pool has 0 phishing URLs on `000webhostapp.com` or `weebly.com`), and the PC's
+  feeds cover only a few days.
+- Changed (Ritvik: no hand-written addresses): `backend/__main__.py` downloads `lists.open_hosting.evidence_urls`
+  (Phishing.Database `phishing-links-ACTIVE.txt`, 789k URLs, cached 1 day) and passes it to the unchanged learner
+  as zone evidence only (never blocklisted, never training data); `--no-evidence` skips it; `.txt` URL lists
+  accepted by `--phishing-file`; tests for both. The learner then marks 174 allowlisted domains as whole open
+  zones (all those above plus `mystrikingly.com`, `squarespace.com`, `tumblr.com`, regional blogspot, dynamic DNS,
+  ...) and adds child zones (`sites.google.com`, `chat.whatsapp.com`); `google.com`, `microsoft.com`, `apple.com`,
+  `paypal.com`, `github.com` stay allowlisted.
+- Bundled `extension/data/allowlist.json` updated in the cloud by applying those zones to the existing list (no
+  Tranco download here); the 200 test hosts were left out of the evidence so the re-test is independent. The
+  next PC `build-lists` run produces the same from scratch.
+- Results after: 68.5% of the 200 phishing hosts warned (73 dangerous, 64 suspicious), none silenced by the
+  allowlist; 0 of 104 regional brand URLs flagged; natural legitimate pages 69 of 2,555 flagged (2.7%; was 71).
+- Open: the 63 remaining misses are bare hosts the address model scores clean; the page layer is the next check.

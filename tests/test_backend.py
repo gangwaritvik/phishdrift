@@ -473,6 +473,35 @@ def test_read_phishing_file_keeps_phishing_rows(tmp_path):
         pq_path
     )
     assert lists.read_phishing_file(pq_path) == ["https://a.x.com/"]
+    txt = tmp_path / "p.txt"
+    txt.write_text("# comment\nhttps://a.x.com/\n\nhttp://b.y.com/z\n")
+    assert lists.read_phishing_file(txt) == ["https://a.x.com/", "http://b.y.com/z"]
+
+
+def test_zone_evidence_opens_hosting_domain(monkeypatch):
+    from backend import __main__ as cli
+
+    history = "\n".join(f"http://tenant{i}.freehost.com/login" for i in range(5))
+    monkeypatch.setattr(cli.HttpClient, "get", lambda self, url, **kw: history.encode())
+    evidence = cli.fetch_zone_evidence(Settings.load())
+    assert len(evidence) == 5
+    docs = lists.build_lists(
+        [], ["freehost.com", "google.com"], frozenset(), 6, extra_phishing_urls=evidence
+    )
+    assert "freehost.com" in docs["allowlist"]["open_hosting"]
+    assert lists.list_hash("freehost.com", 6) not in docs["allowlist"]["domains"]
+    assert lists.list_hash("google.com", 6) in docs["allowlist"]["domains"]
+    assert docs["blocklist"]["domains"] == [] and docs["blocklist"]["urls"] == []
+
+
+def test_zone_evidence_download_failure_is_skipped(monkeypatch):
+    from backend import __main__ as cli
+
+    def boom(self, url, **kw):
+        raise OSError("offline")
+
+    monkeypatch.setattr(cli.HttpClient, "get", boom)
+    assert cli.fetch_zone_evidence(Settings.load()) == []
 
 
 def test_list_endpoints(settings):
