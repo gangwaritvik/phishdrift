@@ -13,21 +13,31 @@ Design: [docs/PROJECT_SPEC.md](docs/PROJECT_SPEC.md). Prior study it builds on:
 Medians over 10 domain-grouped splits; every number comes from a script in `experiments/` and its
 report in `reports/`. Recall is measured at a fixed false-positive rate (FPR), the primary metric.
 
-| model | evaluation set | URLs / domains | ROC-AUC | recall @1% FPR | recall @0.1% FPR | source |
-|---|---|---|---|---|---|---|
-| tier A hybrid2 (ships in the browser) | held-out source (PhishStorm) | 59,485 / 33,056 | 0.9587 | 73.6% | 56.0% | [hybrid2.md](reports/hybrid2.md) |
-| tier A hybrid2 | newest time slice (PhreshPhish) | 80,653 / 58,054 | 0.9753 | 74.4% | 51.0% | [hybrid2.md](reports/hybrid2.md) |
-| blend (page model where HTML exists) | test, rows with usable HTML | 26,011 / 18,334 | 0.9958 | 94.2% | 82.0% | [blend_checks.md](reports/blend_checks.md) |
+Medians over 10 domain-grouped splits; "agree" rule = suspicious banner on an HTML page requires
+both the page model and the address model to exceed the 1% threshold. Every number comes from a
+script in `experiments/` and its report in `reports/`.
 
-Also measured: false alarms on 2,555 naturally browsed legitimate pages
-([ood_fpr.md](reports/ood_fpr.md), [shipped_verdicts.md](reports/shipped_verdicts.md)),
-leave-one-source-out ([loso.md](reports/loso.md)), address normalisation and shuffled-label controls
-([hybrid2_checks.md](reports/hybrid2_checks.md), [blend_checks.md](reports/blend_checks.md),
-[tier_b_checks.md](reports/tier_b_checks.md)), URL evasion attacks ([robustness.md](reports/robustness.md)),
-domain/DNS/TLS facts at first sight ([tier_c.md](reports/tier_c.md)) and in-browser latency
-(1.6 ms per URL, [latency.md](reports/latency.md)). Known limits: the HTML results rest almost
-entirely on one source (PhreshPhish), thresholds do not transfer across sources
-([loso.md](reports/loso.md)), and the tier C sample is small.
+| model / rule | evaluation set | URLs | recall @1% FPR | false alarms @1% | recall @0.1% FPR | false alarms @0.1% | source |
+|---|---|---|---|---|---|---|---|
+| shipped agree | test (all) | 84,036 | 73.5% | 0.9% | 60.0% | 0.1% | [blend2_rules.md](reports/blend2_rules.md) |
+| shipped agree | test, rows with usable HTML | 26,011 | 88.5% | 0.4% | 86.6% | 0.2% | [blend2_rules.md](reports/blend2_rules.md) |
+| shipped agree | newest time slice (PhreshPhish) | 80,653 | 80.7% | 0.8% | 66.7% | 0.2% | [blend2_rules.md](reports/blend2_rules.md) |
+| shipped agree | held-out source (PhishStorm, URL-only) | 59,485 | 84.0% | 4.8% | 65.0% | 0.3% | [blend2_rules.md](reports/blend2_rules.md) |
+| shipped agree | OOD legit pages (address model, 2,555 pages) | 2,555 | n/a | 5.3% | n/a | 1.1% | [blend2_rules.md](reports/blend2_rules.md) |
+| shipped agree | OOD legit pages with HTML (2,226 pages) | 2,226 | n/a | 2.4% | n/a | 1.3% | [blend2_rules.md](reports/blend2_rules.md) |
+| tier C + address (domain/DNS/TLS, live feeds) | 10-split test | 1,488 hosts | — | — | — | — | [tier_c.md](reports/tier_c.md) |
+
+PhishStorm's 4.8% false alarms are from a 2014 URL-only source; the pooled threshold (fitted on
+PhreshPhish-heavy data) does not transfer there. Source-robust `_ws` variants bring it to 3.9% at
+−1.4 pp recall. Also measured: leave-one-source-out ([loso.md](reports/loso.md)), address
+normalisation and shuffled-label controls ([hybrid2_checks.md](reports/hybrid2_checks.md),
+[blend_checks.md](reports/blend_checks.md), [tier_b_checks.md](reports/tier_b_checks.md)), URL
+evasion attacks ([robustness.md](reports/robustness.md)), IPW fairness correction
+([blend2_fair.md](reports/blend2_fair.md)), backend domain rule rates
+([domain_rules.md](reports/domain_rules.md)), and in-browser latency (1.6 ms per URL,
+[latency.md](reports/latency.md)). Known limits: HTML results rest almost entirely on one source
+(PhreshPhish), thresholds do not transfer across sources ([loso.md](reports/loso.md)), and the tier
+C sample is small.
 
 ## How it works
 
@@ -41,8 +51,8 @@ flowchart LR
         B -- no --> M[Tier A URL model, about 2 ms]
         M -- safe --> S
         M -- flagged --> C[Combiner]
-        P[Content script: password-form checks] --> C
-        C --> W[Suspicious banner or warning page, with reasons]
+        P[Content script: sends page HTML] --> PG[Tier B page model] --> C
+        C --> W["Suspicious / dangerous with reasons (agree rule: both models must flag on HTML pages)"]
     end
     subgraph Backend["FastAPI backend"]
         L[Hashed list builder: feeds, URLhaus, Tranco, open-hosting zones]
