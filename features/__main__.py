@@ -10,8 +10,10 @@ python -m features build --tier B [--split NAME] [--workers N]
 python -m features build --tier C [--info-dir DIR] [--out FILE]
                                          # tier C (domain/DNS/TLS) features of the first-seen
                                          # captures -> data/processed/features_c.parquet
-python -m features export-js            # js/data/ (public-suffix rules, lists, fitted numbers)
-python -m features parity               # tests/fixtures/url_parity.json (Python-JS parity cases)
+python -m features export-js            # js/data/ (public-suffix rules, lists, fitted numbers) and
+                                         # js/src/pydata.js (entity tables, Python Unicode sets)
+python -m features parity               # tests/fixtures/url_parity.json and html_parity.json
+                                         # (Python-JS parity cases, tier A and tier B)
 """
 
 from __future__ import annotations
@@ -119,13 +121,13 @@ def main(argv: list[str] | None = None) -> int:
 
         print(scrape.run(args.names or None))
     elif args.command == "export-js":
-        from features import js_export
+        from features import html_parity, js_export
 
-        print(*js_export.export_js(), sep="\n")
+        print(*js_export.export_js(), html_parity.export_pydata(), sep="\n")
     elif args.command == "parity":
-        from features import js_export
+        from features import html_parity, js_export
 
-        print(js_export.write_parity())
+        print(js_export.write_parity(), html_parity.write_parity_b(), sep="\n")
     elif args.command == "fit":
         print(fit_command())
     elif args.tier == "C":

@@ -113,61 +113,64 @@ def facts_from_raw(
 # --- placeholder rules ------------------------------------------------------------------
 
 
-def _signal(sid: str, text: str, severity: str) -> dict[str, str]:
-    return {"id": sid, "text": text, "severity": severity}
+# Severity each signal has unless ``rules.severity`` in configs/backend.yaml overrides it.
+DEFAULT_SEVERITY = {
+    "domain_very_young": "high",
+    "domain_young": "warn",
+    "domain_unregistered": "warn",
+    "not_resolving": "warn",
+    "no_tls": "info",
+    "no_tls_young_domain": "warn",
+    "tls_unverified": "warn",
+    "free_cert_very_young_domain": "high",
+}
+
+
+def _signal(sid: str, text: str, severity: str | None = None) -> dict[str, str]:
+    return {"id": sid, "text": text, "severity": severity or DEFAULT_SEVERITY[sid]}
 
 
 def evaluate(facts: dict[str, Any], rules: dict) -> tuple[list[dict[str, str]], str]:
-    """Placeholder heuristic: signals from thresholds, then a risk level from their counts."""
+    """Signals from thresholds, then a risk level from their counts. Each signal's severity can
+    be set in ``rules.severity`` (chosen from ``reports/domain_rules.md``)."""
     very_young, young = rules["very_young_domain_days"], rules["young_domain_days"]
     age = facts.get("age_days")
     out: list[dict[str, str]] = []
     if age is not None and age < very_young:
         out.append(
-            _signal(
-                "domain_very_young",
-                f"This domain was registered only {age} day(s) ago.",
-                "high",
-            )
+            _signal("domain_very_young", f"This domain was registered only {age} day(s) ago.")
         )
     elif age is not None and age < young:
-        out.append(
-            _signal("domain_young", f"This domain was registered only {age} days ago.", "warn")
-        )
+        out.append(_signal("domain_young", f"This domain was registered only {age} days ago."))
     if facts.get("registered") is False:
         out.append(
-            _signal(
-                "domain_unregistered", "No registration record was found for this domain.", "warn"
-            )
+            _signal("domain_unregistered", "No registration record was found for this domain.")
         )
     if facts.get("resolves") is False:
-        out.append(_signal("not_resolving", "This domain does not resolve in DNS.", "warn"))
+        out.append(_signal("not_resolving", "This domain does not resolve in DNS."))
     if facts.get("tls_ok") is False:
-        out.append(
-            _signal("no_tls", "The site does not offer a secure (HTTPS) connection.", "info")
-        )
+        out.append(_signal("no_tls", "The site does not offer a secure (HTTPS) connection."))
         if age is not None and age < young:
             out.append(
                 _signal(
                     "no_tls_young_domain",
                     "A new domain without HTTPS is unusual for a real service.",
-                    "warn",
                 )
             )
     if facts.get("tls_verified") is False:
         out.append(
-            _signal(
-                "tls_unverified", "The site's security certificate could not be verified.", "warn"
-            )
+            _signal("tls_unverified", "The site's security certificate could not be verified.")
         )
     if facts.get("cert_free_issuer") and age is not None and age < very_young:
         out.append(
             _signal(
                 "free_cert_very_young_domain",
                 "A brand-new domain with a free certificate is a common phishing pattern.",
-                "high",
             )
         )
+    override = rules.get("severity") or {}
+    for sig in out:
+        sig["severity"] = override.get(sig["id"], sig["severity"])
     return out, risk_level(out, rules["risk"])
 
 

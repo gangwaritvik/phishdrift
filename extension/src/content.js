@@ -1,7 +1,7 @@
-// Content script (classic script, no imports). When the page has loaded it reports which forms
-// ask for a password and where they send it, gets the final verdict from the service worker, and
-// shows a banner for "suspicious". Nothing leaves the device from here: the service worker
-// compares the form targets locally and the backend only ever sees a domain name.
+// Content script (classic script, no imports). When the page has loaded it hands the page's HTML
+// and its password forms to the service worker, which scores the page on this device, gets the
+// final verdict back, and shows a banner for "suspicious". Nothing leaves the device from here:
+// the page model runs in the service worker and the backend only ever sees a domain name.
 
 function collectPageFacts(doc, base) {
   const forms = [];
@@ -61,9 +61,24 @@ function showBanner(result) {
   document.documentElement.append(host);
 }
 
+// The page's HTML for the page model, scored in the service worker on this device; it is never
+// sent anywhere else. Capped so a huge page cannot stall the check.
+const MAX_HTML_CHARS = 5_000_000;
+
+function pageHtml(doc) {
+  const doctype = doc.doctype ? new XMLSerializer().serializeToString(doc.doctype) : "";
+  return (doctype + doc.documentElement.outerHTML).slice(0, MAX_HTML_CHARS);
+}
+
 async function run() {
   const facts = collectPageFacts(document, location.href);
-  const result = await chrome.runtime.sendMessage({ type: "page", url: location.href, facts });
+  let html = null;
+  try {
+    html = pageHtml(document);
+  } catch {
+    html = null; // the page model is skipped; the address verdict stands
+  }
+  const result = await chrome.runtime.sendMessage({ type: "page", url: location.href, facts, html });
   if (result && !result.error && result.verdict === 1) showBanner(result);
 }
 

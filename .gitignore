@@ -27,3 +27,4 @@ dist/
 
 # JavaScript
 node_modules/
+logs_b2/

@@ -427,3 +427,49 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   benign URLs. Depth 0 is the weakest bucket on test (0.9209) and the time slice (0.9270) too.
 - README rewritten: results table (from `reports/`), architecture diagram (Mermaid), repository layout, how to load
   the extension.
+
+### 2026-10-14 — Detector improvements: page model in extension, agree rule, IPW, domain rules
+- Summary of five improvements from the "detector improvements" branch (PR #22):
+  1. **Page model in the extension** (`js/src/html_features.js`, `js/src/htmlparser.js`, `js/src/pystr.js`,
+     `js/src/page.js`, `models/page_model.py`, `models/export_page.py`, `extension/src/background.js`,
+     `extension/src/combine.js`, `extension/src/content.js`, `extension/build.mjs`): the content script sends
+     page HTML to the service worker; the service worker scores it with the tier B page model (LightGBM on
+     tier A + tier B features, exported to `js/data/tier_b_page.json` 2.46 MB); reasons for the page model are
+     from `models/explain.py`'s `REASONS_B` sentences with late-sort for generic amounts.
+  2. **IPW fairness correction** (`experiments/blend2.py`): `propensity()` model (HistGradientBoosting) estimates
+     P(usable HTML | URL features, source) per class; IPW-corrected recall on HTML pages is 1–2 pp lower than
+     the unadjusted figure, confirming the numbers are defensible.
+  3. **"Agree" verdict rule** (`experiments/blend2.py`, `js/src/page.js`, `models/export_page.py`): a suspicious
+     banner on a page with usable HTML now requires both the page model and the address model to exceed their
+     1% thresholds; reduces false alarms on natural legitimate pages with HTML from 4.7% → 2.4% while cutting
+     recall on those pages by about 4.5 pp (93% → 88.5%).
+  4. **Source-robust thresholds** (`experiments/blend2.py`, `reports/blend2_rules.md`): `_ws` variants use the
+     highest per-source cal 1%/0.1% threshold (set by PhreshPhish for the address score; this is not shipped
+     by default but is documented for future use if source generalisability is the priority).
+  5. **Domain rules grounded in data** (`experiments/domain_rules.py`, `backend/checks.py`, `configs/backend.yaml`,
+     `reports/domain_rules.md`): `domain_unregistered` fires on 22% of legit and phishing alike (demoted to
+     `info`); `tls_unverified` fires on 5.1% legit vs 9.3% phishing (demoted to `info`); `domain_young` (age < 30
+     d) fires on 28% phishing vs 1% legit; `no_mx_no_spf` 56% vs 9% — strongest signals stay at the original severity.
+- JS parity tests: `tests/fixtures/html_parity.json` (382 synthetic pages), `tests/fixtures/page_parity.json`
+  (Python's blended scores and verdicts for those pages from split 0's model); `npm test` 20 pass (16 original + 3
+  combine tests + html_parity + page_parity).
+- Results (median of 10 splits, `reports/blend2_rules.md`, shipped `agree` rule):
+
+  | set | recall (warned) | false alarms | recall (dangerous) | false alarms (dangerous) |
+  |---|---|---|---|---|
+  | test | 73.5% | 0.9% | 60.0% | 0.1% |
+  | test:html | 88.5% | 0.4% | 86.6% | 0.2% |
+  | test:nohtml | 67.1% | 1.1% | 48.8% | 0.1% |
+  | time slice | 80.7% | 0.8% | 66.7% | 0.2% |
+  | time slice:html | 73.5% | 0.4% | 69.3% | 0.2% |
+  | held-out PhishStorm (no HTML) | 84.0% | 4.8% | 65.0% | 0.3% |
+  | OOD legit (no HTML, 2,555 pages) | n/a | 5.3% | n/a | 1.1% |
+  | OOD legit with HTML (2,226 pages) | n/a | 2.4% | n/a | 1.3% |
+
+  PhishStorm 4.8% false alarms: the cal threshold (trained on PhreshPhish-heavy data) does not transfer to this
+  2014 URL-only source. `agree_ws` brings it to 3.9% at a cost of 1.4 pp recall on the test set.
+  Dangerous rate on PhishStorm 0.3% — well-controlled.
+- Open: whether to ship `agree` (current, 88.5% recall, 0.4% false alarms on HTML pages) or `agree_ws` (87.9%,
+  0.3%) as the default; the `_ws` threshold is set by PhreshPhish's cal slice and may not generalise to other new
+  sources better than the pooled threshold does.
+- Next: update the report draft with these results; real-site check (Ritvik's browsing); tier C rerun.

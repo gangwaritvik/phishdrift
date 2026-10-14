@@ -17,7 +17,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 import numpy as np
 
-from features.registry import REGISTRY
+from features.registry import NAMES_B, REGISTRY, REGISTRY_B
 
 ZERO_THRESHOLD = 1e-35
 
@@ -269,6 +269,109 @@ REASONS: dict[str, tuple[str, float, float]] = {
     "n_pct_encoded": (f"The number of %-encoded characters ({{v}}) {LIKE_PHISHING}.", 1, math.inf),
 }
 
+PAGE_TYPICAL = "typical of phishing pages"
+# Page (tier B) features: same rules as REASONS.
+REASONS_B: dict[str, tuple[str, float, float]] = {
+    "n_password_fields": ("The page asks for a password.", 1, math.inf),
+    "n_credential_forms": ("The page has a sign-in form.", 1, math.inf),
+    "n_password_outside_form": (
+        "A password box sits outside any form, a trick used by copied login pages.",
+        1,
+        math.inf,
+    ),
+    "n_password_forms_external": (
+        "The sign-in form sends what you type to a different website.",
+        1,
+        math.inf,
+    ),
+    "n_form_action_external": (
+        "A form on this page sends its data to another website.",
+        1,
+        math.inf,
+    ),
+    "n_form_action_empty": ("A form on this page has no normal destination.", 1, math.inf),
+    "n_form_action_js": ("A form on this page is sent by a script.", 1, math.inf),
+    "n_form_action_mailto": ("A form on this page sends its data by email.", 1, math.inf),
+    "n_otp_fields": ("The page asks for a one-time code (OTP).", 1, math.inf),
+    "n_card_fields": ("The page asks for payment card details.", 1, math.inf),
+    "n_cvv_fields": ("The page asks for a card security code (CVV).", 1, math.inf),
+    "n_upi_pin_fields": ("The page asks for a UPI or ATM PIN.", 1, math.inf),
+    "n_anchor_text_mismatch": (
+        "Some links show one website's name but lead to another.",
+        1,
+        math.inf,
+    ),
+    "link_null_ratio": (f"The share of links that go nowhere {PAGE_TYPICAL}.", 0.01, math.inf),
+    "link_external_ratio": (
+        f"The share of links that leave this website {PAGE_TYPICAL}.",
+        -math.inf,
+        math.inf,
+    ),
+    "n_links": (f"The number of links on the page ({{v}}) is {PAGE_TYPICAL}.", -math.inf, math.inf),
+    "has_base_external": ("The page loads its links relative to another website.", 1, 1),
+    "favicon_external": ("The page's icon is taken from another website.", 1, 1),
+    "resource_external_ratio": (
+        f"The share of images, scripts and styles loaded from other websites {PAGE_TYPICAL}.",
+        -math.inf,
+        math.inf,
+    ),
+    "img_external_ratio": (
+        f"The share of images loaded from other websites {PAGE_TYPICAL}.",
+        -math.inf,
+        math.inf,
+    ),
+    "n_img_data_uri": ("Images are embedded inside the page code.", 1, math.inf),
+    "title_has_credential_word": ("The page title is about signing in or verifying.", 1, 1),
+    "brand_in_title_mismatch": (
+        "The page title names a brand, but this website does not belong to it.",
+        1,
+        1,
+    ),
+    "n_brands_in_text_mismatch": (
+        "The page talks about a brand that this website does not belong to.",
+        1,
+        math.inf,
+    ),
+    "n_urgency_words": ("The page uses urgent or threatening words.", 1, math.inf),
+    "n_credential_words": ("The page asks you to sign in or enter a password.", 1, math.inf),
+    "n_bank_words": ("The page talks about bank accounts or cards.", 1, math.inf),
+    "n_pay_words": ("The page talks about payments.", 1, math.inf),
+    "n_crypto_words": ("The page talks about crypto wallets or seed phrases.", 1, math.inf),
+    "n_iframes": ("The page shows another page inside a frame.", 1, math.inf),
+    "n_hidden_iframes": ("The page contains hidden frames.", 1, math.inf),
+    "has_meta_refresh": ("The page sends you to another address automatically.", 1, 1),
+    "meta_refresh_external": ("The page sends you to another website automatically.", 1, 1),
+    "right_click_disabled": ("The page blocks the right-click menu.", 1, 1),
+    "n_js_redirects": ("A script on the page can send you to another address.", 1, math.inf),
+    "n_eval": ("The page runs hidden code (eval).", 1, math.inf),
+    "n_atob": ("The page decodes hidden text in a script.", 1, math.inf),
+    "n_unescape": ("The page decodes hidden text in a script.", 1, math.inf),
+    "n_document_write": ("A script writes the page content on the fly.", 1, math.inf),
+    "n_fromcharcode": ("A script builds text from character codes, a way to hide it.", 1, math.inf),
+    "script_escape_ratio": ("The page's scripts are heavily encoded.", 0.01, math.inf),
+    "n_telegram_endpoints": ("The page sends data to a Telegram bot.", 1, math.inf),
+    "n_webhook_endpoints": (
+        "The page sends data to a form relay or webhook service.",
+        1,
+        math.inf,
+    ),
+    "has_copyright": ("The page has no normal copyright notice.", 0, 0),
+    "has_title": ("The page has no title.", 0, 0),
+    "visible_text_len": (
+        f"The amount of text on the page ({{v}} characters) is {PAGE_TYPICAL}.",
+        -math.inf,
+        math.inf,
+    ),
+    "page_size": (f"The page size ({{v}} characters) is {PAGE_TYPICAL}.", -math.inf, math.inf),
+    "n_tags": (f"The page structure ({{v}} elements) is {PAGE_TYPICAL}.", -math.inf, math.inf),
+}
+REASONS |= REASONS_B
+# Page amounts that say little on their own: shown only after the specific page reasons.
+LATE_REASONS = frozenset(
+    ("visible_text_len", "page_size", "n_tags", "n_links", "link_external_ratio")
+    + ("resource_external_ratio", "img_external_ratio", "link_null_ratio")
+)
+
 
 def fmt(v: float) -> str:
     """Same text as ``fmt`` in js/src/explain.js: integers as is, else two decimals with ties
@@ -278,7 +381,7 @@ def fmt(v: float) -> str:
     return str(Decimal(float(v)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
-REGISTRY_BY_NAME = {f.name: f for f in REGISTRY}
+REGISTRY_BY_NAME = {f.name: f for f in (*REGISTRY, *REGISTRY_B)}
 
 
 def reason_rules(names: list[str]) -> dict[str, dict]:
@@ -290,12 +393,15 @@ def reason_rules(names: list[str]) -> dict[str, dict]:
             text, lo, hi = REASONS[name]
         else:
             definition = REGISTRY_BY_NAME[name].definition.split("; NaN")[0].rstrip(".")
-            text, lo, hi = f"{definition}: {{v}}, {TYPICAL}.", -math.inf, math.inf
+            typical = PAGE_TYPICAL if name in NAMES_B else TYPICAL
+            text, lo, hi = f"{definition}: {{v}}, {typical}.", -math.inf, math.inf
         out[name] = {
             "text": text,
             "lo": None if lo == -math.inf else lo,
             "hi": None if hi == math.inf else hi,
         }
+        if name in LATE_REASONS or (name in NAMES_B and name not in REASONS):
+            out[name]["late"] = True
     return out
 
 
@@ -307,10 +413,11 @@ def reasons(
     top: int,
     min_logodds: float,
 ) -> list[dict]:
-    """Up to ``top`` sentences for the features pushing hardest toward phishing."""
+    """Up to ``top`` sentences for the features pushing hardest toward phishing. Rules marked
+    ``late`` (page size and other generic amounts) come after the specific ones."""
     out = []
     for i in np.argsort(-phi, kind="stable"):
-        if len(out) == top or phi[i] < min_logodds:
+        if phi[i] < min_logodds:
             break
         v, rule = float(x[i]), rules[names[i]]
         if (
@@ -324,6 +431,8 @@ def reasons(
                 "feature": names[i],
                 "contribution": float(phi[i]),
                 "text": rule["text"].replace("{v}", fmt(v)),
+                "late": bool(rule.get("late")),
             }
         )
-    return out
+    out.sort(key=lambda r: r.pop("late"))  # stable: keeps the contribution order within each
+    return out[:top]

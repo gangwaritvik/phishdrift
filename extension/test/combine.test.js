@@ -63,3 +63,33 @@ test("no model result means safe with a note", () => {
   assert.equal(r.verdict, SAFE);
   assert.equal(r.notes.length, 1);
 });
+
+const pageModel = (verdict, hasHtml = true, texts = ["page why"]) => ({
+  verdict,
+  hasHtml,
+  blended: 0.4,
+  reasons: texts.map((text) => ({ text })),
+});
+
+test("the page model's verdict replaces the address verdict once the page is read", () => {
+  const lowered = combine({ ...base, model: model(SUSPICIOUS) }, null, pageModel(SAFE));
+  assert.deepEqual([lowered.verdict, lowered.reasons], [SAFE, []]);
+  const raised = combine({ ...base, model: model(SAFE, []) }, null, pageModel(SUSPICIOUS));
+  assert.deepEqual([raised.verdict, raised.layer, raised.reasons], [SUSPICIOUS, "page-model", ["page why"]]);
+  const both = combine({ ...base, model: model(SUSPICIOUS, ["addr"]) }, null, pageModel(DANGEROUS));
+  assert.deepEqual([both.verdict, both.reasons], [DANGEROUS, ["page why", "addr"]]);
+});
+
+test("the password-form rule applies only when the page model could not read the page", () => {
+  const flags = { hasPassword: true, credFormCrossDomain: true, credFormInsecure: false };
+  const read = combine({ ...base, model: model(SUSPICIOUS) }, flags, pageModel(SUSPICIOUS));
+  assert.equal(read.verdict, SUSPICIOUS);
+  const unread = combine({ ...base, model: model(SUSPICIOUS) }, flags, pageModel(SUSPICIOUS, false, []));
+  assert.equal(unread.verdict, DANGEROUS);
+});
+
+test("high domain risk still raises a page-model suspicious verdict to dangerous", () => {
+  const high = { risk: "high", signals: [{ severity: "high", text: "Registered 2 days ago." }] };
+  const r = combine({ ...base, model: model(SAFE, []), domain: high }, null, pageModel(SUSPICIOUS));
+  assert.deepEqual([r.verdict, r.layer], [DANGEROUS, "domain"]);
+});

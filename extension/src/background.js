@@ -1,6 +1,7 @@
 // Service worker: checks every top-level navigation. Layers, cheapest first: user trust and
-// allowlist, blocklist, URL model (on device), backend domain checks (only for addresses the
-// model already flagged; only the domain name is sent), then page checks from the content script.
+// allowlist, blocklist, URL model (on device), backend domain checks (only for addresses a model
+// already flagged; only the domain name is sent), then the page model on the HTML the content
+// script sends (on device).
 // Webnavigation cannot hold a page back, so a slow check never delays loading (fail open); a
 // dangerous verdict redirects the tab to the warning page once it is known.
 
@@ -8,6 +9,7 @@ import { DEFAULTS } from "./config.js";
 import { combine, DANGEROUS, SAFE, SUSPICIOUS } from "./combine.js";
 import { listUrlKey } from "./keys.js";
 import { loadHybrid, scoreUrl } from "./lib/hybrid.js";
+import { loadPage, scorePage } from "./lib/page.js";
 import { isIpHost } from "./lib/urlparts.js";
 import { ListSet, withBundledAllowlist } from "./lists.js";
 import { pageFlags } from "./pagefacts.js";
@@ -44,6 +46,15 @@ function getModel() {
     return loadHybrid(bundle, psl);
   })();
   return modelPromise;
+}
+
+let pagePromise;
+function getPage() {
+  pagePromise ??= (async () => {
+    const bundle = await (await fetch(chrome.runtime.getURL("data/tier_b_page.json"))).json();
+    return loadPage(bundle);
+  })();
+  return pagePromise;
 }
 
 let listsPromise;
@@ -155,11 +166,33 @@ async function layersFor(url) {
   return layers;
 }
 
-export async function evaluate(url, facts = null) {
-  const layers = await layersFor(url);
+// Page model on the HTML the content script sent (on this device). Any failure leaves the
+// address verdict in place.
+async function pageCheck(layers, url, html, settings) {
+  if (html == null || !layers.model) return null; // trusted, allowlisted or blocklisted
+  try {
+    const [model, page] = await Promise.all([getModel(), getPage()]);
+    const first = scorePage(model, page, url, html);
+    const scored = first.verdict > SAFE && first.hasHtml ? scorePage(model, page, url, html, { withReasons: true }) : first;
+    // the page model flagged an address the URL model passed: ask the backend about the domain too
+    if (scored.verdict > SAFE && !layers.domain && !layers.backendFailed && layers.domainName && !layers.shared && !isIpHost(layers.domainName)) {
+      layers.domain = await domainChecks(layers.domainName, scored.verdict, settings);
+      layers.backendFailed = layers.domain === null;
+    }
+    return scored;
+  } catch (err) {
+    console.warn("PhishDrift page check failed (address verdict kept):", err);
+    return null;
+  }
+}
+
+export async function evaluate(url, facts = null, html = null) {
+  const settings = await getSettings();
+  const layers = { ...(await layersFor(url)) };
   const model = await getModel();
   const page = facts ? pageFlags(facts, url, model.lists.psl) : null;
-  const result = combine(layers, page);
+  const pageModel = await pageCheck(layers, url, html, settings);
+  const result = combine(layers, page, pageModel);
   return { ...result, url, domain: layers.domainName };
 }
 
@@ -232,7 +265,7 @@ const handlers = {
   // Content script: page facts in, final verdict out.
   async page(msg, sender) {
     const tabId = sender.tab?.id;
-    const result = await evaluate(msg.url, msg.facts);
+    const result = await evaluate(msg.url, msg.facts, msg.html ?? null);
     if (tabId !== undefined) await applyResult(tabId, result);
     return result;
   },
