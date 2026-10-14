@@ -1,0 +1,5 @@
+split,score,target_fpr,pooled,worst_source,worst_source_name
+1,a,0.01,0.7751004024601317,0.7818181826989894,phreshphish
+1,a,0.001,0.9363207556998391,-inf,
+1,blend,0.01,0.6666666674923105,0.775100402466526,phiusiil
+1,blend,0.001,0.9318181828042682,-inf,
