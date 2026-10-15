@@ -48,8 +48,16 @@ function entropy(text) {
 
 function wordStats(ws) {
   if (!ws.length) return [NaN, NaN, NaN];
-  const lens = ws.map((w) => w.length);
-  return [Math.min(...lens), Math.max(...lens), lens.reduce((a, b) => a + b, 0) / lens.length];
+  // a loop, not Math.min(...lens): spreading ~150k words overflows the call stack
+  let lo = Infinity;
+  let hi = -Infinity;
+  let sum = 0;
+  for (const w of ws) {
+    lo = Math.min(lo, w.length);
+    hi = Math.max(hi, w.length);
+    sum += w.length;
+  }
+  return [lo, hi, sum / ws.length];
 }
 
 function longestRun(text, same) {

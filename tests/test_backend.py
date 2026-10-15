@@ -473,6 +473,35 @@ def test_read_phishing_file_keeps_phishing_rows(tmp_path):
         pq_path
     )
     assert lists.read_phishing_file(pq_path) == ["https://a.x.com/"]
+    txt = tmp_path / "p.txt"
+    txt.write_text("# comment\nhttps://a.x.com/\n\nhttp://b.y.com/z\n")
+    assert lists.read_phishing_file(txt) == ["https://a.x.com/", "http://b.y.com/z"]
+
+
+def test_zone_evidence_opens_hosting_domain(monkeypatch):
+    from backend import __main__ as cli
+
+    history = "\n".join(f"http://tenant{i}.freehost.com/login" for i in range(5))
+    monkeypatch.setattr(cli.HttpClient, "get", lambda self, url, **kw: history.encode())
+    evidence = cli.fetch_zone_evidence(Settings.load())
+    assert len(evidence) == 5
+    docs = lists.build_lists(
+        [], ["freehost.com", "google.com"], frozenset(), 6, extra_phishing_urls=evidence
+    )
+    assert "freehost.com" in docs["allowlist"]["open_hosting"]
+    assert lists.list_hash("freehost.com", 6) not in docs["allowlist"]["domains"]
+    assert lists.list_hash("google.com", 6) in docs["allowlist"]["domains"]
+    assert docs["blocklist"]["domains"] == [] and docs["blocklist"]["urls"] == []
+
+
+def test_zone_evidence_download_failure_is_skipped(monkeypatch):
+    from backend import __main__ as cli
+
+    def boom(self, url, **kw):
+        raise OSError("offline")
+
+    monkeypatch.setattr(cli.HttpClient, "get", boom)
+    assert cli.fetch_zone_evidence(Settings.load()) == []
 
 
 def test_list_endpoints(settings):
@@ -527,3 +556,24 @@ def test_live_checker_treats_a_broken_resolver_as_unknown():
 
     checker = LiveChecker(settings, client=NoRdap(), query=working_resolver, now=lambda: NOW)
     assert checker("nonexistent.example.com")["resolves"] is False
+
+
+def test_path_tenants_open_the_whole_domain():
+    urls = [f"https://telegra.ph/page-{i}" for i in range(4)] + ["https://www.google.com/x/y"]
+    zones = lists.open_hosting_zones(urls, {"telegra.ph", "google.com"}, 3, 0.5)
+    assert zones == {"telegra.ph"}
+
+
+def test_many_busy_tenants_open_the_whole_domain():
+    urls = [f"https://t{i}.host.me/{j}" for i in range(25) for j in range(5)]
+    assert lists.open_hosting_zones(urls, {"host.me"}, 3, 0.5) == {
+        f"t{i}.host.me" for i in range(25)
+    }
+    assert lists.open_hosting_zones(urls, {"host.me"}, 3, 0.5, min_children_whole=20) == {"host.me"}
+
+
+def test_shorteners_are_never_allowlisted():
+    docs = lists.build_lists(
+        [], ["t.co", "example.com"], frozenset(), 6, shorteners=frozenset({"t.co"})
+    )
+    assert docs["allowlist"]["domains"] == [lists.list_hash("example.com", 6)]

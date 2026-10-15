@@ -21,8 +21,12 @@ function collectPageFacts(doc, base) {
   };
 }
 
+// A flag, not a lookup by id: a page could plant an element with the banner's id to suppress it.
+let bannerShown = false;
+
 function showBanner(result) {
-  if (document.getElementById("phishdrift-banner-host")) return;
+  if (bannerShown) return;
+  bannerShown = true;
   const host = document.createElement("div");
   host.id = "phishdrift-banner-host";
   const root = host.attachShadow({ mode: "closed" });
@@ -80,8 +84,39 @@ async function run() {
   }
   const result = await chrome.runtime.sendMessage({ type: "page", url: location.href, facts, html });
   if (result && !result.error && result.verdict === 1) showBanner(result);
+  return facts.passwordFields;
+}
+
+// A login form added after load (single-page apps, forms injected by script) is checked again,
+// a few times at most, once the page has been quiet for a moment.
+const MAX_RECHECKS = 3;
+const RECHECK_DELAY_MS = 750;
+
+function watchForLateForms(seen) {
+  let rechecks = 0;
+  let timer = null;
+  let passwordFields = seen;
+  const observer = new MutationObserver(() => {
+    if (timer) return;
+    timer = setTimeout(async () => {
+      timer = null;
+      const now = document.querySelectorAll('input[type="password"]').length;
+      if (now <= passwordFields) return;
+      passwordFields = now;
+      rechecks += 1;
+      if (rechecks >= MAX_RECHECKS) observer.disconnect();
+      await run().catch(() => {});
+    }, RECHECK_DELAY_MS);
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
 }
 
 if (typeof chrome !== "undefined" && chrome.runtime?.id) {
-  run().catch(() => {}); // fail open: a failed check never affects the page
+  // verdicts the service worker reached on its own (after a redirect or an in-page address change)
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg?.type === "phishdrift-verdict" && msg.result?.verdict === 1) showBanner(msg.result);
+  });
+  run()
+    .then(watchForLateForms)
+    .catch(() => {}); // fail open: a failed check never affects the page
 }

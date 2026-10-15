@@ -93,3 +93,18 @@ test("high domain risk still raises a page-model suspicious verdict to dangerous
   const r = combine({ ...base, model: model(SAFE, []), domain: high }, null, pageModel(SUSPICIOUS));
   assert.deepEqual([r.verdict, r.layer], [DANGEROUS, "domain"]);
 });
+
+test("an allowlisted page warns only on the page model's strong evidence, and only as suspicious", () => {
+  const pageModel = (strong) => ({ hasHtml: true, blended: 0.97, verdict: DANGEROUS, reasons: [{ text: "page" }], allowedPageWarning: strong });
+  const quiet = combine({ ...base, allow: true, model: null }, null, pageModel(false));
+  assert.deepEqual([quiet.verdict, quiet.layer], [SAFE, "allowlist"]);
+  const loud = combine({ ...base, allow: true, model: null }, null, pageModel(true));
+  assert.deepEqual([loud.verdict, loud.layer, loud.reasons], [SUSPICIOUS, "page-model", ["page"]]);
+});
+
+test("a short link is judged by its page, never by its own address; a listed one is dangerous", () => {
+  const r = combine({ ...base, shortener: true, model: null });
+  assert.deepEqual([r.verdict, r.layer], [SAFE, "shortener"]);
+  const listed = combine({ ...base, shortener: true, blocked: "url", model: null });
+  assert.deepEqual([listed.verdict, listed.layer], [DANGEROUS, "blocklist"]);
+});
