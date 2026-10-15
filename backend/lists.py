@@ -39,13 +39,14 @@ import re
 import string
 from collections import defaultdict
 from collections.abc import Iterable
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
 import pyarrow.parquet as pq
 
-from phishdrift.domains import split_host
+from phishdrift.domains import _EXTRACT_U2, split_host
 
 log = logging.getLogger(__name__)
 
@@ -220,6 +221,135 @@ def _tenant_like(counts: dict[str, int], min_children: int, min_per_url: float) 
     return len(counts) >= min_children and len(counts) / sum(counts.values()) >= min_per_url
 
 
+def _segments(rest: str, n: int) -> list[str]:
+    """First ``n`` non-empty path segments of ``rest`` (query dropped), ASCII-lowercased."""
+    path = rest.partition("?")[0].translate(_LOWER)
+    return [seg for seg in path.split("/") if seg][:n]
+
+
+def _path_tenants(paths: Iterable[list[str]], min_children: int) -> tuple[set[str], dict[str, int]]:
+    """Generic first segments and tenant counts for the phishing paths of one host.
+
+    A first segment is *generic* when at least ``min_children`` different second segments follow
+    it (``ipfs.io/ipfs/<cid>``, ``sites.google.com/view/<site>``); its tenants are then the first
+    two segments. Otherwise the tenant is the first segment (``telegra.ph/<page>``). Learned from
+    the data, so no path is hand-written. At most one generic level is followed, so a long open
+    redirect (``google.com/amp/s/<host>``) never makes a big site's own path a tenant."""
+    paths = [p for p in paths if p]
+    nexts: dict[str, set[str]] = defaultdict(set)
+    for p in paths:
+        if len(p) > 1:
+            nexts[p[0]].add(p[1])
+    generic = {seg for seg, seen in nexts.items() if len(seen) >= min_children}
+    counts: dict[str, int] = defaultdict(int)
+    for p in paths:
+        tenant = "/".join(p[:2]) if p[0] in generic and len(p) > 1 else p[0]
+        counts[tenant] += 1
+    return generic, counts
+
+
+def path_tenant_prefix(rest: str, generic: set[str] | frozenset[str]) -> str:
+    """Tenant path prefix (``/x`` or ``/view/x``) of ``rest`` under a path-tenant host, or ''."""
+    segs = _segments(rest, 2)
+    if not segs:
+        return ""
+    return "/" + ("/".join(segs) if segs[0] in generic and len(segs) > 1 else segs[0])
+
+
+def private_tenant(host: str) -> str:
+    """The tenant site of ``host`` on a platform with a PSL private suffix (``x.web.app``,
+    ``b.github.io`` for ``a.b.github.io``), or '' when the host is not a tenant (``web.app``,
+    ``s3.amazonaws.com`` and ``weebly.com`` hosts give '')."""
+    ext = _EXTRACT_U2(host)
+    if not (ext.domain and ext.suffix):
+        return ""
+    tenant = f"{ext.domain}.{ext.suffix}"
+    _, label, suffix = split_host(host)
+    return "" if tenant == f"{label}.{suffix}" else tenant
+
+
+def sub_tenant(host: str, domain: str) -> str:
+    """The tenant site a subdomain ``host`` of registrable ``domain`` belongs to: the PSL
+    private-suffix tenant when there is one (``x.blob.core.windows.net``), else the child of the
+    domain (``x.weebly.com`` for ``a.x.weebly.com``)."""
+    tenant = private_tenant(host)
+    if tenant:
+        return tenant
+    return host[: -len(domain) - 1].rsplit(".", 1)[-1] + "." + domain
+
+
+@dataclass
+class ZoneModel:
+    """What the learner found. ``zones`` maps a zone to how it was learned: ``child`` (phishing
+    at or below one child of a big site, ``drive.google.com``), ``sub`` (whole domain, one tenant
+    per subdomain, ``weebly.com``) or ``path`` (whole domain, tenants are paths, ``telegra.ph``).
+    ``path_hosts`` maps every host whose phishing paths look like one tenant each (enough
+    distinct tenants, few URLs per tenant) to its generic first segments. ``tenant_domains``
+    holds the registrable domains whose phishing subdomains look like one tenant each
+    (``sub_tenant``): only there may the blocklist list a whole tenant host."""
+
+    zones: dict[str, str] = field(default_factory=dict)
+    path_hosts: dict[str, frozenset[str]] = field(default_factory=dict)
+    tenant_domains: set[str] = field(default_factory=set)
+
+
+def learn_zones(
+    phishing_urls: Iterable[str],
+    candidates: set[str],
+    min_tenant_children: int,
+    min_children_per_url: float,
+    min_children_whole: int | None = None,
+    shared: set[str] | frozenset[str] = frozenset(),
+) -> ZoneModel:
+    """Learn open-hosting zones (see the module docstring) below ``candidates`` and path-tenant
+    hosts below ``candidates`` and ``shared`` (hosting platforms).
+
+    Tenants are subdomains (``x.weebly.com``) or, for phishing on the bare domain, paths
+    (``telegra.ph/x``, ``ipfs.io/ipfs/<cid>``; see ``_path_tenants``). A path cannot be a zone,
+    so path tenants only ever open the whole domain. ``min_children_whole`` distinct subdomain
+    children open the whole domain whatever their URL counts (busy tenants, as on
+    ``mybluehost.me``)."""
+    children: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    tenants: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    host_paths: dict[str, list[list[str]]] = defaultdict(list)
+    host_domain: dict[str, str] = {}
+    for url in phishing_urls:
+        domain = list_domain_key(url)
+        if domain not in candidates and domain not in shared:
+            continue
+        host, _, rest = _split(url)
+        host_paths[host].append(_segments(rest, 2))
+        host_domain[host] = domain
+        if host != domain and host.endswith("." + domain):
+            tenants[domain][sub_tenant(host, domain)] += 1
+            if domain in candidates:
+                children[domain][host[: -len(domain) - 1].rsplit(".", 1)[-1]] += 1
+    model = ZoneModel()
+    for domain, counts in tenants.items():
+        if _tenant_like(counts, min_tenant_children, min_children_per_url) or bool(
+            min_children_whole and len(counts) >= min_children_whole
+        ):
+            model.tenant_domains.add(domain)
+    path_like: dict[str, bool] = {}
+    for host, paths in host_paths.items():
+        generic, counts = _path_tenants(paths, min_tenant_children)
+        if _tenant_like(counts, min_tenant_children, min_children_per_url):
+            model.path_hosts[host] = frozenset(generic)
+            path_like[host] = True
+    for domain in candidates & (children.keys() | {host_domain[h] for h in host_paths}):
+        counts = children.get(domain, {})
+        if _tenant_like(counts, min_tenant_children, min_children_per_url) or bool(
+            min_children_whole and len(counts) >= min_children_whole
+        ):
+            model.zones[domain] = "sub"
+        elif path_like.get(domain):
+            model.zones[domain] = "path"
+        else:
+            for child in counts:
+                model.zones.setdefault(f"{child}.{domain}", "child")
+    return model
+
+
 def open_hosting_zones(
     phishing_urls: Iterable[str],
     candidates: set[str],
@@ -227,38 +357,95 @@ def open_hosting_zones(
     min_children_per_url: float,
     min_children_whole: int | None = None,
 ) -> set[str]:
-    """Zones (see the module docstring) learned from phishing hosts below candidate domains.
+    """Zone names only (``learn_zones``)."""
+    return set(
+        learn_zones(
+            phishing_urls, candidates, min_tenant_children, min_children_per_url, min_children_whole
+        ).zones
+    )
 
-    Tenants are subdomains (``x.weebly.com``) or, for phishing on the bare domain, first path
-    segments (``telegra.ph/x``, ``taplink.cc/x``); a path cannot be a zone, so path tenants only
-    ever open the whole domain. ``min_children_whole`` distinct subdomain children open the whole
-    domain whatever their URL counts (busy tenants, as on ``mybluehost.me``)."""
-    children: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    paths: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    for url in phishing_urls:
-        domain = list_domain_key(url)
-        if domain not in candidates:
-            continue
-        host, _, rest = _split(url)
-        if host == domain:
-            segment = rest.partition("?")[0].strip("/").split("/", 1)[0].translate(_LOWER)
-            if segment:
-                paths[domain][segment] += 1
-        elif host.endswith("." + domain):
-            children[domain][host[: -len(domain) - 1].rsplit(".", 1)[-1]] += 1
-    zones: set[str] = set()
-    for domain in children.keys() | paths.keys():
-        counts = children.get(domain, {})
-        whole = _tenant_like(counts, min_tenant_children, min_children_per_url)
-        whole = whole or bool(min_children_whole and len(counts) >= min_children_whole)
-        whole = whole or _tenant_like(
-            paths.get(domain, {}), min_tenant_children, min_children_per_url
-        )
-        if whole:
-            zones.add(domain)
-        else:
-            zones.update(f"{child}.{domain}" for child in counts)
-    return zones
+
+def list_url_expressions(url: str) -> list[str]:
+    """Every key under which a blocklist URL entry can match ``url`` (the extension hashes each
+    one and looks it up), in the spirit of Safe Browsing's host-suffix / path-prefix expressions.
+
+    Hosts: the host with its port, then up to four parent suffixes of at least two labels.
+    Paths for each host: none, the first one, two and three non-empty path segments, the whole
+    path without trailing ``/``, and the whole path with the query (this last one on the full
+    host is ``list_url_key``). The builder decides which of these keys an entry is listed under
+    (``block_url_keys``), so a lookup never blocks more than the builder chose to."""
+    host, port, rest = _split(url)
+    path, sep, query = rest.partition("?")
+    path = path.rstrip("/")
+    segs = [seg for seg in path.split("/") if seg]
+    paths = ["", *("/" + "/".join(segs[:n]) for n in range(1, min(len(segs), 3) + 1)), path]
+    if sep:
+        paths.append(path + "?" + query)
+    hosts = [host + port]
+    labels = host.split(".")
+    for i in range(1, len(labels) - 1):
+        if len(hosts) == 5:
+            break
+        hosts.append(".".join(labels[i:]))
+    out: list[str] = []
+    seen: set[str] = set()
+    for h in hosts:
+        for p in paths:
+            key = h + p
+            if key not in seen:
+                seen.add(key)
+                out.append(key)
+    return out
+
+
+def _specific(path: str, min_len: int) -> bool:
+    """True when a path segment is long enough to name one object (a form or file id)."""
+    return any(len(seg) >= min_len for seg in path.split("/"))
+
+
+def block_url_keys(
+    url: str,
+    model: ZoneModel,
+    protected: set[str] | frozenset[str] = frozenset(),
+    specific_segment_len: int = 16,
+) -> list[str]:
+    """Keys a blocklisted URL on a shared host is listed under (each one is also produced by
+    ``list_url_expressions`` for the URLs it should match):
+
+    - the exact URL (``list_url_key``), always;
+    - the tenant: the tenant host on a domain whose phishing is one tenant per subdomain
+      (``x.web.app``, ``x.weebly.com``; ``ZoneModel.tenant_domains``), or the host plus the
+      tenant path on a path-tenant host (``telegra.ph/x``, ``sites.google.com/view/x``);
+    - the URL without its query, on a tenant or when a path segment names one object, so a
+      per-victim token in the query does not dodge the list.
+
+    No key is ever a ``protected`` host (allowlist candidates and hosting platforms themselves)."""
+    host, port, rest = _split(url)
+    path, sep, _ = rest.partition("?")
+    path = path.rstrip("/")
+    domain = list_domain_key(url)
+    keys = [list_url_key(url)]
+    tenant = ""
+    if host != domain and domain in model.tenant_domains and host.endswith("." + domain):
+        tenant = sub_tenant(host, domain)
+        if tenant in model.path_hosts or tenant in protected:
+            tenant = ""  # a shared host (storage.googleapis.com) is never blocked as a whole
+    if not tenant and host in model.path_hosts:
+        prefix = path_tenant_prefix(path, model.path_hosts[host])
+        if prefix:
+            segs = [seg for seg in path.split("/") if seg]
+            tenant = host + port + "/" + "/".join(segs[: prefix.count("/")])
+    if tenant:
+        keys.append(tenant)
+    if sep and (tenant or _specific(path, specific_segment_len)):
+        keys.append(host + port + path)
+    return [k for k in dict.fromkeys(keys) if k not in protected]
+
+
+def _canonical(doc: dict) -> bytes:
+    """Exact bytes of a list file: compact JSON, non-ASCII kept as UTF-8, so the extension can
+    rebuild the same bytes with ``JSON.stringify`` after a delta and check the hash."""
+    return json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
 def build_lists(
@@ -272,20 +459,35 @@ def build_lists(
     min_children_per_url: float = 0.5,
     min_children_whole: int | None = None,
     shorteners: frozenset[str] = frozenset(),
+    allow_prefix_bytes: int | None = None,
+    sentinel_top_n: int = 1000,
+    specific_segment_len: int = 16,
 ) -> dict[str, dict]:
     """Return ``{"manifest", "blocklist", "allowlist"}`` documents (all sorted, deterministic
     except ``built_at``). ``extra_phishing_urls`` (for example the corpus's phishing URLs) only
     help find open-hosting domains; they are not blocklisted. Shorteners are never allowlisted:
-    a short link says nothing about where it leads (the extension judges the target instead)."""
+    a short link says nothing about where it leads (the extension judges the target instead).
+
+    ``prefix_bytes`` sizes the blocklist hashes and ``allow_prefix_bytes`` (default: the same)
+    the allowlist hashes: a short allowlist prefix lets an attacker register a domain whose hash
+    collides with a trusted one. ``allow_candidates`` are in rank order; the hashes of the first
+    ``sentinel_top_n`` allowlisted ones are listed in ``allowlist.top`` so the extension can
+    refuse a synced list that would block or drop the most visited sites."""
+    allow_bytes = allow_prefix_bytes or prefix_bytes
     blocklist_urls = list(blocklist_urls)
-    cand_domains = {d for d in map(list_domain_key, allow_candidates) if d} - shorteners
-    zones = open_hosting_zones(
+    ranked = list(dict.fromkeys(d for d in map(list_domain_key, allow_candidates) if d))
+    ranked = [d for d in ranked if d not in shorteners]
+    cand_domains = set(ranked)
+    model = learn_zones(
         [*blocklist_urls, *extra_phishing_urls],
         cand_domains - platforms,
         min_tenant_children,
         min_children_per_url,
         min_children_whole,
+        shared=platforms,
     )
+    zones = set(model.zones)
+    protected = cand_domains | platforms | zones
     block_domains: set[str] = set()
     block_urls: set[str] = set()
     plain_block_domains: set[str] = set()
@@ -293,50 +495,55 @@ def build_lists(
         domain = list_domain_key(url)
         if not domain:
             continue
-        # platforms, open-hosting zones and allowlist candidates are listed by full URL: blocking
+        # platforms, open-hosting zones and allowlist candidates are listed by URL keys: blocking
         # the domain would block every tenant (github.io) or the big site itself (github.com
         # serving one bad download); any other domain is listed by its registrable domain
         if domain in platforms or domain in cand_domains or in_zone(url_host(url), zones):
-            block_urls.add(list_hash(list_url_key(url), prefix_bytes))
+            for key in block_url_keys(url, model, protected, specific_segment_len):
+                block_urls.add(list_hash(key, prefix_bytes))
         else:
             plain_block_domains.add(domain)
             block_domains.add(list_hash(domain, prefix_bytes))
-    allow: set[str] = set()
-    for domain in cand_domains:
-        if domain not in platforms and domain not in zones and domain not in plain_block_domains:
-            allow.add(list_hash(domain, prefix_bytes))
+    allowed_ranked = [
+        d for d in ranked if d not in platforms and d not in zones and d not in plain_block_domains
+    ]
+    allow = {list_hash(d, allow_bytes) for d in allowed_ranked}
+    top = [list_hash(d, allow_bytes) for d in allowed_ranked[:sentinel_top_n]]
     doms, urls, allowed = sorted(block_domains), sorted(block_urls), sorted(allow)
     opened = sorted(zones)
     digest = hashlib.sha256(
-        json.dumps([prefix_bytes, doms, urls, allowed, opened], separators=(",", ":")).encode()
+        json.dumps(
+            [prefix_bytes, allow_bytes, doms, urls, allowed, opened, top], separators=(",", ":")
+        ).encode()
     ).hexdigest()
     version = digest[:12]
     built = (built_at or datetime.now(UTC)).astimezone(UTC).isoformat(timespec="seconds")
-    return {
-        "manifest": {
-            "version": version,
-            "built_at": built,
-            "prefix_bytes": prefix_bytes,
-            "counts": {
-                "blocklist_domains": len(doms),
-                "blocklist_urls": len(urls),
-                "allowlist_domains": len(allowed),
-                "open_hosting_domains": len(opened),
-            },
+    blocklist = {"version": version, "prefix_bytes": prefix_bytes, "domains": doms, "urls": urls}
+    allowlist = {
+        "version": version,
+        "prefix_bytes": allow_bytes,
+        "domains": allowed,
+        "open_hosting": opened,
+        "top": top,
+    }
+    manifest = {
+        "version": version,
+        "built_at": built,
+        "prefix_bytes": prefix_bytes,
+        "allow_prefix_bytes": allow_bytes,
+        "counts": {
+            "blocklist_domains": len(doms),
+            "blocklist_urls": len(urls),
+            "allowlist_domains": len(allowed),
+            "open_hosting_domains": len(opened),
+            "allowlist_top": len(top),
         },
-        "blocklist": {
-            "version": version,
-            "prefix_bytes": prefix_bytes,
-            "domains": doms,
-            "urls": urls,
-        },
-        "allowlist": {
-            "version": version,
-            "prefix_bytes": prefix_bytes,
-            "domains": allowed,
-            "open_hosting": opened,
+        "sha256": {
+            "blocklist": hashlib.sha256(_canonical(blocklist)).hexdigest(),
+            "allowlist": hashlib.sha256(_canonical(allowlist)).hexdigest(),
         },
     }
+    return {"manifest": manifest, "blocklist": blocklist, "allowlist": allowlist}
 
 
 def write_lists(docs: dict[str, dict], out_dir: Path) -> dict[str, Path]:
@@ -348,7 +555,7 @@ def write_lists(docs: dict[str, dict], out_dir: Path) -> dict[str, Path]:
     for name in ("blocklist", "allowlist", "manifest"):
         path = out_dir / f"{name}.json"
         tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(docs[name], separators=(",", ":")), encoding="utf-8")
+        tmp.write_bytes(_canonical(docs[name]))
         os.replace(tmp, path)
         paths[name] = path
     return paths

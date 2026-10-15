@@ -51,5 +51,13 @@ class Settings:
         return resolve(self.cfg["feedback"]["dir"])
 
     @property
+    def remote_config_path(self) -> Path:
+        return resolve(self.cfg["remote_config"]["path"])
+
+    @property
+    def platforms_file(self) -> Path:
+        return resolve(self.cfg["remote_config"]["platforms_file"])
+
+    @property
     def lists_dir(self) -> Path:
         return resolve(self.cfg["lists"]["out_dir"])

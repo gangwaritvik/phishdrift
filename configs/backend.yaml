@@ -28,7 +28,29 @@ rate_limit:                      # token bucket per client address
   max_clients: 10000
 
 feedback:
-  dir: data/feedback             # one JSON line per report: domain, kind, verdict, timestamp
+  dir: data/feedback             # one JSON line per report: domain, kind, verdict, timestamp, reporter
+  # POST /register issues a per-install token "<install_id>.<hmac>" (no user data); /feedback needs
+  # it in the X-PhishDrift-Token header. The HMAC secret comes from this environment variable; if it
+  # is unset, a random one is created once in <dir>/.secret (mode 0600) so tokens survive restarts.
+  secret_env: PHISHDRIFT_FEEDBACK_SECRET
+  register_rate:                 # token bucket per client address, for /register only
+    capacity: 3
+    refill_per_s: 0.000277778    # 1/3600: one more registration per hour
+    max_clients: 10000
+  max_per_install_per_day: 20    # accepted reports per install per UTC day, then 429
+  dedupe_window_s: 86400         # same install + domain + kind again: answered, not stored again
+  max_installs: 100000           # in-memory per-install counters and dedupe keys are capped here
+
+remote_config:                   # GET /config (backend/remote_config.py); checked at start-up
+  path: configs/remote_config.yaml
+  platforms_file: configs/platforms.yaml   # never_warn may not name a hosting platform
+  bounds:                        # every threshold set there must lie in [min, max]
+    min: 0.5
+    max: 0.9999
+  max_never_warn: 200
+  list_sync_minutes:
+    min: 15
+    max: 1440
 
 lists:
   out_dir: data/lists
