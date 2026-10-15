@@ -14,7 +14,7 @@ from pathlib import Path
 
 from backend import lists
 from backend.settings import Settings
-from features.lists import read_platforms
+from features.lists import load_lists, read_platforms
 from phishdrift.config import resolve
 from phishdrift.http import HttpClient
 
@@ -71,6 +71,8 @@ def cmd_build_lists(args: argparse.Namespace) -> int:
         extra_phishing_urls=extra,
         min_tenant_children=lcfg["open_hosting"]["min_tenant_children"],
         min_children_per_url=lcfg["open_hosting"]["min_children_per_url"],
+        min_children_whole=lcfg["open_hosting"].get("min_children_whole"),
+        shorteners=load_lists().shorteners,
     )
     out_dir = Path(args.out) if args.out else settings.lists_dir
     lists.write_lists(docs, out_dir)

@@ -216,27 +216,45 @@ def in_zone(host: str, zones: set[str] | frozenset[str]) -> bool:
     return False
 
 
+def _tenant_like(counts: dict[str, int], min_children: int, min_per_url: float) -> bool:
+    return len(counts) >= min_children and len(counts) / sum(counts.values()) >= min_per_url
+
+
 def open_hosting_zones(
     phishing_urls: Iterable[str],
     candidates: set[str],
     min_tenant_children: int,
     min_children_per_url: float,
+    min_children_whole: int | None = None,
 ) -> set[str]:
-    """Zones (see the module docstring) learned from phishing hosts below candidate domains."""
+    """Zones (see the module docstring) learned from phishing hosts below candidate domains.
+
+    Tenants are subdomains (``x.weebly.com``) or, for phishing on the bare domain, first path
+    segments (``telegra.ph/x``, ``taplink.cc/x``); a path cannot be a zone, so path tenants only
+    ever open the whole domain. ``min_children_whole`` distinct subdomain children open the whole
+    domain whatever their URL counts (busy tenants, as on ``mybluehost.me``)."""
     children: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    paths: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for url in phishing_urls:
         domain = list_domain_key(url)
         if domain not in candidates:
             continue
-        host = url_host(url)
-        if host == domain or not host.endswith("." + domain):
-            continue
-        child = host[: -len(domain) - 1].rsplit(".", 1)[-1]
-        children[domain][child] += 1
+        host, _, rest = _split(url)
+        if host == domain:
+            segment = rest.partition("?")[0].strip("/").split("/", 1)[0].translate(_LOWER)
+            if segment:
+                paths[domain][segment] += 1
+        elif host.endswith("." + domain):
+            children[domain][host[: -len(domain) - 1].rsplit(".", 1)[-1]] += 1
     zones: set[str] = set()
-    for domain, counts in children.items():
-        n_urls = sum(counts.values())
-        if len(counts) >= min_tenant_children and len(counts) / n_urls >= min_children_per_url:
+    for domain in children.keys() | paths.keys():
+        counts = children.get(domain, {})
+        whole = _tenant_like(counts, min_tenant_children, min_children_per_url)
+        whole = whole or bool(min_children_whole and len(counts) >= min_children_whole)
+        whole = whole or _tenant_like(
+            paths.get(domain, {}), min_tenant_children, min_children_per_url
+        )
+        if whole:
             zones.add(domain)
         else:
             zones.update(f"{child}.{domain}" for child in counts)
@@ -252,17 +270,21 @@ def build_lists(
     extra_phishing_urls: Iterable[str] = (),
     min_tenant_children: int = 3,
     min_children_per_url: float = 0.5,
+    min_children_whole: int | None = None,
+    shorteners: frozenset[str] = frozenset(),
 ) -> dict[str, dict]:
     """Return ``{"manifest", "blocklist", "allowlist"}`` documents (all sorted, deterministic
     except ``built_at``). ``extra_phishing_urls`` (for example the corpus's phishing URLs) only
-    help find open-hosting domains; they are not blocklisted."""
+    help find open-hosting domains; they are not blocklisted. Shorteners are never allowlisted:
+    a short link says nothing about where it leads (the extension judges the target instead)."""
     blocklist_urls = list(blocklist_urls)
-    cand_domains = {d for d in map(list_domain_key, allow_candidates) if d}
+    cand_domains = {d for d in map(list_domain_key, allow_candidates) if d} - shorteners
     zones = open_hosting_zones(
         [*blocklist_urls, *extra_phishing_urls],
         cand_domains - platforms,
         min_tenant_children,
         min_children_per_url,
+        min_children_whole,
     )
     block_domains: set[str] = set()
     block_urls: set[str] = set()

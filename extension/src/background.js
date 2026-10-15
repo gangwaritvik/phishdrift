@@ -8,7 +8,8 @@
 import { DEFAULTS } from "./config.js";
 import { combine, DANGEROUS, SAFE, SUSPICIOUS } from "./combine.js";
 import { listUrlKey } from "./keys.js";
-import { loadHybrid, scoreUrl } from "./lib/hybrid.js";
+import { MAX_URL_CHARS, scoreAddress } from "./address.js";
+import { loadHybrid } from "./lib/hybrid.js";
 import { loadPage, scorePage } from "./lib/page.js";
 import { isIpHost } from "./lib/urlparts.js";
 import { ListSet, withBundledAllowlist } from "./lists.js";
@@ -69,7 +70,7 @@ function getLists() {
       // built without a bundled allowlist: only the synced lists apply
     }
     const payload = withBundledAllowlist(lists ?? null, bundled);
-    return new ListSet(payload, { platforms: model.lists.platforms, psl: model.lists.psl });
+    return new ListSet(payload, { platforms: model.lists.platforms, psl: model.lists.psl, shorteners: model.lists.shorteners });
   })();
   return listsPromise;
 }
@@ -146,18 +147,19 @@ async function layersFor(url) {
     domainName: listed.domain,
     shared: listed.shared,
     allow: listed.allow,
+    shortener: listed.shortener,
     blocked: listed.blocked,
     model: null,
     answer: null,
     backendFailed: false,
   };
   layers.trusted = trusted.has(listed.trustKey);
-  if (!layers.trusted && !layers.allow && !layers.blocked) {
-    const first = scoreUrl(model, url);
-    // Reasons (TreeSHAP, about 100 ms) only for addresses that get a warning.
-    const scored = first.verdict > SAFE ? scoreUrl(model, url, { withReasons: true }) : first;
-    layers.model = { verdict: scored.verdict, prob: scored.prob, reasons: scored.reasons };
-    if (scored.verdict > SAFE && listed.domain && !listed.shared && !isIpHost(listed.domain)) {
+  if (!layers.trusted && !layers.allow && !layers.shortener && !layers.blocked) {
+    const scored = scoreAddress(model, url);
+    layers.model = scored;
+    // Domain evidence can only raise suspicious to dangerous, so a dangerous address never waits
+    // for the backend.
+    if (scored.verdict === SUSPICIOUS && listed.domain && !listed.shared && !isIpHost(listed.domain)) {
       layers.domain = await domainChecks(listed.domain, scored.verdict, settings);
       layers.backendFailed = layers.domain === null;
     }
@@ -167,13 +169,22 @@ async function layersFor(url) {
 }
 
 // Page model on the HTML the content script sent (on this device). Any failure leaves the
-// address verdict in place.
-async function pageCheck(layers, url, html, settings) {
-  if (html == null || !layers.model) return null; // trusted, allowlisted or blocklisted
+// address verdict in place. On allowlisted pages and short links the address is not judged, so the
+// page alone must carry the warning: a usable page over the page model's dangerous threshold that
+// asks for a password (reports/stress_test: 1 of 893 allowlisted legitimate pages with HTML).
+async function pageCheck(layers, url, html, facts, settings) {
+  if (html == null || layers.trusted || layers.blocked || url.length > MAX_URL_CHARS) return null;
+  const addressTrusted = layers.allow || layers.shortener;
+  if (!addressTrusted && !layers.model) return null;
   try {
     const [model, page] = await Promise.all([getModel(), getPage()]);
     const first = scorePage(model, page, url, html);
     const scored = first.verdict > SAFE && first.hasHtml ? scorePage(model, page, url, html, { withReasons: true }) : first;
+    if (addressTrusted) {
+      scored.allowedPageWarning =
+        scored.hasHtml && scored.blended >= page.thresholds.dangerous && (facts?.passwordFields ?? 0) > 0;
+      return scored;
+    }
     // the page model flagged an address the URL model passed: ask the backend about the domain too
     if (scored.verdict > SAFE && !layers.domain && !layers.backendFailed && layers.domainName && !layers.shared && !isIpHost(layers.domainName)) {
       layers.domain = await domainChecks(layers.domainName, scored.verdict, settings);
@@ -191,7 +202,7 @@ export async function evaluate(url, facts = null, html = null) {
   const layers = { ...(await layersFor(url)) };
   const model = await getModel();
   const page = facts ? pageFlags(facts, url, model.lists.psl) : null;
-  const pageModel = await pageCheck(layers, url, html, settings);
+  const pageModel = await pageCheck(layers, url, html, facts, settings);
   const result = combine(layers, page, pageModel);
   return { ...result, url, domain: layers.domainName };
 }
@@ -214,21 +225,73 @@ async function applyResult(tabId, result) {
   }
 }
 
-chrome.webNavigation.onBeforeNavigate.addListener(
-  async (details) => {
-    if (details.frameId !== 0) return;
-    try {
-      await applyResult(details.tabId, await evaluate(details.url));
-    } catch (err) {
-      console.warn("PhishDrift check failed (page left alone):", err);
-    }
-  },
-  { url: [{ schemes: ["http", "https"] }] },
-);
+// The worse of two results (higher verdict; the first on a tie).
+export function worse(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  return b.verdict > a.verdict ? b : a;
+}
+
+// Tell the page's content script (if it is there yet) to show the banner for a verdict the
+// service worker reached on its own (after a redirect or an in-page address change).
+function notifyTab(tabId, result) {
+  if (result.verdict !== SUSPICIOUS) return;
+  chrome.tabs.sendMessage(tabId, { type: "phishdrift-verdict", result }).catch(() => {});
+}
+
+// Every address a document has shown is scored, and the document keeps the worst verdict: a page
+// cannot lower its own verdict by rewriting its address (history.replaceState). `doc:<tab>` holds
+// the committed address (after server redirects), the worst verdict of later in-page addresses,
+// and whether the page check has reported.
+const navFilter = { url: [{ schemes: ["http", "https"] }] };
+
+async function guarded(fn) {
+  try {
+    await fn();
+  } catch (err) {
+    console.warn("PhishDrift check failed (page left alone):", err);
+  }
+}
+
+// Before the request: the address as typed or clicked (earliest possible warning).
+chrome.webNavigation.onBeforeNavigate.addListener((details) => {
+  if (details.frameId !== 0) return;
+  guarded(async () => applyResult(details.tabId, await evaluate(details.url)));
+}, navFilter);
+
+// Committed: the address after server redirects (shorteners, tracking links), before the page
+// renders.
+chrome.webNavigation.onCommitted.addListener((details) => {
+  if (details.frameId !== 0) return;
+  const { tabId, url } = details;
+  guarded(async () => {
+    await session.set(`doc:${tabId}`, { url, floor: null, pageDone: false });
+    const result = await evaluate(url);
+    const doc = await session.get(`doc:${tabId}`);
+    if (doc?.url !== url || doc.pageDone) return; // a newer navigation or the page check won
+    await applyResult(tabId, result);
+    notifyTab(tabId, result);
+  });
+}, navFilter);
+
+// In-page address changes (single-page apps, history.pushState / replaceState).
+chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+  if (details.frameId !== 0) return;
+  const { tabId, url } = details;
+  guarded(async () => {
+    const result = await evaluate(url);
+    const doc = (await session.get(`doc:${tabId}`)) ?? { url, floor: null, pageDone: false };
+    await session.set(`doc:${tabId}`, { ...doc, floor: worse(doc.floor, result) });
+    const shown = worse(await session.get(`tab:${tabId}`), result);
+    await applyResult(tabId, shown);
+    notifyTab(tabId, shown);
+  });
+}, navFilter);
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   session.remove(`tab:${tabId}`);
   session.remove(`bypass:${tabId}`);
+  session.remove(`doc:${tabId}`);
 });
 
 // --- messages from the content script, popup and warning page -------------------------------
@@ -263,10 +326,21 @@ async function trust(tabId) {
 
 const handlers = {
   // Content script: page facts in, final verdict out.
+  // The page is scored at the address it reports and at the address it was committed at; the
+  // worse verdict (and any worse in-page address seen since) stands.
   async page(msg, sender) {
     const tabId = sender.tab?.id;
-    const result = await evaluate(msg.url, msg.facts, msg.html ?? null);
-    if (tabId !== undefined) await applyResult(tabId, result);
+    const html = msg.html ?? null;
+    let result = await evaluate(msg.url, msg.facts, html);
+    const doc = tabId === undefined ? null : await session.get(`doc:${tabId}`);
+    if (doc?.url && listUrlKey(doc.url) !== listUrlKey(msg.url)) {
+      result = worse(result, await evaluate(doc.url, msg.facts, html));
+    }
+    result = worse(result, doc?.floor ?? null);
+    if (tabId !== undefined) {
+      if (doc) await session.set(`doc:${tabId}`, { ...doc, pageDone: true });
+      await applyResult(tabId, result);
+    }
     return result;
   },
   status: async (msg) => (await session.get(`tab:${msg.tabId}`)) ?? null,

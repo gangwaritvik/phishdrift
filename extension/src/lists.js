@@ -38,7 +38,7 @@ export function withBundledAllowlist(payload, bundled) {
 export class ListSet {
   // payload: { blocklist: {prefix_bytes, domains, urls},
   //            allowlist: {prefix_bytes, domains, open_hosting} } | null
-  constructor(payload, { platforms, psl }) {
+  constructor(payload, { platforms, psl, shorteners = new Set() }) {
     this.version = payload?.blocklist?.version ?? null;
     this.blockBytes = payload?.blocklist?.prefix_bytes ?? 0;
     this.allowBytes = payload?.allowlist?.prefix_bytes ?? 0;
@@ -48,12 +48,15 @@ export class ListSet {
     this.openHosting = toSet(payload?.allowlist?.open_hosting);
     this.platforms = platforms;
     this.psl = psl;
+    this.shorteners = shorteners;
   }
 
-  // { domain, shared, trustKey, allow, blocked: null | "domain" | "url" }
+  // { domain, shared, shortener, trustKey, allow, blocked: null | "domain" | "url" }
+  // A shortener is never allowlisted: the address that matters is where it redirects to.
   async check(url) {
     const domain = listDomainKey(url, this.psl);
-    if (!domain) return { domain: null, shared: false, trustKey: null, allow: false, blocked: null };
+    if (!domain) return { domain: null, shared: false, shortener: false, trustKey: null, allow: false, blocked: null };
+    const shortener = this.shorteners.has(domain);
     const host = listUrlKey(url).split(/[/?:]/)[0];
     const shared = this.platforms.has(domain) || inZone(host, this.openHosting);
     let blocked = null;
@@ -66,12 +69,12 @@ export class ListSet {
       if (!blocked && this.blockBytes && this.blockDomains.size) {
         if (this.blockDomains.has(await hashPrefix(domain, this.blockBytes))) blocked = "domain";
       }
-      if (this.allowBytes && this.allowDomains.size) {
+      if (!shortener && this.allowBytes && this.allowDomains.size) {
         allow = this.allowDomains.has(await hashPrefix(domain, this.allowBytes));
       }
     }
     // A user's own "trust this site" is keyed by domain, or by the exact host on shared platforms.
     const trustKey = shared ? host : domain;
-    return { domain, shared, trustKey, allow, blocked };
+    return { domain, shared, shortener, trustKey, allow, blocked };
   }
 }

@@ -556,3 +556,24 @@ def test_live_checker_treats_a_broken_resolver_as_unknown():
 
     checker = LiveChecker(settings, client=NoRdap(), query=working_resolver, now=lambda: NOW)
     assert checker("nonexistent.example.com")["resolves"] is False
+
+
+def test_path_tenants_open_the_whole_domain():
+    urls = [f"https://telegra.ph/page-{i}" for i in range(4)] + ["https://www.google.com/x/y"]
+    zones = lists.open_hosting_zones(urls, {"telegra.ph", "google.com"}, 3, 0.5)
+    assert zones == {"telegra.ph"}
+
+
+def test_many_busy_tenants_open_the_whole_domain():
+    urls = [f"https://t{i}.host.me/{j}" for i in range(25) for j in range(5)]
+    assert lists.open_hosting_zones(urls, {"host.me"}, 3, 0.5) == {
+        f"t{i}.host.me" for i in range(25)
+    }
+    assert lists.open_hosting_zones(urls, {"host.me"}, 3, 0.5, min_children_whole=20) == {"host.me"}
+
+
+def test_shorteners_are_never_allowlisted():
+    docs = lists.build_lists(
+        [], ["t.co", "example.com"], frozenset(), 6, shorteners=frozenset({"t.co"})
+    )
+    assert docs["allowlist"]["domains"] == [lists.list_hash("example.com", 6)]

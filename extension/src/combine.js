@@ -18,19 +18,32 @@ export const BLOCKLIST_REASON = "This address is on a list of known phishing sit
 // layers: {
 //   trusted: bool,               user pressed "trust this site"
 //   allow: bool,                 allowlist hit
+//   shortener: bool,             link shortener (judged by where it redirects, never by itself)
 //   blocked: null|"domain"|"url",
 //   model: {verdict, prob, reasons:[{text}]} | null,
 //   domain: {risk, signals:[{severity,text}]} | null,   backend answer
 //   backendFailed: bool,
 // }
 // page: {hasPassword, credFormCrossDomain, credFormInsecure} | null
-// pageModel: {hasHtml, blended, verdict, reasons:[{text}]} | null   (scorePage in page.js)
+// pageModel: {hasHtml, blended, verdict, reasons:[{text}], allowedPageWarning?} | null
+//            (scorePage in page.js)
 export function combine(layers, page = null, pageModel = null) {
   const out = { verdict: SAFE, layer: "url-model", reasons: [], notes: [], prob: null };
   if (layers.trusted) return { ...out, layer: "user-trusted" };
   // An exact listed URL is evidence about that page, so it overrides the allowlist (a big site
   // can still host one bad file); a domain-level hit never co-occurs with an allowlist hit.
-  if (layers.allow && layers.blocked !== "url") return { ...out, layer: "allowlist" };
+  // Allowlisted pages and short links skip the address model, but not the page: a site anyone can
+  // publish on (forms, file shares, link pages) is only as safe as the page it serves. The page
+  // model warns there only on strong evidence (page.js `allowedPageWarning`), and never more than
+  // suspicious, because the address itself is trusted or says nothing.
+  const addressTrusted = (layers.allow && layers.blocked !== "url") || (layers.shortener && !layers.blocked);
+  if (addressTrusted) {
+    if (pageModel?.allowedPageWarning) {
+      const reasons = [...new Set(pageModel.reasons.map((r) => r.text))];
+      return { ...out, verdict: SUSPICIOUS, layer: "page-model", reasons, prob: pageModel.blended };
+    }
+    return { ...out, layer: layers.allow ? "allowlist" : "shortener" };
+  }
   if (layers.blocked) {
     return { ...out, verdict: DANGEROUS, layer: "blocklist", reasons: [BLOCKLIST_REASON] };
   }

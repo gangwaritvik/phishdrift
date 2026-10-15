@@ -37,3 +37,10 @@ test("every feature matches Python", () => {
   }
   assert.equal(failures.length, 0, failures.slice(0, 40).join("\n"));
 });
+
+test("an address with ~200k path words does not overflow the call stack", () => {
+  const url = `https://example.org/${Array.from({ length: 200_000 }, () => "ab").join("/")}`;
+  const f = extract(url, lists);
+  assert.equal(f.shortest_word_path, 2);
+  assert.equal(f.longest_word_path, 2);
+});

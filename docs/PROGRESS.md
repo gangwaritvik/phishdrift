@@ -495,3 +495,27 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Results after: 68.5% of the 200 phishing hosts warned (73 dangerous, 64 suspicious), none silenced by the
   allowlist; 0 of 104 regional brand URLs flagged; natural legitimate pages 69 of 2,555 flagged (2.7%; was 71).
 - Open: the 63 remaining misses are bare hosts the address model scores clean; the page layer is the next check.
+
+### 2026-10-15 — Extension stress test and five fixes
+- Stress test (report in the project folder: `phishdrift/report/stress_test_2026-10-15.md`): fresh feed phishing,
+  hosting-platform phishing, six evasion families, hand-made long URLs, a robustness set and 138 legitimate login
+  pages in headless Chromium. Five real gaps found and fixed:
+  1. A very long URL threw in `wordStats` (`Math.min(...array)` overflow) and every check was skipped. Now a loop;
+     URLs over 32,768 characters and scoring errors give a soft warning (`extension/src/address.js`).
+  2. Allowlisted sites were never page-checked, and the zone learner missed path tenants (`telegra.ph/x`,
+     `notion.so/x`) and busy subdomain tenants. Path segments on the bare domain now count as tenants, 20 distinct
+     phishing subdomains open a whole domain (`min_children_whole`), and on allowlisted pages the page model can
+     raise a banner (never more) when the page has a password field and scores at the dangerous threshold.
+  3. Shorteners are never allowlisted (18 removed) and never judged by the address model; the target is scored.
+  4. The redirect target is scored at `onCommitted`, before the page renders, not only from the content script.
+  5. `history.replaceState` cannot lower a verdict (per-tab floor; the page message takes the worst of the reported,
+     committed and floor verdicts); login forms added after load are re-checked (MutationObserver, at most 3 times).
+- Results (address layer + bundled allowlist; before -> after): hosting-platform phishing warned 81.0% -> 85.9%;
+  OpenPhish 92.3% -> 92.7%; Phishing.Database active 82.0% -> 82.2%; natural legitimate pages 2.7% unchanged;
+  regional brand sites 0%; legitimate pages with HTML through the page path 1.17% -> 1.21% flagged; short links:
+  legitimate links wrapped in a shortener 29.6% -> 0.0% flagged at the address, phishing wrapped 24.6% -> 0.0% at the
+  address, which is now decided at the target (unwrapped phishing in that set: 86.6% warned; inferred from the code
+  path, not measured in a browser). Robustness set: no errors, slowest URL 631 ms.
+- The 10-split model numbers are unchanged: no model changed, and they are measured with the allowlist off.
+- Tests: pytest, ruff, `npm test` in `js/` (11) and `extension/` (30), e2e smoke passes.
+- Not done: back-to-safe navigation, full-hash blocklist matching, iframes/blob pages, list-sync sanity checks.
