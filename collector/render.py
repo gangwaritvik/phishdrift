@@ -156,7 +156,9 @@ def plan(out_dir: Path, cfg: dict, load: Callable[[], pd.DataFrame], resample: b
 
 def browser_candidates(env: dict | None = None) -> dict[str, list[Path]]:
     """Usual install locations of Chrome, Edge and Chromium, by kind."""
+    explicit = env is not None
     env = os.environ if env is None else env
+    search = env.get("PATH", "") if explicit else None  # an explicit env decides PATH too
     win_roots = [env.get(k) for k in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")]
     win_roots = [Path(r) for r in win_roots if r]
     out: dict[str, list[Path]] = {
@@ -169,10 +171,11 @@ def browser_candidates(env: dict | None = None) -> dict[str, list[Path]]:
         "edge": ["microsoft-edge", "msedge"],
         "chromium": ["chromium", "chromium-browser"],
     }.items():
-        out[kind] += [Path(p) for p in (shutil.which(n) for n in names) if p]
-    out["chrome"].append(
-        Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-    )  # macOS
+        out[kind] += [Path(p) for p in (shutil.which(n, path=search) for n in names) if p]
+    if not explicit:
+        out["chrome"].append(
+            Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+        )  # macOS
     pw = env.get("PLAYWRIGHT_BROWSERS_PATH")
     if pw:
         out["chromium"] += sorted(Path(pw).glob("chromium-*/chrome-linux/chrome"), reverse=True)

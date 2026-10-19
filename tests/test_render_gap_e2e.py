@@ -83,7 +83,7 @@ def test_render_and_gap_end_to_end(tmp_path, server):
         "window_size": "1366,768",
         "user_agent": None,
         "max_html_chars": 5_000_000,
-        "extra_args": ["--no-proxy-server"],
+        "extra_args": ["--no-proxy-server", "--no-sandbox"],  # CI runners block the sandbox
     }
     local = {url: f"http://127.0.0.1:{server}/" + url.split("/", 3)[3] for url in URLS}
     cfg = {"sample": {"seed": 1, "size": 10, "max_per_site": 2}}
@@ -111,7 +111,7 @@ def test_render_and_gap_end_to_end(tmp_path, server):
     index = pd.read_csv(out / render.INDEX_NAME, keep_default_na=False).set_index("url")
     assert index.loc["http://www.slow-bakery.com/menu", "status"] == render.TIMEOUT
     ok = index[index["status"] == render.OK]
-    assert len(ok) == 3
+    assert len(ok) == 3, index[["status", "error"]].to_dict("records")
     spa = ok.loc["http://app.harbor-notes.org/notebooks"]
     assert 'type="password"' not in (out / spa["raw_file"]).read_text()
     assert 'type="password"' in (out / spa["rendered_file"]).read_text()  # scripts ran
