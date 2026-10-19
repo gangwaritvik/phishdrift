@@ -22,6 +22,7 @@ export const DANGEROUS = 2;
 export const BLOCKLIST_REASON = "This address is on a list of known phishing sites.";
 export const NO_ADDRESS_REASON = "This page asks for a password or card details but has no web address of its own.";
 export const NO_ADDRESS_NOTE = "This page has no web address to check.";
+export const LOCAL_NOTE = "This is an address on your computer or local network, which PhishDrift does not check.";
 
 // layers: {
 //   trusted: bool,               user pressed "trust this site"
@@ -32,6 +33,7 @@ export const NO_ADDRESS_NOTE = "This page has no web address to check.";
 //   domain: {risk, signals:[{severity,text}]} | null,   backend answer
 //   backendFailed: bool,
 //   unscored: bool,              the document has no web address (address.js effectiveUrl)
+//   local: bool,                 this computer or the local network (address.js isLocalAddress)
 // }
 // page: {hasPassword, credFormCrossDomain, credFormInsecure, asksCredentials} | null (pagefacts.js)
 // pageModel: {hasHtml, blended, verdict, reasons:[{text}], allowedPageWarning?} | null
@@ -43,6 +45,7 @@ export function combine(layers, page = null, pageModel = null) {
     return { ...out, verdict: DANGEROUS, layer: "blocklist", reasons: [BLOCKLIST_REASON] };
   }
   if (layers.trusted) return { ...out, layer: "user-trusted" };
+  if (layers.local) return { ...out, layer: "local", notes: [LOCAL_NOTE] };
   // Allowlisted pages and short links skip the address model, but not the page: a site anyone can
   // publish on (forms, file shares, link pages) is only as safe as the page it serves. The page
   // model warns there only on strong evidence (page.js `allowedPageWarning`), and never more than

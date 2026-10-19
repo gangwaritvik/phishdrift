@@ -137,3 +137,11 @@ test("a page with no web address of its own is suspicious only when it asks for 
   assert.deepEqual([r.verdict, r.reasons], [SUSPICIOUS, [NO_ADDRESS_REASON]]);
   assert.equal(combine({ ...unscored, blocked: "url" }, login).verdict, DANGEROUS);
 });
+
+test("a local address is not judged, but a blocklist hit still warns", async () => {
+  const { combine, LOCAL_NOTE, SAFE, DANGEROUS } = await import("../dist/combine.js");
+  const base = { trusted: false, allow: false, shortener: false, blocked: null, model: null, domain: null, local: true };
+  const r = combine(base, { hasPassword: true, asksCredentials: true }, null);
+  assert.deepEqual([r.verdict, r.layer, r.notes], [SAFE, "local", [LOCAL_NOTE]]);
+  assert.equal(combine({ ...base, blocked: "url" }).verdict, DANGEROUS);
+});

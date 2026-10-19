@@ -607,3 +607,31 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Not done: zone-aware address scoring inside open zones (sites.google.com); signatures are off until a key is
   made on the backend machine; the PC rebuild with Tranco (`python -m backend build-lists --tranco-file ...`)
   restores the 5,740 domains the cloud rebuild could not recover.
+
+### 2026-10-19 — Known gaps: local addresses, zone-aware scoring (measured, not shipped)
+- Found while checking red-team gap 13 (IP hosts): public IP hosts are already warned (dangerous) by the address
+  model, but so are local ones. `http://192.168.0.1/` (a router), `http://127.0.0.1:8000/login` and
+  `http://localhost:3000/` got the warning page or a banner. Changed: `isLocalAddress` in
+  `extension/src/address.js` (localhost and `*.localhost`, `.local`, `.lan`, `.internal`, `.home.arpa`,
+  `.localdomain`, `.intranet`, private / loopback / link-local IPv4 and IPv6, single-label intranet names); such
+  addresses are not scored and `combine` returns safe with a note (a blocklist hit still warns). None of the 3,250
+  list-test URLs or the 300 OpenPhish URLs is local, so no measured number changes. Tests in
+  `extension/test/{address,combine}.test.js`; `npm test` extension 56 pass, e2e smoke 16 steps pass.
+- Lists gap 8 (pages inside learned open-hosting zones are read by the model as the big site's own address):
+  `python -m experiments.zone_masking --cases <list test cases>` (`reports/zone_masking.md`) scores every case URL
+  inside a zone as shipped and with the zone masked like a platform-list domain. Masking warns on 203 of 256
+  phishing tenant URLs against 160 (sites.google.com 16 -> 59 of 100), but on 71 of 134 legitimate ones against 13:
+  every generated Google Drive file link (20 of 20, all dangerous) and every Docs document link, and platform pages
+  such as `notion.so/help` and `sites.google.com/new`. A capped variant (banner only at the dangerous threshold)
+  gives 173 and 36. Not shipped: the model's prior for hosting platforms is too high for big-site zones, so tenant
+  pages there stay with the page model. Also measured: as shipped, 10 of 20 generated Drive file links already get
+  a suspicious banner from the address model (the page model may clear them; not measured in a browser).
+- Red-team gap 5 (train/serve HTML): `python -m experiments.render_gap` (`reports/render_gap.md`) renders the
+  2,373 natural legitimate pages' stored HTML in headless Chromium (offline: inline scripts run, external scripts,
+  styles and frames do not), serialises the DOM as `content.js` does and scores raw and rendered through
+  `js/bench/page_verdicts.mjs`. 2,334 rendered (39 failed). False alarms with the allowlist: 36 -> 36 warned
+  (1.54%), dangerous 11 -> 10; without it 69 -> 67 warned, 30 -> 28 dangerous. No page went from safe to warned;
+  median page-score change 0.000 (95th percentile 0.018). A lower bound: median rendered/raw length is 1.00 because
+  external scripts did not run. The live-rendering number needs the PC (sandboxed browser).
+- Still open (need Ritvik's PC): `python -m backend make-signing-key` + rebuild, and the Tranco `build-lists`
+  run; live rendering for gap 5. Brand list additions (Slack, Revolut, Swiggy) are with the brand thread.
