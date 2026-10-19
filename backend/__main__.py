@@ -1,6 +1,7 @@
 """Backend CLI.
 
     python -m backend build-lists [--tranco-file PATH] [--phishing-file PATH ...] [--out DIR]
+    python -m backend make-signing-key [--private PATH] [--public PATH]
 
 Serve the API with: ``uvicorn backend.app:create_app --factory``.
 """
@@ -68,6 +69,9 @@ def cmd_build_lists(args: argparse.Namespace) -> int:
         candidates,
         read_platforms(),
         lcfg["prefix_bytes"],
+        allow_prefix_bytes=lcfg.get("allow_prefix_bytes"),
+        sentinel_top_n=lcfg.get("sentinel_top_n", 1000),
+        specific_segment_len=lcfg.get("specific_segment_len", 16),
         extra_phishing_urls=extra,
         min_tenant_children=lcfg["open_hosting"]["min_tenant_children"],
         min_children_per_url=lcfg["open_hosting"]["min_children_per_url"],
@@ -75,8 +79,21 @@ def cmd_build_lists(args: argparse.Namespace) -> int:
         shorteners=load_lists().shorteners,
     )
     out_dir = Path(args.out) if args.out else settings.lists_dir
-    lists.write_lists(docs, out_dir)
+    key = settings.signing_key()
+    if key is None:
+        log.warning("no signing key at %s: the manifest is unsigned", settings.signing_key_path)
+    lists.write_lists(docs, out_dir, key, lcfg.get("history_keep", 48))
     log.info("wrote %s: %s", out_dir, docs["manifest"])
+    return 0
+
+
+def cmd_make_signing_key(args: argparse.Namespace) -> int:
+    settings = Settings.load()
+    private = Path(args.private) if args.private else settings.signing_key_path
+    targets = [Path(p) for p in (args.public or ["extension/src/lists_pubkey.js"])]
+    public = lists.make_signing_key(private, targets)
+    log.info("private key %s (keep it secret); public key in %s", private, targets)
+    log.info("rebuild or reload the extension so it checks signatures with %s", public["spki"])
     return 0
 
 
@@ -98,6 +115,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     build.add_argument("--out", help="output directory (default: lists.out_dir in backend.yaml)")
     build.set_defaults(func=cmd_build_lists)
+    keygen = sub.add_parser("make-signing-key", help="create the ECDSA key that signs the lists")
+    keygen.add_argument("--private", help="private key path (default: lists.signing_key)")
+    keygen.add_argument(
+        "--public",
+        action="append",
+        help="lists_pubkey.js to write (repeatable; default extension/src/lists_pubkey.js; also "
+        "pass the built extension's copy, e.g. extension/dist/lists_pubkey.js)",
+    )
+    keygen.set_defaults(func=cmd_make_signing_key)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     return args.func(args)

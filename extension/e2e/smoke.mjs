@@ -28,7 +28,10 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { readFileSync } from "node:fs";
+
 import { hashPrefix } from "../dist/keys.js";
+import { sha256Hex } from "../dist/listsync.js";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE ?? "playwright");
@@ -40,6 +43,19 @@ const feedback = [];
 const scoreCalls = [];
 let slowAnsweredAt = null;
 
+let stubCache;
+async function stubLists() {
+  if (stubCache) return stubCache;
+  const bundled = JSON.parse(readFileSync(join(dist, "data", "allowlist.json"), "utf8"));
+  const blocklist = JSON.stringify({ version: "stub1", prefix_bytes: BYTES, domains: [await hashPrefix("example.com", BYTES)], urls: [] });
+  // the real builder never allowlists a blocklisted domain
+  const blocked = await hashPrefix("example.com", bundled.prefix_bytes);
+  const allowlist = JSON.stringify({ ...bundled, version: "stub1", domains: bundled.domains.filter((d) => d !== blocked) });
+  const manifest = { version: "stub1", sha256: { blocklist: await sha256Hex(blocklist), allowlist: await sha256Hex(allowlist) } };
+  stubCache = { manifest, blocklist, allowlist };
+  return stubCache;
+}
+
 const backend = createServer(async (req, res) => {
   let body = "";
   for await (const chunk of req) body += chunk;
@@ -47,11 +63,12 @@ const backend = createServer(async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify(obj));
   };
-  if (req.url === "/lists/manifest") return json({ version: "stub1", prefix_bytes: BYTES });
-  if (req.url === "/lists/blocklist.json") {
-    return json({ version: "stub1", prefix_bytes: BYTES, domains: [await hashPrefix("example.com", BYTES)], urls: [] });
-  }
-  if (req.url === "/lists/allowlist.json") return json({ version: "stub1", prefix_bytes: BYTES, domains: [] });
+  // Lists as the real backend serves them: the manifest carries each file's sha256 (unsigned here,
+  // since the build ships no public key unless one was made), and the allowlist is a full one.
+  const lists = await stubLists();
+  if (req.url === "/lists/manifest") return json(lists.manifest);
+  if (req.url === "/lists/blocklist.json") return res.end(lists.blocklist);
+  if (req.url === "/lists/allowlist.json") return res.end(lists.allowlist);
   if (req.url === "/score") {
     const { domain } = JSON.parse(body);
     scoreCalls.push(JSON.parse(body));

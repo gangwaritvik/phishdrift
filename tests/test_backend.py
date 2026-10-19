@@ -180,17 +180,18 @@ def test_ttl_cache_evicts_oldest():
     assert (cache.get("b"), cache.get("c")) == (1, 2)
 
 
-def test_feedback_file_has_only_four_fields(settings):
+def test_feedback_file_has_only_the_documented_fields(settings):
     fixed = datetime(2026, 10, 12, 23, 59, 30, tzinfo=UTC)
     client, _ = make_client(settings, utcnow=lambda: fixed)
+    headers = {"X-PhishDrift-Token": client.post("/register").json()["token"]}
     for kind, verdict in (("false_positive", 2), ("missed_phish", 0)):
         body = {"domain": "Shop.Example.com", "kind": kind, "verdict": verdict}
-        assert client.post("/feedback", json=body).json() == {"ok": True}
+        assert client.post("/feedback", json=body, headers=headers).json() == {"ok": True}
     path = settings.feedback_dir / "2026-10-12.jsonl"
     rows = [json.loads(line) for line in path.read_text().splitlines()]
     assert len(rows) == 2
     for row in rows:
-        assert set(row) == {"domain", "kind", "verdict", "timestamp"}
+        assert set(row) == {"domain", "kind", "verdict", "timestamp", "reporter"}
         assert row["domain"] == "shop.example.com"
         assert row["timestamp"] == "2026-10-12T23:59:30+00:00"
     assert [r["kind"] for r in rows] == ["false_positive", "missed_phish"]
@@ -404,12 +405,19 @@ def test_build_lists_end_to_end(tmp_path):
         "blocklist_urls": 3,
         "allowlist_domains": 3,
         "open_hosting_domains": 1,
+        "allowlist_top": 3,
     }
     assert manifest["prefix_bytes"] == 6
     assert manifest["built_at"] == "2026-10-12T12:00:00+00:00"
     assert len(manifest["version"]) == 12
-    again = lists.build_lists(reversed(urls), reversed(cands), frozenset({"github.io"}), 6)
+    again = lists.build_lists(reversed(urls), cands, frozenset({"github.io"}), 6)
     assert again["manifest"]["version"] == manifest["version"]
+    # rank order matters only for the top-site sentinels
+    swapped = lists.build_lists(urls, reversed(cands), frozenset({"github.io"}), 6)
+    assert swapped["allowlist"]["domains"] == docs["allowlist"]["domains"]
+    assert swapped["allowlist"]["top"] == [
+        h(d) for d in ["wikipedia.org", "example.com", "google.com"]
+    ]
 
 
 def test_open_hosting_zones_are_learned_from_phishing_hosts():
@@ -517,7 +525,14 @@ def test_list_endpoints(settings):
     assert client.get("/lists/blocklist.json").json() == docs["blocklist"]
     assert client.get("/lists/allowlist.json").json() == docs["allowlist"]
     assert set(docs["blocklist"]) == {"version", "prefix_bytes", "domains", "urls"}
-    assert set(docs["allowlist"]) == {"version", "prefix_bytes", "domains", "open_hosting"}
+    assert set(docs["allowlist"]) == {
+        "version",
+        "prefix_bytes",
+        "domains",
+        "open_hosting",
+        "top",
+    }
+    assert client.get("/lists/blocklist.json").content == lists._canonical(docs["blocklist"])
 
 
 def test_cli_build_lists_without_tranco_continues(tmp_path, monkeypatch, caplog):

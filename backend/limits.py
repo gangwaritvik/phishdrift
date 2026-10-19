@@ -71,3 +71,34 @@ class RateLimiter:
                 self._buckets.popitem(last=False)
             retry = 0.0 if allowed else (1.0 - tokens) / self.refill_per_s
             return allowed, retry
+
+
+class DailyCounter:
+    """Count per key per UTC day, for at most ``max_keys`` keys (least recently used evicted).
+
+    ``day`` is any hashable day label (the caller passes the UTC date), so a new day starts every
+    key at zero without a sweep.
+    """
+
+    def __init__(self, max_keys: int) -> None:
+        self.max_keys = max_keys
+        self._counts: OrderedDict[str, tuple[object, int]] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key: str, day: object) -> int:
+        with self._lock:
+            hit = self._counts.get(key)
+            return hit[1] if hit is not None and hit[0] == day else 0
+
+    def increment(self, key: str, day: object) -> int:
+        with self._lock:
+            stored_day, count = self._counts.pop(key, (day, 0))
+            count = count + 1 if stored_day == day else 1
+            self._counts[key] = (day, count)
+            while len(self._counts) > self.max_keys:
+                self._counts.popitem(last=False)
+            return count
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._counts)

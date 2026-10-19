@@ -6,7 +6,7 @@
 // dangerous verdict redirects the tab to the warning page once it is known. The backend is never
 // waited for: the verdict is shown at once and raised when (and if) the backend answers.
 
-import { DEFAULTS } from "./config.js";
+import { sanitizeSettings } from "./config.js";
 import { combine, DANGEROUS, SAFE, SUSPICIOUS } from "./combine.js";
 import { listDomainKey, listUrlKey } from "./keys.js";
 import { MAX_URL_CHARS, effectiveUrl, scoreAddress } from "./address.js";
@@ -17,6 +17,8 @@ import { loadHybrid } from "./lib/hybrid.js";
 import { loadPage, scorePage } from "./lib/page.js";
 import { isIpHost } from "./lib/urlparts.js";
 import { ListSet, withBundledAllowlist } from "./lists.js";
+import { LIST_PUBKEY } from "./lists_pubkey.js";
+import { fetchConfig, syncLists as fetchLists } from "./listsync.js";
 import { pageFlags } from "./pagefacts.js";
 
 const SYNC_ALARM = "sync-lists";
@@ -26,8 +28,30 @@ const BADGE_COLORS = { [SUSPICIOUS]: "#d97706", [DANGEROUS]: "#b91c1c" };
 // --- storage helpers ------------------------------------------------------------------------
 
 async function getSettings() {
-  const { settings } = await chrome.storage.local.get("settings");
-  return { ...DEFAULTS, ...settings };
+  const { settings, remoteConfig } = await chrome.storage.local.get(["settings", "remoteConfig"]);
+  const out = sanitizeSettings(settings);
+  // the backend's validated remote config sets the sync interval unless the user set one
+  if (remoteConfig?.list_sync_minutes && settings?.listSyncMinutes === undefined) {
+    out.listSyncMinutes = remoteConfig.list_sync_minutes;
+  }
+  return out;
+}
+
+// Remote config (backend /config, checked by listsync.js): thresholds that replace the bundled
+// ones and registrable domains that never get a model warning (a blocklist hit still warns).
+let remotePromise;
+function getRemote() {
+  remotePromise ??= (async () => {
+    const { remoteConfig } = await chrome.storage.local.get("remoteConfig");
+    return { thresholds: remoteConfig?.thresholds ?? {}, neverWarn: new Set(remoteConfig?.never_warn ?? []) };
+  })();
+  return remotePromise;
+}
+
+function withThresholds(thresholds, remote) {
+  const out = { ...thresholds };
+  for (const k of ["suspicious", "dangerous"]) if (typeof remote?.[k] === "number") out[k] = remote[k];
+  return out.suspicious < out.dangerous ? out : thresholds;
 }
 
 // Live "trust this site" entries (trust.js): key -> time trusted; expired ones are left out.
@@ -49,7 +73,9 @@ function getModel() {
   modelPromise ??= (async () => {
     const read = async (path) => (await fetch(chrome.runtime.getURL(path))).json();
     const [bundle, psl] = await Promise.all([read("data/tier_a_hybrid.json"), read("data/psl_icann.json")]);
-    return loadHybrid(bundle, psl);
+    const model = loadHybrid(bundle, psl);
+    model.thresholds = withThresholds(model.thresholds, (await getRemote()).thresholds.address);
+    return model;
   })();
   return modelPromise;
 }
@@ -58,47 +84,61 @@ let pagePromise;
 function getPage() {
   pagePromise ??= (async () => {
     const bundle = await (await fetch(chrome.runtime.getURL("data/tier_b_page.json"))).json();
-    return loadPage(bundle);
+    const page = loadPage(bundle);
+    page.thresholds = withThresholds(page.thresholds, (await getRemote()).thresholds.page);
+    return page;
   })();
   return pagePromise;
 }
 
 let listsPromise;
+async function getBundled() {
+  try {
+    return await (await fetch(chrome.runtime.getURL("data/allowlist.json"))).json();
+  } catch {
+    return null; // built without a bundled allowlist: only the synced lists apply
+  }
+}
+
 function getLists() {
   listsPromise ??= (async () => {
     const model = await getModel();
     const { lists } = await chrome.storage.local.get("lists");
-    let bundled = null;
-    try {
-      bundled = await (await fetch(chrome.runtime.getURL("data/allowlist.json"))).json();
-    } catch {
-      // built without a bundled allowlist: only the synced lists apply
-    }
-    const payload = withBundledAllowlist(lists ?? null, bundled);
+    const payload = withBundledAllowlist(lists ?? null, await getBundled());
     return new ListSet(payload, { platforms: model.lists.platforms, psl: model.lists.psl, shorteners: model.lists.shorteners });
   })();
   return listsPromise;
 }
 
+// Lists and remote config are applied only after listsync.js checks them (signature, file hashes,
+// sanity limits); a rejected update leaves the stored ones in place. Cached verdicts are dropped
+// after any change, so a newly blocklisted site warns on the next visit.
 export async function syncLists() {
-  const { backendUrl, backendTimeoutMs } = await getSettings();
-  const get = async (path) => {
-    const res = await fetch(`${backendUrl}${path}`, { signal: AbortSignal.timeout(backendTimeoutMs * 4) });
-    if (!res.ok) throw new Error(`${path}: ${res.status}`);
-    return res.json();
-  };
-  try {
-    const manifest = await get("/lists/manifest");
-    const { lists } = await chrome.storage.local.get("lists");
-    if (lists?.version === manifest.version) return { updated: false, version: manifest.version };
-    const [blocklist, allowlist] = await Promise.all([get("/lists/blocklist.json"), get("/lists/allowlist.json")]);
-    await chrome.storage.local.set({ lists: { version: manifest.version, blocklist, allowlist } });
+  const settings = await getSettings();
+  const { lists: stored } = await chrome.storage.local.get("lists");
+  const common = { backendUrl: settings.backendUrl, pubkey: LIST_PUBKEY, timeoutMs: settings.backendTimeoutMs * 4 };
+  const res = await fetchLists({ ...common, stored: stored ?? null, bundled: await getBundled() });
+  const cfg = await fetchConfig(common);
+  let changed = false;
+  if (res.status === "updated") {
+    await chrome.storage.local.set({ lists: res.lists });
     listsPromise = undefined;
-    verdictCache.clear(); // cached verdicts were made with the old lists
-    return { updated: true, version: manifest.version };
-  } catch (err) {
-    return { updated: false, error: String(err) };
+    changed = true;
   }
+  if (cfg.status === "updated") {
+    const { remoteConfig } = await chrome.storage.local.get("remoteConfig");
+    if (JSON.stringify(remoteConfig) !== JSON.stringify(cfg.config)) {
+      await chrome.storage.local.set({ remoteConfig: cfg.config });
+      remotePromise = modelPromise = pagePromise = undefined;
+      changed = true;
+      await ensureAlarm();
+    }
+  }
+  if (changed) verdictCache.clear();
+  const status = { at: Date.now(), lists: res.status, config: cfg.status, problems: [...(res.problems ?? []), ...(cfg.problems ?? [])] };
+  if (status.problems.length) console.warn("PhishDrift list sync:", status);
+  await chrome.storage.local.set({ listSync: status });
+  return { updated: res.status === "updated", version: res.lists?.version ?? stored?.version ?? null, ...status };
 }
 
 // --- one URL -------------------------------------------------------------------------------
@@ -165,8 +205,11 @@ async function layersFor(url) {
   const cached = cacheGet(verdictCache, key, settings.verdictCacheMs);
   if (cached) return { ...cached.layers, trusted: trusted.has(cached.layers.trustKey) };
 
-  const [model, lists] = await Promise.all([getModel(), getLists()]);
+  const [model, lists, remote] = await Promise.all([getModel(), getLists(), getRemote()]);
   const listed = await lists.check(url);
+  // a never-warn domain from the remote config acts like the allowlist (never on shared hosts,
+  // never over a blocklist hit)
+  if (!listed.shared && !listed.blocked && remote.neverWarn.has(listed.domain)) listed.allow = true;
   const layers = {
     trustKey: listed.trustKey,
     domainName: listed.domain,
