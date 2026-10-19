@@ -14,6 +14,8 @@ import { DOMAIN_FAILURE_MS, usableAnswer } from "./domain.js";
 import { addTrust, liveTrust } from "./trust.js";
 import { safeExit, worse } from "./navigation.js";
 import { loadHybrid } from "./lib/hybrid.js";
+import { addressSignals, loadBrandRules, pageSignal } from "./lib/brand_rules.js";
+import { analyzeHtml } from "./lib/html_features.js";
 import { loadPage, scorePage } from "./lib/page.js";
 import { isIpHost } from "./lib/urlparts.js";
 import { ListSet, withBundledAllowlist } from "./lists.js";
@@ -89,6 +91,16 @@ function getPage() {
     return page;
   })();
   return pagePromise;
+}
+
+let rulesPromise;
+function getRules() {
+  rulesPromise ??= (async () => {
+    const model = await getModel();
+    const payload = await (await fetch(chrome.runtime.getURL("data/brand_rules.json"))).json();
+    return loadBrandRules(payload, model.lists.psl, model.lists.platforms);
+  })();
+  return rulesPromise;
 }
 
 let listsPromise;
@@ -194,7 +206,7 @@ const askable = (layers) => Boolean(layers.domainName) && !layers.shared && !isI
 
 const UNSCORED = {
   trustKey: null, domainName: null, shared: false, allow: false, shortener: false, blocked: null,
-  model: null, unscored: true,
+  model: null, unscored: true, lookalike: [],
 };
 
 // Address layers (lists and the URL model) for a web address; cached per address.
@@ -219,10 +231,18 @@ async function layersFor(url) {
     blocked: listed.blocked,
     model: null,
     unscored: false,
+    lookalike: [],
   };
   // The model also runs on trusted addresses: trust can expire or be outweighed by a blocklist hit,
   // and the cached layers must not depend on it.
-  if (!layers.allow && !layers.shortener && !layers.blocked) layers.model = scoreAddress(model, url);
+  if (!layers.allow && !layers.shortener && !layers.blocked) {
+    layers.model = scoreAddress(model, url);
+    try {
+      layers.lookalike = addressSignals(await getRules(), url);
+    } catch (err) {
+      console.warn("PhishDrift look-alike check failed:", err);
+    }
+  }
   cacheSet(verdictCache, key, { layers }, settings.verdictCacheMax);
   return { ...layers, trusted: trusted.has(listed.trustKey) };
 }
@@ -233,14 +253,15 @@ async function layersFor(url) {
 // asks for a password (reports/stress_test: 1 of 893 allowlisted legitimate pages with HTML).
 // A page with a password field but too little text for the page model (a bare login-form clone)
 // is still read; the combiner never lets the page model lower a verdict on such a page.
-async function pageCheck(layers, url, html, facts) {
+// `brandFacts` (an object) receives the brand-rule page facts from the same parse.
+async function pageCheck(layers, url, html, facts, brandFacts = null) {
   if (html == null || layers.trusted || layers.blocked || layers.unscored || url.length > MAX_URL_CHARS) return null;
   const addressTrusted = layers.allow || layers.shortener;
   if (!addressTrusted && !layers.model) return null;
   try {
-    const [model, page] = await Promise.all([getModel(), getPage()]);
+    const [model, page, rules] = await Promise.all([getModel(), getPage(), getRules()]);
     const allowShort = !addressTrusted && (facts?.passwordFields ?? 0) > 0;
-    const first = scorePage(model, page, url, html, { allowShort });
+    const first = scorePage(model, page, url, html, { allowShort, facts: brandFacts, factBrands: rules.brandSet });
     const scored =
       first.verdict > SAFE && first.hasHtml ? scorePage(model, page, url, html, { withReasons: true, allowShort }) : first;
     if (addressTrusted) {
@@ -282,8 +303,10 @@ export async function evaluate(url, { facts = null, html = null, origin = null }
   const layers = target === null ? { ...UNSCORED, trusted: false } : { ...(await layersFor(target)) };
   const model = await getModel();
   const page = facts ? pageFlags(facts, target, model.lists.psl) : null;
-  const pageModel = target === null ? null : await pageCheck(layers, target, html, facts);
-  let result = combine(layers, page, pageModel);
+  const brandFacts = {};
+  const pageModel = target === null ? null : await pageCheck(layers, target, html, facts, brandFacts);
+  const brand = await brandSignals(layers, target, html, brandFacts, model);
+  let result = combine(layers, page, pageModel, brand);
   let pending = null;
   // Domain evidence can only raise suspicious to dangerous, so only suspicious pages ask for it.
   if (result.verdict === SUSPICIOUS && askable(layers) && !layers.allow && !layers.shortener) {
@@ -293,10 +316,27 @@ export async function evaluate(url, { facts = null, html = null, origin = null }
     } else {
       layers.domain = found.answer;
       layers.backendFailed = found.failed;
-      result = combine(layers, page, pageModel);
+      result = combine(layers, page, pageModel, brand);
     }
   }
   return { result: { ...result, url, domain: layers.domainName }, pending };
+}
+
+// Look-alike address hits (from the cached layers) and the brand-page rule on the page's HTML.
+async function brandSignals(layers, target, html, brandFacts, model) {
+  const brand = { address: layers.lookalike ?? [], page: null };
+  if (target === null || html == null || layers.trusted || layers.blocked) return brand;
+  try {
+    const rules = await getRules();
+    // the page check parses the page once; when it did not run, parse here for the facts only
+    if (!Object.keys(brandFacts).length && target.length <= MAX_URL_CHARS) {
+      analyzeHtml(target, html, model.lists, null, { facts: brandFacts, factBrands: rules.brandSet });
+    }
+    brand.page = pageSignal(rules, target, brandFacts);
+  } catch (err) {
+    console.warn("PhishDrift brand-page check failed:", err);
+  }
+  return brand;
 }
 
 // Evaluate, apply, and apply again once a backend lookup it started has settled.

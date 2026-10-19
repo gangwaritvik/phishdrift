@@ -36,7 +36,34 @@ export const NO_ADDRESS_NOTE = "This page has no web address to check.";
 // page: {hasPassword, credFormCrossDomain, credFormInsecure, asksCredentials} | null (pagefacts.js)
 // pageModel: {hasHtml, blended, verdict, reasons:[{text}], allowedPageWarning?} | null
 //            (scorePage in page.js)
-export function combine(layers, page = null, pageModel = null) {
+// brand: {address: [{rule, brand, text}], page: {rule, brand, text} | null} from brand_rules.js.
+// The brand and look-alike rules only raise a verdict (see brandEscalate).
+export function combine(layers, page = null, pageModel = null, brand = null) {
+  return brandEscalate(combineLayers(layers, page, pageModel), brand, layers);
+}
+
+// One step up for a look-alike address (homograph, embedded domain, one letter away, brand + lure
+// word) and one for a page that shows a brand, asks for a credential and is not on the brand's
+// domain. Never lowers a
+// verdict, never acts on user-trusted or blocklisted addresses, and on an allowlisted page (or a
+// short link) only the page rule applies and only up to suspicious.
+export function brandEscalate(out, brand, layers) {
+  if (!brand || layers.trusted || out.layer === "blocklist" || out.layer === "none") return out;
+  const addressTrusted = out.layer === "allowlist" || out.layer === "shortener" || layers.allow || layers.shortener;
+  const address = addressTrusted ? [] : (brand.address ?? []);
+  const pageHit = brand.page ?? null;
+  let verdict = out.verdict;
+  if (address.length) verdict += 1;
+  if (pageHit) verdict += 1;
+  verdict = Math.min(verdict, addressTrusted ? SUSPICIOUS : DANGEROUS);
+  const hits = [...(pageHit ? [pageHit] : []), ...address];
+  if (!hits.length) return out;
+  const reasons = [...new Set([...hits.map((h) => h.text), ...out.reasons])];
+  if (verdict <= out.verdict) return out.verdict === SAFE ? out : { ...out, reasons };
+  return { ...out, verdict, layer: pageHit ? "brand-page" : "lookalike", reasons };
+}
+
+function combineLayers(layers, page = null, pageModel = null) {
   const out = { verdict: SAFE, layer: "url-model", reasons: [], notes: [], prob: null };
   const allowed = layers.allow && layers.blocked !== "url";
   if (layers.blocked && !allowed) {

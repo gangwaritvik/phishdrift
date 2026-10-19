@@ -607,3 +607,33 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Not done: zone-aware address scoring inside open zones (sites.google.com); signatures are off until a key is
   made on the backend machine; the PC rebuild with Tranco (`python -m backend build-lists --tranco-file ...`)
   restores the 5,740 domains the cloud rebuild could not recover.
+
+### 2026-10-19 — Brand and look-alike rules; threshold-transfer and render-gap tools (cloud)
+- Changed: `features/brand_rules.py` + `js/src/brand_rules.js` (escalate-only rules: Unicode skeleton from the
+  confusables table with punycode decoding, "1" read as l or i; embedded real domain; one letter away from a brand;
+  brand + lure word; brand-page rule = brand in title / og:site_name / copyright + password, OTP, card or PIN field +
+  domain not the brand's; phishing_catcher-style host score as a baseline), `features/brand_domains.py`
+  (`python -m features brand-domains [--wikidata] [--misp] --confusables FILE`: brand -> official domains from
+  Wikidata P856 and MISP vendor lists, platforms excluded), `configs/brand_rules.yaml`, page facts collected in the
+  same parse as tier B (`features/html_features.py`, `js/src/html_features.js`; model features unchanged),
+  `extension/src/combine.js` `brandEscalate` (one step per address hit and one for a brand page; never lowers,
+  never touches trusted or blocklisted addresses; on allowlisted pages and short links only the page rule, up to
+  suspicious), `experiments/brand_rules_eval.py`, parity fixture `tests/fixtures/brand_rules_parity.json`
+  (175 URLs, 18 pages), `tests/test_brand_rules.py`. `configs/lists/brands.txt` replaced by the reviewed 772-brand list.
+- Results (`reports/brand_rules.md`, allowlist off): address rules fire on 0 of 2,373 natural legitimate URLs
+  (572 domains) and 0 of 114 regional brand sites; the brand-page rule on 1 of 2,373 natural pages
+  (`cashinexch.com/redirect/facebook`). Caveat: the rules were tuned after seeing the natural set (vivacom.bg,
+  pcloud, deutsche-bank, generic brand words), so these are not independent numbers. On the test thread's
+  generated look-alikes (shipped address path + bundled allowlist, measured in Node): ASCII homoglyphs warned
+  5 -> 42 of 45, edit distance 1 21 -> 53 of 92, punycode 84 -> 89 of 91, brand + word 36 -> 40 of 46; 0 of 120
+  genuine brand hosts flagged before and after.
+- Not fixed: TLD swaps (`icicibank.net`, `sbi.app`): a brand's name on another suffix is treated as its own site,
+  because brands own many suffixes (`paypal.de`, `google.in`) and the map is too thin to tell. The URL model's false
+  alarms on `paypal-community.com`, `coinbase.cloud`, `amazonaws.com` remain (the rules do not cause or fix them).
+- Found: the shipped hybrid bundle carries the 67-word seed brand list, while training used the reviewed list
+  (`models/export_hybrid.py` used `load_lists()` without the PC's lists). Re-export on the PC fixes it.
+- Added but not run (needs the PC's data / the open web): `experiments/threshold_transfer.py` (five threshold
+  rules incl. source-balanced and domain-bootstrap upper bounds, main and leave-one-source-out settings) and
+  `collector/render.py` + `experiments/render_gap.py` + `scripts/render_ood.ps1` (render natural legitimate pages
+  headless and compare page-model false alarms on raw vs rendered HTML). Tests pass with fixtures.
+- Not done: Wikidata brand map (sandbox cannot reach Wikidata; MISP only, 17 brands), favicon hash.

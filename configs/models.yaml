@@ -111,3 +111,16 @@ robustness:                           # experiments/robustness.py: URL evasion f
   eval_phishing: 4000                 # test phishing URLs per family (same rows for every family)
   eval_benign: 6000                   # test benign URLs per family for the false-alarm side
   long_url_quantile: 0.95             # "long legitimate URLs" = benign test URLs above this length quantile
+
+threshold_transfer:                   # experiments/threshold_transfer.py: do the cal-side FPR thresholds hold elsewhere?
+  model: hybrid2                      # address model whose thresholds are compared (the one in the extension)
+  splits: null                        # null = every split in splits.parquet (main setting)
+  cache_dir: data/interim/threshold_transfer  # scores per split / left-out source (retraining skipped when present)
+  balanced_min_negatives: 200         # source-balanced rule: sources with fewer cal negatives get no weight
+  confidence: 0.95                    # upper-confidence rules: target FPR must hold with this confidence
+  n_bootstrap: 200                    # domain bootstrap replicates per source and target
+  bootstrap_seed: 11                  # fixed seed for the domain bootstrap
+  loso:
+    splits: [0, 1, 2]                 # train/cal sides of these splits, without the left-out source
+    model: hybrid2                    # hybrid2 (as shipped) or lightgbm (as experiments/loso.py, faster)
+    skip_one_class: true              # sources with one class (no FPR to transfer) are not left out

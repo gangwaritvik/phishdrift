@@ -137,3 +137,38 @@ test("a page with no web address of its own is suspicious only when it asks for 
   assert.deepEqual([r.verdict, r.reasons], [SUSPICIOUS, [NO_ADDRESS_REASON]]);
   assert.equal(combine({ ...unscored, blocked: "url" }, login).verdict, DANGEROUS);
 });
+
+// --- brand and look-alike rules (escalate only) ---------------------------------------------
+const look = (rule) => ({ rule, brand: "paypal", text: `look-alike ${rule}` });
+const brandPage = { rule: "brand_page", brand: "paypal", text: "brand page" };
+
+test("a look-alike address raises safe to suspicious and suspicious to dangerous", () => {
+  const r = combine(base, null, null, { address: [look("homograph")], page: null });
+  assert.deepEqual([r.verdict, r.layer, r.reasons], [SUSPICIOUS, "lookalike", ["look-alike homograph"]]);
+  const d = combine({ ...base, model: model(SUSPICIOUS, ["m"]) }, null, null, { address: [look("embedded")], page: null });
+  assert.deepEqual([d.verdict, d.reasons], [DANGEROUS, ["look-alike embedded", "m"]]);
+});
+
+test("one letter away raises one step", () => {
+  assert.equal(combine(base, null, null, { address: [look("edit1")], page: null }).verdict, SUSPICIOUS);
+  const r = combine({ ...base, model: model(SUSPICIOUS) }, null, null, { address: [look("edit1")], page: null });
+  assert.equal(r.verdict, DANGEROUS);
+});
+
+test("brand page plus look-alike address go two steps; nothing ever lowers a verdict", () => {
+  const r = combine(base, null, null, { address: [look("combo")], page: brandPage });
+  assert.deepEqual([r.verdict, r.layer], [DANGEROUS, "brand-page"]);
+  const d = combine({ ...base, model: model(DANGEROUS, ["m"]) }, null, null, { address: [], page: brandPage });
+  assert.deepEqual([d.verdict, d.reasons], [DANGEROUS, ["brand page", "m"]]);
+  assert.equal(combine({ ...base, model: model(DANGEROUS) }, null, null, { address: [], page: null }).verdict, DANGEROUS);
+});
+
+test("brand rules never act on trusted or blocklisted addresses; allowlisted pages get at most a banner", () => {
+  const brand = { address: [look("homograph")], page: brandPage };
+  assert.equal(combine({ ...base, trusted: true }, null, null, brand).verdict, SAFE);
+  assert.equal(combine({ ...base, blocked: "url", model: null }, null, null, brand).layer, "blocklist");
+  const allowed = combine({ ...base, allow: true }, null, null, brand);
+  assert.deepEqual([allowed.verdict, allowed.layer, allowed.reasons], [SUSPICIOUS, "brand-page", ["brand page"]]);
+  const addressOnly = combine({ ...base, allow: true }, null, null, { address: [look("homograph")], page: null });
+  assert.equal(addressOnly.verdict, SAFE);
+});

@@ -5,6 +5,7 @@
     python -m collector run --no-capture
     python -m collector crawl --seeds phiusiil   # crawl only (e.g. after `data_pipeline seeds`)
     python -m collector crawl-ood           # legitimate inner pages for the OOD false-positive set
+    python -m collector render-ood          # render a sample of them headless (collector/render.py)
 
 Training feeds go into the first-seen index; blocklist-only feeds (URLhaus) are stored
 separately and never become training data. Safe to run more often than every 12 hours:
@@ -284,7 +285,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="second pass over the sites that worked, HTML stored, into data/raw/ood_html",
     )
-    for p in (r, c, o):
+    rr = sub.add_parser(
+        "render-ood", help="render a sample of the OOD pages with stored HTML (headless browser)"
+    )
+    rr.add_argument("--size", type=int, help="override sample.size (first draw only)")
+    rr.add_argument("--workers", type=int, help="override run.workers")
+    rr.add_argument("--limit", type=int, help="render at most this many pages in this run")
+    rr.add_argument("--retry-failed", action="store_true", default=None, help="retry failed pages")
+    rr.add_argument("--browser", help="path to chrome.exe / msedge.exe (else searched)")
+    rr.add_argument("--resample", action="store_true", help="draw a new sample")
+    for p in (r, c, o, rr):
         p.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(
@@ -311,6 +321,16 @@ def main(argv: list[str] | None = None) -> int:
             )
         except KeyboardInterrupt:
             log.warning("crawl-ood interrupted; finished sites are saved, rerun to continue")
+            return 130
+    if args.cmd == "render-ood":
+        from collector import render
+
+        try:
+            return render.run(
+                args.size, args.workers, args.limit, args.retry_failed, args.browser, args.resample
+            )
+        except KeyboardInterrupt:
+            log.warning("render-ood interrupted; finished pages are saved, rerun to continue")
             return 130
     return run(no_crawl=args.no_crawl, no_capture=args.no_capture)
 
