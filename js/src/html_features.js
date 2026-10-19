@@ -14,7 +14,7 @@ import { HTMLParser } from "./htmlparser.js";
 import {
   cpBack, cpForward, cpHead, cpLen, foldI, pyJoinSplit, pyLower, pyRegex, pyStrip, stripChars,
 } from "./pystr.js";
-import { parse } from "./urlparts.js";
+import { isDigitStr, parse } from "./urlparts.js";
 
 export const NAMES_B = [
   "n_forms", "n_password_fields", "n_credential_forms", "n_password_outside_form",
@@ -59,6 +59,7 @@ const JUNK_MAX_TEXT = 2_000;
 const JUNK_SCAN_CHARS = 2_000;
 const BRAND_TEXT_MIN = 2;
 const COPYRIGHT_BEFORE = 60;
+const COPYRIGHT_SKIP = new Set(["copyright", "c", "all", "rights", "reserved"]); // brand-page rule only
 const COPYRIGHT_AFTER = 100;
 
 const words = (s) => s.split(" ");
@@ -320,7 +321,7 @@ class Collector extends HTMLParser {
       anchors: [], anchorHref: null, anchorBuf: [], anchorLen: 0, cssHrefs: [], iconHrefs: [],
       linkTagHrefs: [], metaUrls: [], imgSrcs: [], mediaSrcs: [], frameSrcs: [], nFrames: 0,
       nHiddenFrames: 0, baseHref: null,
-      hasDescription: false, hasViewport: false, robotsNoindex: false, refresh: null,
+      hasDescription: false, siteName: "", hasViewport: false, robotsNoindex: false, refresh: null,
       nForms: 0, form: null, forms: [], nPassword: 0, nPasswordOutside: 0, nInputs: 0,
       nHidden: 0, hasSubmit: false, nOtp: 0, nCard: 0, nCvv: 0, nPin: 0,
     });
@@ -497,6 +498,8 @@ class Collector extends HTMLParser {
     const name = pyLower(pyStrip(a.get("name") ?? ""));
     const content = a.get("content") ?? "";
     const equiv = pyLower(pyStrip(a.get("http-equiv") ?? ""));
+    const prop = pyLower(pyStrip(a.get("property") ?? ""));
+    if (prop === "og:site_name" && !this.siteName) this.siteName = cpHead(content, MAX_TITLE_CHARS);
     if (equiv === "refresh" && this.refresh === null) this.refresh = content;
     if (name === "description" && pyStrip(content)) this.hasDescription = true;
     else if (name === "viewport") this.hasViewport = true;
@@ -873,13 +876,45 @@ function compute(c, html, size, parts, lists, text) {
   return out;
 }
 
+// What the brand-page rule (brand_rules.js) needs, as page_facts in features/html_features.py.
+// Computed on every parsed page, also short ones. Not model features.
+export function pageFacts(c, text, brands) {
+  const found = (source) => {
+    const tokens = tokensOf(pyLower(source));
+    return tokens.length && brands.size ? [...brandHits(grams(tokens), brands).keys()].sort() : [];
+  };
+  // the owner named right after the copyright mark, not the words around it (see Python)
+  const m = COPYRIGHT.exec(foldI(text));
+  let owner = "";
+  if (m !== null) {
+    const start = m.index + m[0].length;
+    const after = tokensOf(pyLower(text.slice(start, cpForward(text, start, COPYRIGHT_AFTER))));
+    owner = after.filter((t) => !isDigitStr(t) && !COPYRIGHT_SKIP.has(t)).slice(0, 4).join(" ");
+  }
+  const titleGrams = grams(tokensOf(pyLower(c.title)));
+  return {
+    title_brands: found(c.title),
+    title_login: +TITLE_WORDS.some((w) => titleGrams.has(w)),
+    title_norm: norm(c.title),
+    site_named: +Boolean(norm(c.siteName)),
+    site_brands: found(c.siteName),
+    copyright_brands: found(owner),
+    password_fields: c.nPassword,
+    otp_fields: c.nOtp,
+    card_fields: c.nCard + c.nCvv,
+    pin_fields: c.nPin,
+  };
+}
+
 export function nanFeatures() {
   return Object.fromEntries(NAMES_B.map((n) => [n, NaN]));
 }
 
 // { values, status }; values is null unless status is "ok". Status: ok, empty, no_url, short,
 // junk, timeout, failed (as in Python). Never throws. `parts` (from urlparts.parse) is optional.
-export function analyzeHtml(url, html, lists, parts = null) {
+// With `facts` (an object), pageFacts of any page that parsed (also short and junk ones) go in it,
+// with brands from `factBrands` (a Set; default lists.brandSet).
+export function analyzeHtml(url, html, lists, parts = null, facts = null, factBrands = null) {
   try {
     let page = html;
     if (page instanceof Uint8Array) page = new TextDecoder("utf-8").decode(page);
@@ -891,6 +926,7 @@ export function analyzeHtml(url, html, lists, parts = null) {
     page = cpHead(page, MAX_HTML_CHARS).replaceAll("\x00", "");
     const collector = parsePage(page, now() + MAX_PAGE_SECONDS * 1000);
     const text = collector.text;
+    if (facts !== null) Object.assign(facts, pageFacts(collector, text, factBrands ?? lists.brandSet));
     if (cpLen(pyStrip(text)) < MIN_VISIBLE_CHARS) return { values: null, status: "short" };
     if (isJunk(collector, text)) return { values: null, status: "junk" };
     const values = compute(collector, page, size, p, lists, text);

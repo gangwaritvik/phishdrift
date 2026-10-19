@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Riverside Library - your account</title>
+</head>
+<body>
+<h1>Riverside Public Library</h1>
+<p>Renew your loans, place holds on new titles and check your reading history from your library
+account. Opening hours this week: Monday to Friday 9am to 8pm, Saturday 10am to 4pm, closed Sunday.
+The children's reading hour moves to Thursday afternoons from next month.</p>
+<div id="login"></div>
+<script>
+  // The login form is added by a script, as many sites do: only the rendered DOM has it.
+  document.getElementById("login").innerHTML =
+    "<form action='/account/login' method='post'>" +
+    "<input type='text' name='card' placeholder='Library card number'>" +
+    "<input type='password' name='pin' placeholder='PIN'>" +
+    "<input type='hidden' name='next' value='/account'>" +
+    "<button>Log in</button></form>";
+</script>
+<p><a href="/catalogue">Catalogue</a> <a href="/events">Events</a> <a href="/visit">Visit</a></p>
+</body>
+</html>

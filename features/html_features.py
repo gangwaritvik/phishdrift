@@ -55,6 +55,7 @@ JUNK_MAX_TEXT = 2_000  # parked / error patterns only apply to pages with less t
 JUNK_SCAN_CHARS = 2_000
 BRAND_TEXT_MIN = 2  # mentions of a brand in the text before it counts
 COPYRIGHT_BEFORE, COPYRIGHT_AFTER = 60, 100
+COPYRIGHT_SKIP = frozenset(("copyright", "c", "all", "rights", "reserved"))  # brand-page rule only
 
 
 def _split(text: str, sep: str | None = None) -> list[str]:
@@ -348,6 +349,7 @@ class _Collector(HTMLParser):
         self.base_href: str | None = None
         # meta
         self.has_description = False
+        self.site_name = ""  # og:site_name, for the brand-page rule only (not a feature)
         self.has_viewport = False
         self.robots_noindex = False
         self.refresh: str | None = None
@@ -539,6 +541,9 @@ class _Collector(HTMLParser):
         name = a.get("name", "").strip().lower()
         content = a.get("content", "")
         equiv = a.get("http-equiv", "").strip().lower()
+        prop = a.get("property", "").strip().lower()
+        if prop == "og:site_name" and not self.site_name:
+            self.site_name = content[:MAX_TITLE_CHARS]
         if equiv == "refresh" and self.refresh is None:
             self.refresh = content
         if name == "description" and content.strip():
@@ -916,15 +921,54 @@ def _compute(
     return out
 
 
+def page_facts(c: _Collector, text: str, brands: frozenset[str]) -> dict:
+    """What the brand-page rule (``features/brand_rules.py``) needs: brands named in the title,
+    ``og:site_name`` and copyright line, and the credential fields. Computed on every parsed page,
+    also short ones (a bare password-form clone has little text). Not model features."""
+
+    def found(source: str) -> list[str]:
+        tokens = _TOKEN.findall(source.lower())
+        return sorted(_brand_hits(_grams(tokens), brands)) if tokens and brands else []
+
+    # the owner named right after the copyright mark ("© 2026 PayPal, Inc."), not the words around
+    # it ("Sign in with Google"): the first few words that are not years or the mark itself
+    m = _COPYRIGHT.search(text)
+    owner = ""
+    if m:
+        after = _TOKEN.findall(text[m.end() : m.end() + COPYRIGHT_AFTER].lower())
+        owner = " ".join([t for t in after if not t.isdigit() and t not in COPYRIGHT_SKIP][:4])
+    title_grams = _grams(_TOKEN.findall(c.title.lower()))
+    return {
+        "title_brands": found(c.title),
+        "title_login": int(any(w in title_grams for w in TITLE_WORDS)),
+        "title_norm": _norm(c.title),
+        "site_named": int(bool(_norm(c.site_name))),
+        "site_brands": found(c.site_name),
+        "copyright_brands": found(owner),
+        "password_fields": c.n_password,
+        "otp_fields": c.n_otp,
+        "card_fields": c.n_card + c.n_cvv,
+        "pin_fields": c.n_pin,
+    }
+
+
 def nan_features() -> dict[str, float]:
     """Every tier B value as NaN: the answer for a page with no usable HTML."""
     return dict.fromkeys(NAMES_B, NAN)
 
 
 def analyze(
-    url: str, html: str | bytes | None, parts: Parts | None = None, *, lists: Lists | None = None
+    url: str,
+    html: str | bytes | None,
+    parts: Parts | None = None,
+    *,
+    lists: Lists | None = None,
+    facts: dict | None = None,
+    fact_brands: frozenset[str] | None = None,
 ) -> tuple[dict[str, float] | None, str]:
-    """``(values, status)``; values is None unless status is ``ok``.
+    """``(values, status)``; values is None unless status is ``ok``. When ``facts`` is a dict,
+    ``page_facts`` of any page that parsed (also ``short`` and ``junk`` ones) are put in it,
+    with brands from ``fact_brands`` (default: ``lists.brands``).
 
     Status: ``ok``, ``empty`` (no HTML), ``no_url``, ``short`` (under ``MIN_VISIBLE_CHARS`` of
     visible text), ``junk`` (parked / takedown / error page), ``timeout`` or ``failed``.
@@ -944,6 +988,9 @@ def analyze(
         page = html[:MAX_HTML_CHARS].replace("\x00", "")
         collector = _parse(page, time.monotonic() + MAX_PAGE_SECONDS)
         text = collector.text
+        if facts is not None:
+            brands = fact_brands if fact_brands is not None else _brand_set(lists.brands)
+            facts.update(page_facts(collector, text, brands))
         if len(text.strip()) < MIN_VISIBLE_CHARS:
             return None, "short"
         if _is_junk(collector, text):

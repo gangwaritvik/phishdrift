@@ -10,6 +10,8 @@ import { combine, DANGEROUS, SAFE, SUSPICIOUS } from "./combine.js";
 import { listUrlKey } from "./keys.js";
 import { MAX_URL_CHARS, scoreAddress } from "./address.js";
 import { loadHybrid } from "./lib/hybrid.js";
+import { addressSignals, loadBrandRules, pageSignal } from "./lib/brand_rules.js";
+import { analyzeHtml } from "./lib/html_features.js";
 import { loadPage, scorePage } from "./lib/page.js";
 import { isIpHost } from "./lib/urlparts.js";
 import { ListSet, withBundledAllowlist } from "./lists.js";
@@ -56,6 +58,16 @@ function getPage() {
     return loadPage(bundle);
   })();
   return pagePromise;
+}
+
+let rulesPromise;
+function getRules() {
+  rulesPromise ??= (async () => {
+    const model = await getModel();
+    const payload = await (await fetch(chrome.runtime.getURL("data/brand_rules.json"))).json();
+    return loadBrandRules(payload, model.lists.psl, model.lists.platforms);
+  })();
+  return rulesPromise;
 }
 
 let listsPromise;
@@ -152,9 +164,15 @@ async function layersFor(url) {
     model: null,
     answer: null,
     backendFailed: false,
+    lookalike: [],
   };
   layers.trusted = trusted.has(listed.trustKey);
   if (!layers.trusted && !layers.allow && !layers.shortener && !layers.blocked) {
+    try {
+      layers.lookalike = addressSignals(await getRules(), url);
+    } catch (err) {
+      console.warn("PhishDrift look-alike check failed:", err);
+    }
     const scored = scoreAddress(model, url);
     layers.model = scored;
     // Domain evidence can only raise suspicious to dangerous, so a dangerous address never waits
@@ -172,13 +190,13 @@ async function layersFor(url) {
 // address verdict in place. On allowlisted pages and short links the address is not judged, so the
 // page alone must carry the warning: a usable page over the page model's dangerous threshold that
 // asks for a password (reports/stress_test: 1 of 893 allowlisted legitimate pages with HTML).
-async function pageCheck(layers, url, html, facts, settings) {
+async function pageCheck(layers, url, html, facts, settings, brandFacts = null) {
   if (html == null || layers.trusted || layers.blocked || url.length > MAX_URL_CHARS) return null;
   const addressTrusted = layers.allow || layers.shortener;
   if (!addressTrusted && !layers.model) return null;
   try {
-    const [model, page] = await Promise.all([getModel(), getPage()]);
-    const first = scorePage(model, page, url, html);
+    const [model, page, rules] = await Promise.all([getModel(), getPage(), getRules()]);
+    const first = scorePage(model, page, url, html, { facts: brandFacts, factBrands: rules.brandSet });
     const scored = first.verdict > SAFE && first.hasHtml ? scorePage(model, page, url, html, { withReasons: true }) : first;
     if (addressTrusted) {
       scored.allowedPageWarning =
@@ -202,8 +220,22 @@ export async function evaluate(url, facts = null, html = null) {
   const layers = { ...(await layersFor(url)) };
   const model = await getModel();
   const page = facts ? pageFlags(facts, url, model.lists.psl) : null;
-  const pageModel = await pageCheck(layers, url, html, facts, settings);
-  const result = combine(layers, page, pageModel);
+  const brandFacts = {};
+  const pageModel = await pageCheck(layers, url, html, facts, settings, brandFacts);
+  const brand = { address: layers.lookalike ?? [], page: null };
+  if (html != null && !layers.trusted && !layers.blocked) {
+    try {
+      const rules = await getRules();
+      // the page check parses the page once; when it did not run, parse here for the facts only
+      if (!Object.keys(brandFacts).length && url.length <= MAX_URL_CHARS) {
+        analyzeHtml(url, html, model.lists, null, brandFacts, rules.brandSet);
+      }
+      brand.page = pageSignal(rules, url, brandFacts);
+    } catch (err) {
+      console.warn("PhishDrift brand-page check failed:", err);
+    }
+  }
+  const result = combine(layers, page, pageModel, brand);
   return { ...result, url, domain: layers.domainName };
 }
 

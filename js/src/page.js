@@ -12,7 +12,7 @@
 
 import { contributions, reasons } from "./explain.js";
 import { featureValues } from "./hybrid.js";
-import { extractHtml } from "./html_features.js";
+import { analyzeHtml, nanFeatures } from "./html_features.js";
 import { DANGEROUS, SAFE, SUSPICIOUS, interp, rawScore } from "./model.js";
 
 export function loadPage(bundle) {
@@ -31,12 +31,14 @@ export function loadPage(bundle) {
 
 const calibrated = (prob, iso, tie) => interp(prob, iso.x, iso.y) + tie * prob;
 
-// address: loadHybrid(...) model; page: loadPage(...) model.
-export function scorePage(address, page, url, html, { withReasons = false } = {}) {
+// address: loadHybrid(...) model; page: loadPage(...) model. With `facts` (an object), the page facts
+// for the brand rules (html_features.js pageFacts, brands from `factBrands`) are put in it from the
+// same parse.
+export function scorePage(address, page, url, html, { withReasons = false, facts = null, factBrands = null } = {}) {
   const aValues = featureValues(address, url);
   const probAddress = 1 / (1 + Math.exp(-rawScore(address, aValues)));
   const byName = Object.fromEntries(address.names.map((n, i) => [n, aValues[i]]));
-  const pageFeatures = extractHtml(url, html, address.lists);
+  const pageFeatures = analyzeHtml(url, html, address.lists, null, facts, factBrands).values ?? nanFeatures();
   const hasHtml = Object.values(pageFeatures).some((v) => !Number.isNaN(v));
   let probPage = null;
   let values = null;
