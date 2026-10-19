@@ -31,6 +31,7 @@ shared by several phishing sources and the live feeds cover only days.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
@@ -546,16 +547,153 @@ def build_lists(
     return {"manifest": manifest, "blocklist": blocklist, "allowlist": allowlist}
 
 
-def write_lists(docs: dict[str, dict], out_dir: Path) -> dict[str, Path]:
+def sign_body(body: bytes, private_key_pem: bytes) -> str:
+    """Base64 raw ``r || s`` ECDSA P-256 / SHA-256 signature of ``body`` (the form WebCrypto's
+    ``verify`` takes)."""
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+
+    key = serialization.load_pem_private_key(private_key_pem, password=None)
+    if not isinstance(key, ec.EllipticCurvePrivateKey) or key.curve.name != "secp256r1":
+        raise ValueError("the list signing key must be an ECDSA P-256 private key")
+    r, s_ = decode_dss_signature(key.sign(body, ec.ECDSA(hashes.SHA256())))
+    return base64.b64encode(r.to_bytes(32, "big") + s_.to_bytes(32, "big")).decode("ascii")
+
+
+def verify_body(body: bytes, signature: str, public_spki_b64: str) -> bool:
+    """Check a ``sign_body`` signature against a base64 DER SubjectPublicKeyInfo key."""
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
+
+    try:
+        raw = base64.b64decode(signature, validate=True)
+        key = serialization.load_der_public_key(base64.b64decode(public_spki_b64))
+    except (ValueError, TypeError):
+        return False
+    if len(raw) != 64 or not isinstance(key, ec.EllipticCurvePublicKey):
+        return False
+    der = encode_dss_signature(int.from_bytes(raw[:32], "big"), int.from_bytes(raw[32:], "big"))
+    try:
+        key.verify(der, body, ec.ECDSA(hashes.SHA256()))
+    except InvalidSignature:
+        return False
+    return True
+
+
+def public_key_module(public: dict | None) -> str:
+    """The extension's ``lists_pubkey.js``: the list-signing public key (or null: unsigned)."""
+    body = json.dumps(public, indent=1) if public else "null"
+    return (
+        "// Public key that signs the synced lists and remote config (backend/lists.py).\n"
+        "// Written by `python -m backend make-signing-key`;\n"
+        "// null means signatures are not checked.\n"
+        f"export const LIST_PUBKEY = {body};\n"
+    )
+
+
+def make_signing_key(private_path: Path, public_paths: Iterable[Path]) -> dict:
+    """Create an ECDSA P-256 key pair: the private key (PEM, mode 0600) stays with the backend;
+    the public key (``{"alg", "spki"}``) is written as ``lists_pubkey.js`` modules for the
+    extension (source and any built copy). Refuses to overwrite an existing private key."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    private_path = Path(private_path)
+    if private_path.exists():
+        raise FileExistsError(f"{private_path} exists; delete it first to rotate the key")
+    key = ec.generate_private_key(ec.SECP256R1())
+    pem = key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    private_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(private_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(pem)
+    spki = key.public_key().public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    public = {"alg": "ECDSA-P256-SHA256", "spki": base64.b64encode(spki).decode("ascii")}
+    for path in public_paths:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_text(public_key_module(public), encoding="utf-8")
+    return public
+
+
+def signed_manifest(manifest: dict, private_key_pem: bytes | None) -> dict:
+    """``manifest`` plus ``signature`` over its canonical bytes (without the signature field)."""
+    body = {k: v for k, v in manifest.items() if k != "signature"}
+    if private_key_pem is None:
+        return body
+    return {**body, "signature": sign_body(_canonical(body), private_key_pem)}
+
+
+def write_lists(
+    docs: dict[str, dict],
+    out_dir: Path,
+    private_key_pem: bytes | None = None,
+    history_keep: int = 48,
+) -> dict[str, Path]:
     """Write ``manifest.json``, ``blocklist.json`` and ``allowlist.json`` atomically (the
-    manifest last, so a reader that sees a new manifest finds the matching lists)."""
+    manifest last, so a reader that sees a new manifest finds the matching lists). The manifest
+    is signed when a key is given. The lists are also kept in ``history/<version>.json`` (the
+    newest ``history_keep`` builds) so ``list_delta`` can serve small hourly updates."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    hist = out_dir / "history"
+    hist.mkdir(exist_ok=True)
+    version = docs["manifest"]["version"]
+    snap = hist / f"{version}.json"
+    tmp = snap.with_suffix(".json.tmp")
+    tmp.write_bytes(_canonical({"blocklist": docs["blocklist"], "allowlist": docs["allowlist"]}))
+    os.replace(tmp, snap)
+    os.utime(snap)
+    for old in sorted(hist.glob("*.json"), key=lambda p: p.stat().st_mtime)[:-history_keep]:
+        old.unlink(missing_ok=True)
+    out = {**docs, "manifest": signed_manifest(docs["manifest"], private_key_pem)}
     paths: dict[str, Path] = {}
     for name in ("blocklist", "allowlist", "manifest"):
         path = out_dir / f"{name}.json"
         tmp = path.with_suffix(".json.tmp")
-        tmp.write_bytes(_canonical(docs[name]))
+        tmp.write_bytes(_canonical(out[name]))
         os.replace(tmp, path)
         paths[name] = path
     return paths
+
+
+_VERSION_RE = re.compile(r"^[0-9a-f]{12}$")
+_DELTA_SETS = {"blocklist": ("domains", "urls"), "allowlist": ("domains", "open_hosting")}
+
+
+def list_delta(out_dir: Path, from_version: str) -> dict | None:
+    """Changes from the build ``from_version`` to the current one, or None when that build is
+    not in the history (or the hash sizes changed): the client then downloads the full lists.
+
+    ``{"from", "to", "blocklist": {"version", "prefix_bytes", "domains": {"add", "del"},
+    "urls": {...}}, "allowlist": {"version", "prefix_bytes", "domains": {...},
+    "open_hosting": {...}, "top": [...]}}``. ``top`` is sent whole (it is ordered). The client
+    applies it, rebuilds each list file and checks its sha256 against the signed manifest."""
+    out_dir = Path(out_dir)
+    if not _VERSION_RE.match(from_version):
+        return None
+    old_path = out_dir / "history" / f"{from_version}.json"
+    if not old_path.exists():
+        return None
+    old = json.loads(old_path.read_text(encoding="utf-8"))
+    new = {n: json.loads((out_dir / f"{n}.json").read_text(encoding="utf-8")) for n in _DELTA_SETS}
+    delta: dict = {"from": from_version, "to": new["blocklist"]["version"]}
+    for name, fields in _DELTA_SETS.items():
+        if old[name]["prefix_bytes"] != new[name]["prefix_bytes"]:
+            return None
+        part: dict = {"version": new[name]["version"], "prefix_bytes": new[name]["prefix_bytes"]}
+        for f in fields:
+            a, b = set(old[name][f]), set(new[name][f])
+            part[f] = {"add": sorted(b - a), "del": sorted(a - b)}
+        if name == "allowlist":
+            part["top"] = new[name]["top"]
+        delta[name] = part
+    return delta

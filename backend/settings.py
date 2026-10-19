@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -61,3 +62,14 @@ class Settings:
     @property
     def lists_dir(self) -> Path:
         return resolve(self.cfg["lists"]["out_dir"])
+
+    @property
+    def signing_key_path(self) -> Path:
+        lcfg = self.cfg["lists"]
+        env = os.environ.get(lcfg.get("signing_key_env", ""), "")
+        return Path(env) if env else resolve(lcfg["signing_key"])
+
+    def signing_key(self) -> bytes | None:
+        """PEM bytes of the list signing key, or None when there is none (unsigned lists)."""
+        path = self.signing_key_path
+        return path.read_bytes() if path.exists() else None

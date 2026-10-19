@@ -117,7 +117,9 @@ def validate(raw: Any, cfg: dict, platforms: Iterable[str]) -> dict:
         if not suffix or sub or f"{label}.{suffix}" != domain:
             problems.append(f"{where} is not a registrable domain (no subdomains, known suffix)")
         elif domain in platform_set:
-            problems.append(f"{where} is a hosting platform (configs/platforms.yaml)")
+            problems.append(
+                f"{where} is a shared host (hosting platform, open-hosting zone or shortener)"
+            )
         elif domain in seen:
             problems.append(f"{where} is listed twice")
         else:

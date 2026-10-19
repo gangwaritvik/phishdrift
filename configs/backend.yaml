@@ -54,7 +54,20 @@ remote_config:                   # GET /config (backend/remote_config.py); check
 
 lists:
   out_dir: data/lists
-  prefix_bytes: 6                # hash = sha256(key)[:2 * prefix_bytes] as hex
+  prefix_bytes: 8                # blocklist hash = sha256(key)[:2 * prefix_bytes] as hex
+  allow_prefix_bytes: 16         # allowlist hashes: 128 bits, so no domain can be registered to
+                                 # collide with a trusted one (6 bytes took about 2^48 tries)
+  sentinel_top_n: 1000           # allowlist.top: the extension refuses a list that blocks or drops these
+  specific_segment_len: 16       # a path segment this long names one object: list the URL without query
+  history_keep: 48               # builds kept in <out_dir>/history for /lists/delta
+  # ECDSA P-256 key that signs manifest.json and /config (python -m backend make-signing-key).
+  # The environment variable, if set, names the key file instead. No key: unsigned (development).
+  signing_key: data/keys/list_signing_key.pem
+  signing_key_env: PHISHDRIFT_LIST_SIGNING_KEY
+  rate:                          # token bucket per client address for /lists/* and /config only,
+    capacity: 60                 # so a feedback burst cannot stop list syncs
+    refill_per_s: 1.0
+    max_clients: 10000
   allowlist_top_n: 50000         # Tranco rank only cuts the list; never a model feature
   # Open hosting (backend/lists.py): a phishing host below an allowlisted domain makes the child
   # zone that contains it (cloudapp.azure.com, drive.google.com) open: no allowlist there, blocklist

@@ -269,6 +269,7 @@ def app_settings(tmp_path, raw) -> Settings:
             "feedback": {"dir": str(tmp_path / "feedback")},
             "remote_config": {"path": str(path)},
             "rate_limit": {"capacity": 3, "refill_per_s": 0.0001},
+            "lists": {"rate": {"capacity": 3, "refill_per_s": 0.0001}},
         }
     )
 
@@ -303,3 +304,19 @@ def test_default_app_serves_the_shipped_config(tmp_path):
     client = TestClient(create_app(settings, lambda d: empty_facts()))
     doc = client.get("/config").json()
     assert doc["version"] == 1 and doc["never_warn"] == []
+
+
+def test_never_warn_refuses_learned_open_hosting_zones(tmp_path):
+    from backend import lists
+
+    raw = good()
+    raw["never_warn"] = ["weebly.com"]
+    settings = app_settings(tmp_path, raw)
+    settings.cfg["lists"]["out_dir"] = str(tmp_path / "lists")
+    feed = [f"https://t{i}.weebly.com/login" for i in range(5)]
+    lists.write_lists(lists.build_lists(feed, ["weebly.com"], frozenset(), 8), tmp_path / "lists")
+    with pytest.raises(ValueError, match="shared host"):
+        create_app(settings, lambda d: empty_facts())
+    raw["never_warn"] = ["bit.ly"]
+    with pytest.raises(ValueError, match="shared host"):
+        create_app(app_settings(tmp_path, raw), lambda d: empty_facts())

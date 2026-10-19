@@ -28,15 +28,15 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from backend import remote_config
+from backend import lists, remote_config
 from backend.checks import FACT_KEYS, Checker, LiveChecker, empty_facts, evaluate
 from backend.feedback_auth import TokenSigner, load_secret, reporter_key
 from backend.limits import DailyCounter, RateLimiter, TTLCache
 from backend.settings import Settings
-from features.lists import read_platforms
+from features.lists import load_lists, read_platforms
 
 log = logging.getLogger(__name__)
 
@@ -79,6 +79,19 @@ class FeedbackIn(DomainIn):
     verdict: Literal[0, 1, 2]
 
 
+def shared_hosts(settings: Settings) -> frozenset[str]:
+    """Names a never-warn entry may not be: hosting platforms, shorteners and the open-hosting
+    zones learned by the last list build (``weebly.com``: anyone can publish there)."""
+    names = set(read_platforms(settings.platforms_file)) | set(load_lists().shorteners)
+    path = settings.lists_dir / "allowlist.json"
+    if path.exists():
+        try:
+            names |= set(json.loads(path.read_text(encoding="utf-8")).get("open_hosting", []))
+        except (OSError, ValueError) as exc:
+            log.warning("open-hosting zones not read from %s: %s", path, type(exc).__name__)
+    return frozenset(names)
+
+
 def create_app(
     settings: Settings | None = None,
     checker: Checker | None = None,
@@ -103,8 +116,17 @@ def create_app(
     config_body = remote_config.load(
         settings.remote_config_path,
         cfg["remote_config"],
-        read_platforms(settings.platforms_file),
+        shared_hosts(settings),
     )
+    # /config is signed with the list key when there is one, so a remote config cannot be
+    # swapped in transit either; the signature covers the exact bytes served before it was added
+    signing_key = settings.signing_key()
+    config_doc = config_body
+    if signing_key is not None:
+        signature = lists.sign_body(config_body, signing_key)
+        config_doc = config_body[:-1] + f',"signature":"{signature}"}}'.encode("ascii")
+    lr = cfg["lists"]["rate"]
+    lists_limiter = RateLimiter(lr["capacity"], lr["refill_per_s"], lr["max_clients"], monotonic)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -125,6 +147,11 @@ def create_app(
 
     def rate_limit(request: Request) -> None:
         allowed, retry = limiter.allow(client_of(request))
+        if not allowed:
+            raise too_many(retry)
+
+    def lists_rate_limit(request: Request) -> None:
+        allowed, retry = lists_limiter.allow(client_of(request))
         if not allowed:
             raise too_many(retry)
 
@@ -218,9 +245,9 @@ def create_app(
             daily.increment(install_id, day)
         return {"ok": True}
 
-    @app.get("/config", dependencies=[Depends(rate_limit)])
+    @app.get("/config", dependencies=[Depends(lists_rate_limit)])
     def config() -> Response:
-        return Response(content=config_body, media_type="application/json")
+        return Response(content=config_doc, media_type="application/json")
 
     def list_file(name: str) -> Response:
         path = settings.lists_dir / f"{name}.json"
@@ -228,16 +255,24 @@ def create_app(
             raise HTTPException(status_code=404, detail=LISTS_MISSING)
         return Response(content=path.read_bytes(), media_type="application/json")
 
-    @app.get("/lists/manifest", dependencies=[Depends(rate_limit)])
+    @app.get("/lists/manifest", dependencies=[Depends(lists_rate_limit)])
     def lists_manifest() -> Response:
         return list_file("manifest")
 
-    @app.get("/lists/blocklist.json", dependencies=[Depends(rate_limit)])
+    @app.get("/lists/blocklist.json", dependencies=[Depends(lists_rate_limit)])
     def lists_blocklist() -> Response:
         return list_file("blocklist")
 
-    @app.get("/lists/allowlist.json", dependencies=[Depends(rate_limit)])
+    @app.get("/lists/allowlist.json", dependencies=[Depends(lists_rate_limit)])
     def lists_allowlist() -> Response:
         return list_file("allowlist")
+
+    @app.get("/lists/delta", dependencies=[Depends(lists_rate_limit)])
+    def lists_delta(from_: str = Query(alias="from", max_length=64)) -> dict[str, Any]:
+        # 404 tells the client to download the full lists (unknown or expired build)
+        delta = lists.list_delta(settings.lists_dir, from_)
+        if delta is None:
+            raise HTTPException(status_code=404, detail="no delta from that version")
+        return delta
 
     return app

@@ -1,4 +1,5 @@
-// Defaults; a `settings` object in chrome.storage.local overrides them.
+// Defaults; a `settings` object in chrome.storage.local overrides them, after `sanitizeSettings`
+// (a bad stored value falls back to its default instead of breaking the extension).
 
 export const DEFAULTS = {
   backendUrl: "http://127.0.0.1:8000",
@@ -6,5 +7,33 @@ export const DEFAULTS = {
   verdictCacheMs: 10 * 60 * 1000,
   verdictCacheMax: 500,
   domainCacheMs: 60 * 60 * 1000,
-  listSyncMinutes: 24 * 60,
+  listSyncMinutes: 60, // the backend's remote config (list_sync_minutes) can change it, 15-1440
 };
+
+const RANGES = {
+  backendTimeoutMs: [500, 10_000],
+  verdictCacheMs: [0, 60 * 60 * 1000],
+  verdictCacheMax: [10, 10_000],
+  domainCacheMs: [0, 24 * 60 * 60 * 1000],
+  listSyncMinutes: [15, 24 * 60],
+};
+
+export function sanitizeSettings(stored) {
+  const out = { ...DEFAULTS };
+  for (const [key, [lo, hi]] of Object.entries(RANGES)) {
+    const v = stored?.[key];
+    if (Number.isFinite(v) && v >= lo && v <= hi) out[key] = v;
+  }
+  const url = stored?.backendUrl;
+  if (typeof url === "string") {
+    try {
+      const u = new URL(url);
+      if ((u.protocol === "https:" || u.protocol === "http:") && !u.username && !u.password) {
+        out.backendUrl = url.replace(/\/+$/, "");
+      }
+    } catch {
+      // keep the default
+    }
+  }
+  return out;
+}
