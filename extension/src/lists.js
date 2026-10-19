@@ -5,7 +5,7 @@
 // learned from phishing hosts below allowlisted domains (allowlist.open_hosting, for example
 // cloudapp.azure.com or drive.google.com; backend/lists.py `open_hosting_zones`).
 
-import { hashPrefix, listDomainKey, listUrlKey } from "./keys.js";
+import { hashPrefix, listDomainKey, listUrlExpressions, listUrlKey } from "./keys.js";
 
 function toSet(list) {
   return new Set(list ?? []);
@@ -28,9 +28,11 @@ export function withBundledAllowlist(payload, bundled) {
   if (payload?.allowlist?.domains?.length || !bundled?.domains?.length) return payload ?? null;
   const block = payload?.blocklist;
   let allowlist = bundled;
-  if (block?.domains?.length && block.prefix_bytes === bundled.prefix_bytes) {
+  if (block?.domains?.length && block.prefix_bytes <= bundled.prefix_bytes) {
+    // the blocklist may use shorter hashes than the allowlist: compare on its prefix length
     const blocked = new Set(block.domains);
-    allowlist = { ...bundled, domains: bundled.domains.filter((d) => !blocked.has(d)) };
+    const cut = 2 * block.prefix_bytes;
+    allowlist = { ...bundled, domains: bundled.domains.filter((d) => !blocked.has(d.slice(0, cut))) };
   }
   return { ...(payload ?? {}), allowlist };
 }
@@ -61,9 +63,16 @@ export class ListSet {
     const shared = this.platforms.has(domain) || inZone(host, this.openHosting);
     let blocked = null;
     let allow = false;
-    // Full-URL entries: platform and open-hosting URLs, and bad URLs on allowlisted sites.
+    // URL entries: platform and open-hosting URLs, and bad URLs on allowlisted sites. Every
+    // host-suffix / path-prefix expression is looked up, so a tenant or a URL listed without its
+    // query still matches when a per-victim token in the query or path changes.
     if (this.blockBytes && this.blockUrls.size) {
-      if (this.blockUrls.has(await hashPrefix(listUrlKey(url), this.blockBytes))) blocked = "url";
+      for (const key of listUrlExpressions(url)) {
+        if (this.blockUrls.has(await hashPrefix(key, this.blockBytes))) {
+          blocked = "url";
+          break;
+        }
+      }
     }
     if (!shared) {
       if (!blocked && this.blockBytes && this.blockDomains.size) {

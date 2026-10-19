@@ -48,6 +48,36 @@ export function listDomainKey(url, psl) {
   return label && suffix ? `${label}.${suffix}` : host;
 }
 
+// Every key a blocklist URL entry can match (backend/lists.py `list_url_expressions`): the host
+// with its port and up to four parent suffixes of at least two labels, each with no path, the first
+// one, two and three path segments, the whole path without trailing "/", and the whole path with
+// the query. The list builder decides which of these an entry is listed under.
+export function listUrlExpressions(url) {
+  const [host, port, rest] = split(url);
+  const q = rest.indexOf("?");
+  const path = (q >= 0 ? rest.slice(0, q) : rest).replace(/\/+$/, "");
+  const segs = path.split("/").filter((s) => s);
+  const paths = [""];
+  for (let n = 1; n <= Math.min(segs.length, 3); n++) paths.push("/" + segs.slice(0, n).join("/"));
+  paths.push(path);
+  if (q >= 0) paths.push(path + rest.slice(q));
+  const hosts = [host + port];
+  const labels = host.split(".");
+  for (let i = 1; i < labels.length - 1 && hosts.length < 5; i++) hosts.push(labels.slice(i).join("."));
+  const out = [];
+  const seen = new Set();
+  for (const h of hosts) {
+    for (const p of paths) {
+      const key = h + p;
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(key);
+      }
+    }
+  }
+  return out;
+}
+
 export async function hashPrefix(key, bytes) {
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key)));
   return Array.from(digest.slice(0, bytes), (b) => b.toString(16).padStart(2, "0")).join("");

@@ -1,0 +1,20 @@
+# Served by GET /config (backend/remote_config.py), so thresholds and emergency false-positive fixes
+# can change without a new extension release. Validated as a whole at backend start-up (bounds in
+# configs/backend.yaml under remote_config); an invalid file stops the server.
+#
+# thresholds: score cut-offs for the address (tier A) and page (tier B) models; null = use the
+#   thresholds bundled with the model. suspicious must be below dangerous when both are set.
+# never_warn: registrable domains (no subdomains, never a hosting platform) that must not be warned
+#   about, added only after a reviewed false-positive report.
+# Bump version on every change.
+version: 1
+thresholds:
+  address:
+    suspicious: null
+    dangerous: null
+  page:
+    suspicious: null
+    dangerous: null
+never_warn: []
+list_sync_minutes: 60
+notes: "Initial config: bundled model thresholds, no overrides."

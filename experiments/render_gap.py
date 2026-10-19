@@ -5,7 +5,7 @@
 The page model (tier B) was trained on raw HTML (dataset-saved pages and plain HTTP fetches); the
 extension scores the rendered DOM. ``python -m collector render-ood`` renders a sample of the
 naturally browsed legitimate pages that have stored raw HTML; this script scores both forms of every
-successfully rendered page with the shipped page path (``js/bench/page_verdicts.mjs``:
+successfully rendered page with the shipped page path (``js/bench/render_verdicts.mjs``:
 js/src/page.js ``scorePage`` with the bundles the extension ships) and compares the false
 alarms. Every page is legitimate, so every warning is a false alarm.
 
@@ -25,7 +25,7 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-BENCH = ROOT / "js" / "bench" / "page_verdicts.mjs"
+BENCH = ROOT / "js" / "bench" / "render_verdicts.mjs"
 ALLOWLIST = ROOT / "extension" / "data" / "allowlist.json"
 FORMS = ("raw", "rendered")
 WARN = ("suspicious", "dangerous")

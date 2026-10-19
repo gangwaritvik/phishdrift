@@ -1,119 +1,96 @@
-// Verdicts of the extension's page path for a list of (url, html file) pairs, without a browser:
-// js/src/page.js scorePage with the shipped bundles (js/data/tier_a_hybrid.json + tier_b_page.json),
-// exactly what extension/src/background.js pageCheck runs on the HTML the content script sends
-// (capped at the content script's MAX_HTML_CHARS). The backend domain checks and the password-form
-// rule (used only when the page model cannot read the page) are not applied.
-//
-//   node js/bench/page_verdicts.mjs PAIRS.json|PAIRS.csv [--base DIR] [--allowlist ALLOWLIST.json]
-//
-// PAIRS: a JSON array of {url, file} or a CSV with a header holding `url` and `file` columns. Relative
-// files resolve against --base (default: the folder of PAIRS). With --allowlist (needs
-// `node extension/build.mjs` first) each row also says whether the extension's allowlist would have
-// skipped the page model for that address. Prints a JSON array on stdout, one row per pair:
-// {url, file, htmlChars, hasHtml, probAddress, probPage, blended, verdict, allowlisted?} or {url, file, error}.
+// Verdicts the extension gives to legitimate pages with HTML, without a browser: the service worker's
+// pipeline (allowlist, URL model, page model, combiner) run on stored HTML. Backend domain checks and
+// the blocklist are not applied (both runs the same). Facts the content script would read from the
+// live DOM are read from the stored HTML with a simple tag scan (an approximation of the live page).
+//   node js/bench/page_verdicts.mjs DIST PAGES.jsonl [--no-allowlist] [--old]
+//     DIST: an assembled extension/dist (node extension/build.mjs), possibly of an older commit
+//     --old: the pipeline before 2026-10-15 (page model may lower any verdict; no short pages)
+// -> JSON {n, rows: [{url, verdict, layer, address, frame, ...}]} on stdout (frame: the verdict
+//    as a credential frame, for pages that ask for credentials; null otherwise or with --old).
 
-import { readFileSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { createReadStream, readFileSync } from "node:fs";
+import { createInterface } from "node:readline";
+import { pathToFileURL } from "node:url";
 
-import { loadHybrid } from "../src/hybrid.js";
-import { loadPage, scorePage } from "../src/page.js";
+const [distArg, pagesFile, ...flags] = process.argv.slice(2);
+if (!distArg || !pagesFile) throw new Error("usage: page_verdicts.mjs DIST PAGES.jsonl [--no-allowlist] [--old]");
+const old = flags.includes("--old");
+const useAllow = !flags.includes("--no-allowlist");
+const dist = pathToFileURL(`${distArg.replace(/\/$/, "")}/`);
+const mod = (p) => import(new URL(p, dist).href);
+const read = (p) => JSON.parse(readFileSync(new URL(p, dist), "utf8"));
 
-const MAX_HTML_CHARS = 5_000_000; // extension/src/content.js
-const NAMES = ["safe", "suspicious", "dangerous"];
+const { loadHybrid } = await mod("lib/hybrid.js");
+const { loadPage, scorePage } = await mod("lib/page.js");
+const { ListSet } = await mod("lists.js");
+const { combine, framePageVerdict } = await mod("combine.js");
+const { pageFlags } = await mod("pagefacts.js");
+const { scoreAddress } = await mod("address.js");
 
-export function parseCsv(text) {
-  const rows = [];
-  let row = [];
-  let field = "";
-  let quoted = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (quoted) {
-      if (c === '"' && text[i + 1] === '"') {
-        field += '"';
-        i++;
-      } else if (c === '"') quoted = false;
-      else field += c;
-    } else if (c === '"') quoted = true;
-    else if (c === ",") {
-      row.push(field);
-      field = "";
-    } else if (c === "\n" || c === "\r") {
-      if (c === "\r" && text[i + 1] === "\n") i++;
-      row.push(field);
-      field = "";
-      if (row.length > 1 || row[0] !== "") rows.push(row);
-      row = [];
-    } else field += c;
-  }
-  if (field !== "" || row.length) {
-    row.push(field);
-    rows.push(row);
-  }
-  const [head, ...body] = rows;
-  return body.map((r) => Object.fromEntries(head.map((h, j) => [h, r[j] ?? ""])));
-}
+const model = loadHybrid(read("data/tier_a_hybrid.json"), read("data/psl_icann.json"));
+const page = loadPage(read("data/tier_b_page.json"));
+const lists = new ListSet(useAllow ? { allowlist: read("data/allowlist.json") } : null, {
+  platforms: model.lists.platforms,
+  psl: model.lists.psl,
+  shorteners: model.lists.shorteners,
+});
 
-function readPairs(path) {
-  const text = readFileSync(path, "utf8");
-  return path.toLowerCase().endsWith(".csv") ? parseCsv(text) : JSON.parse(text);
-}
-
-async function main(argv) {
-  const args = [...argv];
-  const opt = (name) => {
-    const i = args.indexOf(name);
-    if (i < 0) return null;
-    const [, value] = args.splice(i, 2);
-    return value;
-  };
-  const base = opt("--base");
-  const allowFile = opt("--allowlist");
-  const [pairsFile] = args;
-  if (!pairsFile) throw new Error("usage: page_verdicts.mjs PAIRS.json|PAIRS.csv [--base DIR] [--allowlist FILE]");
-  const baseDir = base ?? dirname(resolve(pairsFile));
-
-  const root = new URL("../../", import.meta.url);
-  const read = (path) => JSON.parse(readFileSync(new URL(path, root), "utf8"));
-  const address = loadHybrid(read("js/data/tier_a_hybrid.json"), read("js/data/psl_icann.json"));
-  const page = loadPage(read("js/data/tier_b_page.json"));
-
-  let lists = null;
-  if (allowFile) {
-    // extension/src imports ./lib/psl.js, which only exists in the assembled extension/dist.
-    const { ListSet } = await import("../../extension/dist/lists.js").catch(() => {
-      throw new Error("extension/dist is missing: run node extension/build.mjs first");
-    });
-    lists = new ListSet(
-      { allowlist: JSON.parse(readFileSync(allowFile, "utf8")) },
-      { platforms: address.lists.platforms, psl: address.lists.psl },
-    );
-  }
-
-  const rows = [];
-  for (const { url, file } of readPairs(pairsFile)) {
-    const row = { url, file };
-    try {
-      const html = readFileSync(isAbsolute(file) ? file : resolve(baseDir, file), "utf8").slice(0, MAX_HTML_CHARS);
-      const r = scorePage(address, page, url, html);
-      Object.assign(row, {
-        htmlChars: html.length,
-        hasHtml: r.hasHtml,
-        probAddress: r.probAddress,
-        probPage: r.probPage,
-        blended: r.blended,
-        verdict: NAMES[r.verdict],
-      });
-      if (lists) row.allowlisted = Boolean((await lists.check(url)).allow);
-    } catch (err) {
-      row.error = String(err?.message ?? err);
+// The content script's facts from raw HTML (password inputs, credential inputs, form actions).
+const CREDENTIAL_INPUT = /\b(otp|one[-_ ]?time|passcode|cvv|cvc|csc|card[-_ ]?(number|no)|cc[-_ ]?(num|number)|upi[-_ ]?pin|atm[-_ ]?pin|pin[-_ ]?code)\b/i;
+const CREDENTIAL_AUTOCOMPLETE = /\b(one-time-code|cc-number|cc-csc)\b/i;
+const attr = (tag, name) => tag.match(new RegExp(`\\s${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"))?.slice(2).find((v) => v !== undefined) ?? null;
+function facts(html, base) {
+  let passwordFields = 0;
+  let credentialFields = 0;
+  for (const [tag] of html.matchAll(/<input\b[^>]*>/gi)) {
+    const type = (attr(tag, "type") || "text").toLowerCase();
+    if (type === "password") passwordFields += 1;
+    else if (!["hidden", "submit", "button"].includes(type)) {
+      const text = ["name", "id", "placeholder", "aria-label"].map((a) => attr(tag, a) || "").join(" ");
+      if (CREDENTIAL_AUTOCOMPLETE.test(attr(tag, "autocomplete") || "") || CREDENTIAL_INPUT.test(text)) credentialFields += 1;
     }
-    rows.push(row);
   }
-  process.stdout.write(JSON.stringify(rows));
+  const forms = [];
+  for (const [, open, body] of html.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/gi)) {
+    let action = null;
+    try {
+      action = new URL(attr(`<f ${open}>`, "action") || "", base).href;
+    } catch {
+      action = null;
+    }
+    forms.push({ hasPassword: /<input\b[^>]*type\s*=\s*["']?password/i.test(body), action });
+  }
+  return { passwordFields, credentialFields, forms };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await main(process.argv.slice(2));
+const rows = [];
+const MAX_HTML_CHARS = 5_000_000; // the content script's cap
+for await (const line of createInterface({ input: createReadStream(pagesFile), crlfDelay: Infinity })) {
+  if (!line.trim()) continue;
+  const { url, html: full } = JSON.parse(line);
+  const html = full.slice(0, MAX_HTML_CHARS);
+  const listed = await lists.check(url);
+  const layers = { ...listed, trusted: false, model: null, domain: null, backendFailed: false, unscored: false };
+  if (!listed.allow && !listed.shortener && !listed.blocked) layers.model = scoreAddress(model, url);
+  const f = facts(html, url);
+  const flags = pageFlags(f, url, model.lists.psl);
+  const addressTrusted = listed.allow || listed.shortener;
+  let pageModel = null;
+  if (addressTrusted || layers.model) {
+    const allowShort = !old && !addressTrusted && f.passwordFields > 0;
+    pageModel = scorePage(model, page, url, html, { withReasons: false, allowShort });
+    if (addressTrusted) {
+      pageModel.allowedPageWarning = pageModel.hasHtml && pageModel.blended >= page.thresholds.dangerous && f.passwordFields > 0;
+    }
+  }
+  const r = combine(layers, flags, pageModel);
+  const address = layers.model?.verdict ?? 0;
+  // the verdict this page would get if it were a credential frame (judged on its page score alone)
+  const asks = Boolean(flags.asksCredentials);
+  const frame =
+    !old && framePageVerdict && asks && !addressTrusted
+      ? framePageVerdict(scorePage(model, page, url, html, { allowShort: true }), page.thresholds)
+      : null;
+  rows.push({ url, verdict: r.verdict, layer: r.layer, address, frame, hasHtml: Boolean(pageModel?.hasHtml), short: Boolean(pageModel?.short), creds: flags.asksCredentials ?? flags.hasPassword });
 }
+console.log(JSON.stringify({ n: rows.length, rows }));

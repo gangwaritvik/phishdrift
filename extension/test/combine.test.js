@@ -1,21 +1,25 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { BLOCKLIST_REASON, DANGEROUS, SAFE, SUSPICIOUS, combine } from "../dist/combine.js";
+import { BLOCKLIST_REASON, DANGEROUS, NO_ADDRESS_REASON, SAFE, SUSPICIOUS, combine } from "../dist/combine.js";
 
 const model = (verdict, texts = ["why"]) => ({ verdict, prob: 0.5, reasons: texts.map((text) => ({ text })) });
 const base = { trusted: false, allow: false, blocked: null, model: model(SAFE, []), domain: null, backendFailed: false };
 
-test("user trust and allowlist win over everything, including a blocklist hit", () => {
-  assert.equal(combine({ ...base, trusted: true, blocked: "domain", model: model(DANGEROUS) }).layer, "user-trusted");
+test("user trust silences the models but never a blocklist hit", () => {
+  assert.equal(combine({ ...base, trusted: true, model: model(DANGEROUS) }).layer, "user-trusted");
+  for (const blocked of ["domain", "url"]) {
+    const r = combine({ ...base, trusted: true, blocked, model: null });
+    assert.deepEqual([r.verdict, r.layer], [DANGEROUS, "blocklist"]);
+  }
   const allowed = combine({ ...base, allow: true, blocked: "domain", model: model(DANGEROUS) });
   assert.deepEqual([allowed.verdict, allowed.layer], [SAFE, "allowlist"]);
 });
 
-test("an exact listed URL overrides the allowlist (one bad file on a big site)", () => {
+test("an exact listed URL overrides the allowlist and trust (one bad file on a big site)", () => {
   const r = combine({ ...base, allow: true, blocked: "url", model: model(SAFE) });
   assert.deepEqual([r.verdict, r.layer], [DANGEROUS, "blocklist"]);
-  assert.equal(combine({ ...base, trusted: true, allow: true, blocked: "url" }).layer, "user-trusted");
+  assert.equal(combine({ ...base, trusted: true, allow: true, blocked: "url" }).layer, "blocklist");
 });
 
 test("a blocklist hit is dangerous with its own reason and skips the model", () => {
@@ -71,10 +75,26 @@ const pageModel = (verdict, hasHtml = true, texts = ["page why"]) => ({
   reasons: texts.map((text) => ({ text })),
 });
 
-test("the page model's verdict replaces the address verdict once the page is read", () => {
-  const lowered = combine({ ...base, model: model(SUSPICIOUS) }, null, pageModel(SAFE));
+const noCreds = { hasPassword: false, credFormCrossDomain: false, credFormInsecure: false, asksCredentials: false };
+const login = { hasPassword: true, credFormCrossDomain: false, credFormInsecure: false, asksCredentials: true };
+
+test("the page model lowers an address warning only on a page that asks for no credentials", () => {
+  const lowered = combine({ ...base, model: model(SUSPICIOUS) }, noCreds, pageModel(SAFE));
   assert.deepEqual([lowered.verdict, lowered.reasons], [SAFE, []]);
-  const raised = combine({ ...base, model: model(SAFE, []) }, null, pageModel(SUSPICIOUS));
+  // a login page (the attacker's own HTML) cannot clear the address warning
+  const kept = combine({ ...base, model: model(SUSPICIOUS, ["addr"]) }, login, pageModel(SAFE));
+  assert.deepEqual([kept.verdict, kept.layer, kept.reasons], [SUSPICIOUS, "url-model", ["addr"]]);
+  // an OTP / card field, or a frame asking for credentials, counts the same
+  const otp = { ...noCreds, asksCredentials: true };
+  assert.equal(combine({ ...base, model: model(SUSPICIOUS) }, otp, pageModel(SAFE)).verdict, SUSPICIOUS);
+  // without page facts nothing is lowered
+  assert.equal(combine({ ...base, model: model(SUSPICIOUS) }, null, pageModel(SAFE)).verdict, SUSPICIOUS);
+  // dangerous by the address is never lowered
+  assert.equal(combine({ ...base, model: model(DANGEROUS) }, noCreds, pageModel(SUSPICIOUS)).verdict, DANGEROUS);
+});
+
+test("the page model can always raise the address verdict", () => {
+  const raised = combine({ ...base, model: model(SAFE, []) }, login, pageModel(SUSPICIOUS));
   assert.deepEqual([raised.verdict, raised.layer, raised.reasons], [SUSPICIOUS, "page-model", ["page why"]]);
   const both = combine({ ...base, model: model(SUSPICIOUS, ["addr"]) }, null, pageModel(DANGEROUS));
   assert.deepEqual([both.verdict, both.reasons], [DANGEROUS, ["page why", "addr"]]);
@@ -107,6 +127,15 @@ test("a short link is judged by its page, never by its own address; a listed one
   assert.deepEqual([r.verdict, r.layer], [SAFE, "shortener"]);
   const listed = combine({ ...base, shortener: true, blocked: "url", model: null });
   assert.deepEqual([listed.verdict, listed.layer], [DANGEROUS, "blocklist"]);
+});
+
+test("a page with no web address of its own is suspicious only when it asks for credentials", () => {
+  const unscored = { ...base, model: null, unscored: true };
+  const quiet = combine(unscored, noCreds);
+  assert.deepEqual([quiet.verdict, quiet.layer], [SAFE, "none"]);
+  const r = combine(unscored, login);
+  assert.deepEqual([r.verdict, r.reasons], [SUSPICIOUS, [NO_ADDRESS_REASON]]);
+  assert.equal(combine({ ...unscored, blocked: "url" }, login).verdict, DANGEROUS);
 });
 
 // --- brand and look-alike rules (escalate only) ---------------------------------------------

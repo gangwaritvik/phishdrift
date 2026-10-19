@@ -912,9 +912,17 @@ export function nanFeatures() {
 
 // { values, status }; values is null unless status is "ok". Status: ok, empty, no_url, short,
 // junk, timeout, failed (as in Python). Never throws. `parts` (from urlparts.parse) is optional.
-// With `facts` (an object), pageFacts of any page that parsed (also short and junk ones) go in it,
-// with brands from `factBrands` (a Set; default lists.brandSet).
-export function analyzeHtml(url, html, lists, parts = null, facts = null, factBrands = null) {
+// `minVisibleChars` lowers the visible-text floor (the extension uses 0 for a bare login form,
+// which the models never saw in training; the default matches Python). With `facts` (an object),
+// pageFacts of any page that parsed (also short and junk ones) go in it, with brands from
+// `factBrands` (a Set; default lists.brandSet).
+export function analyzeHtml(
+  url,
+  html,
+  lists,
+  parts = null,
+  { minVisibleChars = MIN_VISIBLE_CHARS, facts = null, factBrands = null } = {},
+) {
   try {
     let page = html;
     if (page instanceof Uint8Array) page = new TextDecoder("utf-8").decode(page);
@@ -927,7 +935,7 @@ export function analyzeHtml(url, html, lists, parts = null, facts = null, factBr
     const collector = parsePage(page, now() + MAX_PAGE_SECONDS * 1000);
     const text = collector.text;
     if (facts !== null) Object.assign(facts, pageFacts(collector, text, factBrands ?? lists.brandSet));
-    if (cpLen(pyStrip(text)) < MIN_VISIBLE_CHARS) return { values: null, status: "short" };
+    if (cpLen(pyStrip(text)) < minVisibleChars) return { values: null, status: "short" };
     if (isJunk(collector, text)) return { values: null, status: "junk" };
     const values = compute(collector, page, size, p, lists, text);
     return { values: Object.fromEntries(NAMES_B.map((n) => [n, Number(values[n])])), status: "ok" };
@@ -937,7 +945,7 @@ export function analyzeHtml(url, html, lists, parts = null, facts = null, factBr
 }
 
 // All tier B features of a page; every value is NaN when the HTML is missing or unusable.
-export function extractHtml(url, html, lists, parts = null) {
-  const { values } = analyzeHtml(url, html, lists, parts);
+export function extractHtml(url, html, lists, parts = null, options = {}) {
+  const { values } = analyzeHtml(url, html, lists, parts, options);
   return values ?? nanFeatures();
 }

@@ -42,7 +42,7 @@ test("page facts and the brand-page rule match Python", () => {
   const failures = [];
   for (const page of fixture.pages) {
     const facts = {};
-    const { status } = analyzeHtml(page.url, page.html, lists, null, facts, rules.brandSet);
+    const { status } = analyzeHtml(page.url, page.html, lists, null, { facts, factBrands: rules.brandSet });
     if (status !== page.status) failures.push(`${page.url}: status ${status} vs ${page.status}`);
     if (canon(facts) !== canon(page.facts)) {
       failures.push(`${page.url}: facts ${JSON.stringify(facts)} vs ${JSON.stringify(page.facts)}`);
