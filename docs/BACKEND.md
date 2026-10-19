@@ -161,3 +161,36 @@ URLs are the blocklist's plus any `--phishing-file` (for example the corpus's
 `data/processed/meta_pool.parquet`, used only for this, never blocklisted). The zones are plain
 public hosting names in `open_hosting`. A host nobody has abused yet in the data is not a zone.
 The extension lets an exact `urls` hit override the allowlist (one bad download on `github.com`).
+
+## Safe list sync (signatures, hashes, deltas)
+
+- **Hash sizes:** blocklist entries are 8-byte sha256 prefixes, allowlist entries 16 bytes
+  (`lists.prefix_bytes`, `lists.allow_prefix_bytes`). With 6 bytes a domain whose hash collides
+  with a trusted one could be found in about 2^48 tries and registered; 16 bytes rules that out.
+- **Blocklist URL keys:** the extension looks up every expression of `list_url_expressions`
+  (host and up to four parent suffixes, times no path, the first 1-3 path segments, the whole path
+  and the path with query). The builder (`block_url_keys`) lists each bad URL on a shared host by
+  its exact key, its tenant (a whole tenant host such as `x.web.app` only where the data shows one
+  tenant per subdomain; `telegra.ph/<page>` or `sites.google.com/view/<site>` on learned
+  path-tenant hosts) and, on a tenant or when a path segment is 16+ characters, without its query.
+  So a changed per-victim token no longer dodges the list, and no allowlisted site, platform or
+  zone is ever listed whole.
+- **Integrity:** `manifest.json` carries the sha256 of the exact `blocklist.json` and
+  `allowlist.json` bytes and, when a key exists, an ECDSA P-256 `signature` over the manifest
+  without that field. `/config` is signed the same way. Create the key once on the backend
+  machine with `python -m backend make-signing-key` (writes the private key to
+  `lists.signing_key`, mode 0600, and the public key to `extension/src/lists_pubkey.js`), then
+  rebuild the extension. While `LIST_PUBKEY` is null the extension still checks the hashes and the
+  sanity limits but not signatures.
+- **Sanity limits** (`extension/src/listsync.js`): a synced allowlist must keep at least 80% of the
+  larger of the stored and bundled ones; a blocklist of 100+ entries may not lose more than half;
+  none of the 1,000 most visited sites (the bundled allowlist's `top`) may be blocked by domain,
+  and 95% of them must stay allowlisted. A rejected update leaves the stored lists in place; the
+  outcome is in `chrome.storage.local.listSync`.
+- **Hourly deltas:** each build is kept in `<out_dir>/history/` (48 builds). The extension syncs
+  every 60 minutes (remote config `list_sync_minutes`, 15-1440) and asks
+  `GET /lists/delta?from=<version>` first; it rebuilds the files, checks their sha256 against the
+  signed manifest, and falls back to the full download on a 404 or mismatch. Cached verdicts are
+  cleared after any list or config change.
+- **Rate limits:** `/lists/*` and `/config` have their own bucket (`lists.rate`), so a burst on
+  `/feedback` or `/score` cannot stop list syncs.

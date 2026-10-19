@@ -168,3 +168,17 @@ def test_delta_endpoint_and_signed_config(tmp_path):
         )
     ).decode()
     assert lists.verify_body(served, sig, spki)
+
+
+def test_a_one_url_child_zone_is_still_blocklisted():
+    # format.com is allowlisted; one phishing host under it becomes a child zone of its own
+    bad = "https://portfolio-cxhmugc.format.com"
+    docs = lists.build_lists([bad], ["format.com"], frozenset(), 8)
+    assert "portfolio-cxhmugc.format.com" in docs["allowlist"]["open_hosting"]
+    assert lists.list_hash("portfolio-cxhmugc.format.com", 8) in docs["blocklist"]["urls"]
+    # a child zone with many phishing URLs is shared (drive.google.com): never listed whole
+    drive = [f"https://drive.google.com/file/d/id{i}" for i in range(5)] + [
+        "https://drive.google.com/"
+    ]
+    docs = lists.build_lists(drive, ["google.com"], frozenset(), 8)
+    assert lists.list_hash("drive.google.com", 8) not in docs["blocklist"]["urls"]

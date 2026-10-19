@@ -587,3 +587,23 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Accepted cost of the page-model rule from 2026-10-15: on the tester's 400 natural pages, 3 more suspicious
   verdicts (fdownload.app/hi, dropmefiles.com/d1m2f, telegram.cn/buy/11): the address model flags them and the
   page model may no longer clear a page with login fields (5 -> 8 warned).
+
+### 2026-10-19 — Lists, blocklist and sync hardening (fix thread, paired with a hands-on test thread)
+- Changed: `backend/lists.py` (path-tenant learning with generic first segments, tenant-host keys only where the
+  data shows one tenant per subdomain, Safe-Browsing-style URL expressions, 8-byte blocklist / 16-byte allowlist
+  hashes, `top` sentinels, file sha256 in the manifest, ECDSA-signed manifest and `/config`, build history and
+  `/lists/delta`), `backend/app.py` (`/register` + token-checked `/feedback` with per-install cap and dedupe,
+  `/config`, `/lists/delta`, separate list rate bucket; never-warn refuses platforms, shorteners and learned
+  zones), `backend/remote_config.py`, `configs/remote_config.yaml`, `extension/src/listsync.js` (signature,
+  hashes, sanity limits, deltas, config checks), `keys.js`/`lists.js` (expression lookup), `background.js`/
+  `config.js` (60-minute sync, cache clear after sync, settings validation, remote thresholds and never-warn),
+  `extension/data/allowlist.json` rebuilt with 16-byte hashes. Tests: pytest 486+, extension 41, e2e smoke.
+- Results (measured): blocklist token variants on shared hosts matched 0/300 -> 298/300 (query added),
+  0/30 -> 24/25 (value changed), 0/189 -> 158/184 (last token), 0/300 -> 297/300 (token appended)
+  (test thread, `/mnt/project-files/phishdrift/list_tests/REPORT.md`); feedback without token 200 -> 401.
+  Bundled allowlist: 6 -> 16-byte hashes, 812 KB -> 1.63 MB, 49,335 -> 43,595 domains (rebuilt in the cloud from
+  the old list's domains recovered via Umbrella/CrUX; Tranco is blocked here); natural legitimate pages flagged
+  69 -> 72 of 2,555 (2.70% -> 2.82%); 3,300 fresh phishing URLs warned 2,844 both before and after.
+- Not done: zone-aware address scoring inside open zones (sites.google.com); signatures are off until a key is
+  made on the backend machine; the PC rebuild with Tranco (`python -m backend build-lists --tranco-file ...`)
+  restores the 5,740 domains the cloud rebuild could not recover.
