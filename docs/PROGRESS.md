@@ -567,3 +567,23 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   pages. Credential-frame rule on the 164 non-allowlisted legitimate pages that ask for credentials, standing in
   for legitimate login frames (the set has no frames): 7 flagged as a frame (4.3%) against 8 as a page (4.9%).
 - Tests: `npm test` extension 54, js 11, pytest, ruff, e2e smoke 16 steps (new: srcdoc login frame, closed-shadow lure).
+
+### 2026-10-19 — Tester round 3: stale banner and "back to safety" timing
+- Test thread rerun on e68eac6: 34 of 35 attack cases (PR #23: 21 of 35). Left: the address banner from commit
+  time still showed after the page check said safe (G1 control; aoscforums.com and mehrhost.com natural pages),
+  and "Take me back to safety" sometimes bounced back to the warning page.
+- Cause and fix (`extension/src/background.js`, `content.js`, `warning.js`):
+  1. The commit-time address verdict reached the page after the page check had started and was counted as a later
+     warning, so the safe answer did not remove the banner. Verdict messages now carry `kind` ("commit" or
+     "raise"); a commit-time one is ignored once the page check has answered and never blocks the safe answer.
+  2. Verdicts still being worked out for a page the tab had left (the page check, slow scoring, a late backend
+     answer) re-opened the warning page after "Take me back to safety". The worker now keeps each tab's current
+     navigation; a verdict for an older one is dropped, and the warning page opens only if the tab has not moved
+     on since the verdict was reached. A page judged safe after the tab left is still kept as a place to go back to.
+  3. The warning page attaches its button handlers before it asks for the verdict, so an early click is not lost.
+- Results: the tester's harness (`/mnt/project-files/phishdrift/e2e_attack/harness.mjs`) gives 35 of 35 in 4 full
+  runs in a row (before the last fix: 1 or 2 of 4 runs clean). `npm test` extension 54, e2e smoke 16 steps.
+  False-alarm numbers unchanged (the combiner did not change).
+- Accepted cost of the page-model rule from 2026-10-15: on the tester's 400 natural pages, 3 more suspicious
+  verdicts (fdownload.app/hi, dropmefiles.com/d1m2f, telegram.cn/buy/11): the address model flags them and the
+  page model may no longer clear a page with login fields (5 -> 8 warned).

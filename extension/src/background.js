@@ -328,14 +328,16 @@ async function rememberSafe(tabId, result) {
   await session.set(`safe:${tabId}`, seen.slice(-SAFE_HISTORY));
 }
 
-async function applyResult(tabId, result) {
+// `at` is the tab's navigation when the verdict was reached; the warning page is not opened if the
+// tab has moved on since (the awaits below leave room for "Take me back to safety" to run).
+async function applyResult(tabId, result, at = lastNav.get(tabId)) {
   await session.set(`tab:${tabId}`, result);
   await chrome.action.setBadgeText({ tabId, text: BADGES[result.verdict] });
   if (BADGE_COLORS[result.verdict]) {
     await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLORS[result.verdict] });
   }
   const bypass = await session.get(`bypass:${tabId}`);
-  if (result.verdict === DANGEROUS && bypass !== listUrlKey(result.url)) {
+  if (result.verdict === DANGEROUS && bypass !== listUrlKey(result.url) && lastNav.get(tabId) === at) {
     await chrome.tabs.update(tabId, { url: warningUrl(tabId) });
   }
 }
@@ -343,9 +345,11 @@ async function applyResult(tabId, result) {
 // Tell the page's content script (if it is there yet) to show the banner for a verdict the
 // service worker reached on its own (after a redirect, an in-page address change, a frame or a late
 // backend answer).
-function notifyTab(tabId, result) {
+// `kind` is "commit" for the address verdict at commit (stale once the page check has answered)
+// and "raise" for anything that raised the document later (frame, in-page address, backend, tamper).
+function notifyTab(tabId, result, kind = "raise") {
   if (result.verdict !== SUSPICIOUS) return;
-  chrome.tabs.sendMessage(tabId, { type: "phishdrift-verdict", result }, { frameId: 0 }).catch(() => {});
+  chrome.tabs.sendMessage(tabId, { type: "phishdrift-verdict", result, kind }, { frameId: 0 }).catch(() => {});
 }
 
 // Every address a document has shown is scored, and the document keeps the worst verdict: a page
@@ -367,18 +371,31 @@ const sameDoc = async (tabId, url) => (await session.get(`doc:${tabId}`))?.url =
 
 // Raise the tab's shown verdict to `result` if it is worse, and remember it for the document.
 async function raiseTab(tabId, result) {
+  const at = lastNav.get(tabId);
   const doc = await session.get(`doc:${tabId}`);
   if (doc) await session.set(`doc:${tabId}`, { ...doc, floor: worse(doc.floor, result) });
   const shown = worse(await session.get(`tab:${tabId}`), result);
-  await applyResult(tabId, shown);
+  await applyResult(tabId, shown, at);
   notifyTab(tabId, shown);
 }
 
 // Before the request: the address as typed or clicked (earliest possible warning). A late
 // backend answer is applied after commit, not here.
+// The address each tab is navigating to now. A verdict reached for an older navigation (slow
+// scoring, a late backend answer) is dropped, so it can never send the tab that has since moved on
+// ("Take me back to safety", a new link) back to the warning page. Lost if the worker restarts;
+// then every verdict is applied, as before.
+const lastNav = new Map();
+const stillAt = (tabId, url) => !lastNav.has(tabId) || lastNav.get(tabId) === url;
+
 chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   if (details.frameId !== 0) return;
-  guarded(async () => applyResult(details.tabId, (await evaluate(details.url)).result));
+  const { tabId, url } = details;
+  lastNav.set(tabId, url);
+  guarded(async () => {
+    const { result } = await evaluate(url);
+    if (stillAt(tabId, url)) await applyResult(tabId, result);
+  });
 }, navFilter);
 
 // Committed: the address after server redirects (shorteners, tracking links), before the page
@@ -386,15 +403,20 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 chrome.webNavigation.onCommitted.addListener((details) => {
   if (details.frameId !== 0) return;
   const { tabId, url } = details;
+  lastNav.set(tabId, url);
   guarded(async () => {
     await session.set(`doc:${tabId}`, { url, floor: null, pageDone: false, frameCredentials: false });
     await check(url, {}, async (result, earlier) => {
       const doc = await session.get(`doc:${tabId}`);
-      if (doc?.url !== url) return; // a newer navigation
+      if (doc?.url !== url || !stillAt(tabId, url)) {
+        if (!earlier) await rememberSafe(tabId, result); // a newer navigation; still a safe place to go back to
+        return;
+      }
       if (earlier) return raiseTab(tabId, result); // late backend answer
       if (doc.pageDone) return; // the page check won
       await applyResult(tabId, result);
-      notifyTab(tabId, result);
+      await rememberSafe(tabId, result);
+      notifyTab(tabId, result, "commit");
     });
   });
 }, navFilter);
@@ -409,13 +431,14 @@ chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
     if (!committed) await session.set(`doc:${tabId}`, { url, floor: null, pageDone: false, frameCredentials: false });
     const doc = committed ?? url;
     await check(url, {}, async (result) => {
-      if (await sameDoc(tabId, doc)) await raiseTab(tabId, result);
+      if (stillAt(tabId, doc) && (await sameDoc(tabId, doc))) await raiseTab(tabId, result);
     });
     chrome.tabs.sendMessage(tabId, { type: "phishdrift-recheck" }, { frameId: 0 }).catch(() => {});
   });
 }, navFilter);
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  lastNav.delete(tabId);
   for (const key of ["tab", "bypass", "doc", "safe"]) session.remove(`${key}:${tabId}`);
 });
 
@@ -457,6 +480,7 @@ async function leave(tabId) {
   };
   const url = safeExit(seen, result?.url ?? null, domainOf);
   await session.remove(`bypass:${tabId}`);
+  lastNav.set(tabId, url); // verdicts still arriving for the dangerous page are dropped
   await chrome.tabs.update(tabId, { url });
   return { ok: true, url };
 }
@@ -471,6 +495,7 @@ const handlers = {
   // worse verdict (and any worse in-page address or frame seen since) stands.
   async page(msg, sender) {
     const tabId = sender.tab?.id;
+    const at = tabId === undefined ? undefined : lastNav.get(tabId); // before any await
     const doc = tabId === undefined ? null : await session.get(`doc:${tabId}`);
     const facts = { ...msg.facts, frameCredentials: Boolean(doc?.frameCredentials) };
     const options = { facts, html: msg.html ?? null, origin: msg.origin ?? null };
@@ -488,20 +513,25 @@ const handlers = {
       return { result: worse(result, now?.floor ?? doc?.floor ?? null), pending };
     };
     let { result, pending } = await score();
+    // a page the tab has already left (the user went back to safety, the warning page replaced it)
+    if (tabId !== undefined && (lastNav.get(tabId) !== at || !stillAt(tabId, doc?.url ?? msg.url))) {
+      await rememberSafe(tabId, result); // still a safe place to go back to
+      return result;
+    }
     if (tabId !== undefined) {
       if (doc) await session.set(`doc:${tabId}`, { ...(await session.get(`doc:${tabId}`)), pageDone: true });
-      await applyResult(tabId, result);
+      await applyResult(tabId, result, at);
       // a frame or in-page change may have raised this document while it was being scored
       const raised = worse(result, (await session.get(`doc:${tabId}`))?.floor ?? null);
       if (raised !== result) {
         result = raised;
-        await applyResult(tabId, result);
+        await applyResult(tabId, result, at);
       }
       await rememberSafe(tabId, result);
       // A late backend answer is applied to the same document only.
       pending
         ?.then(async () => {
-          if (!doc || (await sameDoc(tabId, doc.url))) await raiseTab(tabId, (await score()).result);
+          if ((!doc || (await sameDoc(tabId, doc.url))) && stillAt(tabId, doc?.url ?? msg.url)) await raiseTab(tabId, (await score()).result);
         })
         .catch(() => {});
     }
@@ -542,7 +572,7 @@ const handlers = {
     if (framePage && framePage.verdict > result.verdict) {
       result = { ...result, verdict: framePage.verdict, layer: "frame-page", reasons: [FRAME_PAGE_REASON, ...framePage.reasons] };
     }
-    if (result.verdict > SAFE) await raiseTab(tabId, result);
+    if (result.verdict > SAFE && stillAt(tabId, topUrl)) await raiseTab(tabId, result);
     return result;
   },
 

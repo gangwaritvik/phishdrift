@@ -185,7 +185,8 @@ function pageHtml(doc) {
 }
 
 const isTop = typeof window === "undefined" || window === window.top;
-let verdictsSeen = 0; // warnings the service worker pushed to this page
+let raisesSeen = 0; // later warnings (frame, in-page address, backend) pushed to this page
+let pageAnswered = false; // the page check has answered at least once
 const asksCredentials = (facts) => facts.passwordFields + facts.credentialFields > 0;
 
 async function run() {
@@ -199,12 +200,14 @@ async function run() {
     html = null; // the page model is skipped; the address verdict stands
   }
   const message = { type: isTop ? "page" : "frame", url: location.href, origin: self.origin, facts, html };
-  const sentAt = verdictsSeen;
+  const sentAt = raisesSeen;
   const result = await chrome.runtime.sendMessage(message);
   if (isTop && result && !result.error) {
+    pageAnswered = true;
     if (result.verdict === 1) showBanner(result);
-    // the final verdict for this page is safe, unless a warning (from a frame, say) came in meanwhile
-    else if (result.verdict === 0 && verdictsSeen === sentAt) hideBanner();
+    // the final verdict for this page is safe, unless a later warning (from a frame, say) came in
+    // meanwhile; the address verdict from commit time does not count (the page check replaces it)
+    else if (result.verdict === 0 && raisesSeen === sentAt) hideBanner();
   }
   return facts;
 }
@@ -249,8 +252,12 @@ if (typeof chrome !== "undefined" && chrome.runtime?.id) {
     // verdicts the service worker reached on its own (redirect, in-page address change, a frame, a
     // late backend answer), and requests to check the page again after an in-page address change
     chrome.runtime.onMessage.addListener((msg) => {
-      if (msg?.type === "phishdrift-verdict" && msg.result?.verdict >= 1) verdictsSeen += 1;
-      if (msg?.type === "phishdrift-verdict" && msg.result?.verdict === 1) showBanner(msg.result);
+      if (msg?.type === "phishdrift-verdict") {
+        const commit = msg.kind === "commit";
+        if (commit && pageAnswered) return; // stale: the page check has already answered
+        if (!commit && msg.result?.verdict >= 1) raisesSeen += 1;
+        if (msg.result?.verdict === 1) showBanner(msg.result);
+      }
       if (msg?.type === "phishdrift-recheck") scheduleRecheck();
     });
   }
