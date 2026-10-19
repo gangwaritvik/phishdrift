@@ -42,10 +42,11 @@ unknown, never `false`). `signals`: `[{"id", "text", "severity": "info"|"warn"|"
 cache; `local_verdict` is validated but not used by the placeholder rules (it is there for the
 future combiner).
 
-Fail soft: a failed or timed-out lookup answers HTTP 200 with `risk: "low"`, no signals, all facts
-`null` and `error` set (`timeout` or `lookup_failed`). Failures are not cached. The only non-200
-answers are 422 (invalid input), 401 (feedback without a valid token), 404 (lists not built) and
-429 (rate limit or daily feedback cap, with `Retry-After`).
+Fail soft: a failed or timed-out lookup answers HTTP 200 with `risk: "unknown"`, no signals, all facts
+`null` and `error` set (`timeout` or `lookup_failed`; `/score` returns `error` too, `null` on success).
+Failures are not cached, and the extension never reads a failure as "low risk" (it remembers it for
+30 s). The only non-200 answers are 422 (invalid input), 401 (feedback without a valid token), 404
+(lists not built) and 429 (rate limit or daily feedback cap, with `Retry-After`).
 `/feedback` returns `{"ok": false}` if the file cannot be written.
 
 Per-domain cache: in memory, TTL and size in `cache`. Rate limit: token bucket per client address

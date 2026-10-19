@@ -90,6 +90,7 @@ def test_score_shape(settings):
         "signals": [],
         "tier_c_model": False,
         "cached": False,
+        "error": None,
     }
 
 
@@ -212,7 +213,7 @@ def test_failed_lookup_is_low_with_error_and_not_cached(settings):
     body = client.post("/domain-info", json={"domain": "x.example"})
     assert body.status_code == 200
     data = body.json()
-    assert data["risk"] == "low"
+    assert data["risk"] == "unknown"
     assert data["signals"] == []
     assert data["error"] == "lookup_failed"
     assert "secret" not in json.dumps(data)
@@ -222,10 +223,10 @@ def test_failed_lookup_is_low_with_error_and_not_cached(settings):
     assert boom.calls == 2
     score = client.post("/score", json={"domain": "x.example", "local_verdict": 1})
     assert score.status_code == 200
-    assert score.json()["risk"] == "low"
+    assert (score.json()["risk"], score.json()["error"]) == ("unknown", "lookup_failed")
 
 
-def test_timeout_is_low_with_error(settings):
+def test_timeout_is_unknown_with_error(settings):
     import time
 
     settings.cfg["lookup"]["overall_timeout_s"] = 0.05
@@ -236,7 +237,7 @@ def test_timeout_is_low_with_error(settings):
 
     client, _ = make_client(settings, slow)
     data = client.post("/domain-info", json={"domain": "slow.example"}).json()
-    assert (data["risk"], data["error"], data["signals"]) == ("low", "timeout", [])
+    assert (data["risk"], data["error"], data["signals"]) == ("unknown", "timeout", [])
 
 
 # --- rules and facts --------------------------------------------------------------------

@@ -11,12 +11,25 @@ const psl = buildTrie(loadPsl());
 test("pageFlags: cross-domain and insecure password forms", () => {
   const f = (action, url = "https://shop.example.com/login") =>
     pageFlags({ passwordFields: 1, forms: [{ hasPassword: true, action }] }, url, psl);
-  assert.deepEqual(f("https://shop.example.com/session"), { hasPassword: true, credFormCrossDomain: false, credFormInsecure: false });
+  assert.deepEqual(f("https://shop.example.com/session"), {
+    hasPassword: true,
+    credFormCrossDomain: false,
+    credFormInsecure: false,
+    asksCredentials: true,
+  });
   assert.equal(f("https://evil.test/collect").credFormCrossDomain, true);
   assert.equal(f("https://auth.example.com/x").credFormCrossDomain, false); // same registrable domain
   assert.equal(f("http://shop.example.com/x").credFormInsecure, true);
   const none = pageFlags({ passwordFields: 0, forms: [{ hasPassword: false, action: "https://evil.test/" }] }, "https://a.com/", psl);
-  assert.deepEqual(none, { hasPassword: false, credFormCrossDomain: false, credFormInsecure: false });
+  assert.deepEqual(none, { hasPassword: false, credFormCrossDomain: false, credFormInsecure: false, asksCredentials: false });
+});
+
+test("pageFlags: OTP / card fields and frames asking for credentials count as credentials", () => {
+  const url = "https://a.com/";
+  assert.equal(pageFlags({ passwordFields: 0, credentialFields: 1, forms: [] }, url, psl).asksCredentials, true);
+  assert.equal(pageFlags({ passwordFields: 0, frameCredentials: true, forms: [] }, url, psl).asksCredentials, true);
+  // frames and address-less pages have no page URL: flags still work
+  assert.equal(pageFlags({ passwordFields: 1, forms: [{ hasPassword: true, action: "https://x.test/" }] }, null, psl).asksCredentials, true);
 });
 
 // content.js is a classic script; evaluate its function without a browser.

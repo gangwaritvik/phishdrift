@@ -879,7 +879,9 @@ export function nanFeatures() {
 
 // { values, status }; values is null unless status is "ok". Status: ok, empty, no_url, short,
 // junk, timeout, failed (as in Python). Never throws. `parts` (from urlparts.parse) is optional.
-export function analyzeHtml(url, html, lists, parts = null) {
+// `minVisibleChars` lowers the visible-text floor (the extension uses 0 for a bare login form,
+// which the models never saw in training; the default matches Python).
+export function analyzeHtml(url, html, lists, parts = null, { minVisibleChars = MIN_VISIBLE_CHARS } = {}) {
   try {
     let page = html;
     if (page instanceof Uint8Array) page = new TextDecoder("utf-8").decode(page);
@@ -891,7 +893,7 @@ export function analyzeHtml(url, html, lists, parts = null) {
     page = cpHead(page, MAX_HTML_CHARS).replaceAll("\x00", "");
     const collector = parsePage(page, now() + MAX_PAGE_SECONDS * 1000);
     const text = collector.text;
-    if (cpLen(pyStrip(text)) < MIN_VISIBLE_CHARS) return { values: null, status: "short" };
+    if (cpLen(pyStrip(text)) < minVisibleChars) return { values: null, status: "short" };
     if (isJunk(collector, text)) return { values: null, status: "junk" };
     const values = compute(collector, page, size, p, lists, text);
     return { values: Object.fromEntries(NAMES_B.map((n) => [n, Number(values[n])])), status: "ok" };
@@ -901,7 +903,7 @@ export function analyzeHtml(url, html, lists, parts = null) {
 }
 
 // All tier B features of a page; every value is NaN when the HTML is missing or unusable.
-export function extractHtml(url, html, lists, parts = null) {
-  const { values } = analyzeHtml(url, html, lists, parts);
+export function extractHtml(url, html, lists, parts = null, options = {}) {
+  const { values } = analyzeHtml(url, html, lists, parts, options);
   return values ?? nanFeatures();
 }
