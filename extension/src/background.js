@@ -7,7 +7,7 @@
 // waited for: the verdict is shown at once and raised when (and if) the backend answers.
 
 import { sanitizeSettings } from "./config.js";
-import { combine, DANGEROUS, SAFE, SUSPICIOUS } from "./combine.js";
+import { combine, DANGEROUS, FRAME_PAGE_REASON, SAFE, SUSPICIOUS, framePageVerdict } from "./combine.js";
 import { listDomainKey, listUrlKey } from "./keys.js";
 import { MAX_URL_CHARS, effectiveUrl, scoreAddress } from "./address.js";
 import { DOMAIN_FAILURE_MS, usableAnswer } from "./domain.js";
@@ -254,6 +254,25 @@ async function pageCheck(layers, url, html, facts) {
   }
 }
 
+// Page model on a credential frame's HTML, judged on the blended score alone. Frames on
+// allowlisted, trusted, blocklisted (already dangerous) or shortener addresses are skipped.
+async function frameCheck(target, html) {
+  if (target === null || html == null || target.length > MAX_URL_CHARS) return null;
+  const layers = await layersFor(target);
+  if (layers.allow || layers.shortener || layers.trusted || layers.blocked) return null;
+  try {
+    const [model, page] = await Promise.all([getModel(), getPage()]);
+    const first = scorePage(model, page, target, html, { allowShort: true });
+    const verdict = framePageVerdict(first, page.thresholds);
+    if (verdict === SAFE) return null;
+    const { reasons } = scorePage(model, page, target, html, { withReasons: true, allowShort: true });
+    return { verdict, reasons };
+  } catch (err) {
+    console.warn("PhishDrift frame check failed:", err);
+    return null;
+  }
+}
+
 // The verdict for a document. `origin` (from the content script) gives about:blank pages and
 // frames the address they inherit. Returns { result, pending }: `pending` is set when a backend
 // lookup was started for a suspicious page; when it settles, evaluate again to use its answer.
@@ -468,10 +487,16 @@ const handlers = {
       const now = tabId === undefined ? null : await session.get(`doc:${tabId}`);
       return { result: worse(result, now?.floor ?? doc?.floor ?? null), pending };
     };
-    const { result, pending } = await score();
+    let { result, pending } = await score();
     if (tabId !== undefined) {
       if (doc) await session.set(`doc:${tabId}`, { ...(await session.get(`doc:${tabId}`)), pageDone: true });
       await applyResult(tabId, result);
+      // a frame or in-page change may have raised this document while it was being scored
+      const raised = worse(result, (await session.get(`doc:${tabId}`))?.floor ?? null);
+      if (raised !== result) {
+        result = raised;
+        await applyResult(tabId, result);
+      }
       await rememberSafe(tabId, result);
       // A late backend answer is applied to the same document only.
       pending
@@ -511,6 +536,11 @@ const handlers = {
       if (framed.verdict > result.verdict) {
         result = { ...framed, url: topUrl, domain: result.domain, reasons: [CROSS_SITE_FRAME, ...framed.reasons] };
       }
+    }
+    // The frame's own form, on its page score alone (the agree rule is not applied to frames).
+    const framePage = await frameCheck(frameTarget ?? topTarget, msg.html ?? null);
+    if (framePage && framePage.verdict > result.verdict) {
+      result = { ...result, verdict: framePage.verdict, layer: "frame-page", reasons: [FRAME_PAGE_REASON, ...framePage.reasons] };
     }
     if (result.verdict > SAFE) await raiseTab(tabId, result);
     return result;

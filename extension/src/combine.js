@@ -107,3 +107,16 @@ export function combine(layers, page = null, pageModel = null) {
   }
   return out;
 }
+
+// A frame that asks for credentials (a login form in an iframe, srcdoc or about:blank frame) is
+// judged on its own page score alone: the address model's agreement is not required, because the
+// frame's address (often the hosting page's) says little about the form inside it. Frames from
+// allowlisted or trusted sites are skipped by the caller.
+export const FRAME_PAGE_REASON = "This page shows a login form inside an embedded frame, and that form looks like phishing.";
+
+export function framePageVerdict(scored, thresholds) {
+  if (!scored?.hasHtml) return SAFE;
+  if (scored.blended >= thresholds.dangerous) return DANGEROUS;
+  if (scored.blended >= thresholds.suspicious) return SUSPICIOUS;
+  return SAFE;
+}

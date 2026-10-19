@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import { effectiveUrl } from "../dist/address.js";
+import { DANGEROUS, SAFE, SUSPICIOUS, framePageVerdict } from "../dist/combine.js";
 import { DOMAIN_FAILURE_MS, domainTtl, usableAnswer } from "../dist/domain.js";
 import { safeExit, worse } from "../dist/navigation.js";
 import { TRUST_DAYS, addTrust, liveTrust } from "../dist/trust.js";
@@ -111,4 +112,29 @@ test("content script counts one-time code, card and PIN inputs as credentials", 
   assert.equal(isCred(input({ name: "email" })), false);
   assert.equal(isCred(input({ name: "search", placeholder: "Search topics" })), false);
   assert.equal(isCred(input({ name: "otp", type: "hidden" })), false);
+});
+
+test("a credential frame is judged on its page score alone", () => {
+  const t = { suspicious: 0.6, dangerous: 0.9 };
+  assert.equal(framePageVerdict({ hasHtml: true, blended: 0.95 }, t), DANGEROUS);
+  assert.equal(framePageVerdict({ hasHtml: true, blended: 0.7, probAddress: 0.01 }, t), SUSPICIOUS);
+  assert.equal(framePageVerdict({ hasHtml: true, blended: 0.5 }, t), SAFE);
+  assert.equal(framePageVerdict({ hasHtml: false, blended: 0.99 }, t), SAFE); // no usable HTML: no page verdict
+  assert.equal(framePageVerdict(null, t), SAFE);
+});
+
+test("content script counts credential fields inside shadow roots", () => {
+  const src = readFileSync(new URL("../dist/content.js", import.meta.url), "utf8");
+  const collect = new Function(`${src}; return collectPageFacts;`)();
+  const field = (attrs) => ({ getAttribute: (k) => attrs[k] ?? null });
+  const shadowForm = { getAttribute: () => "https://evil.test/p", querySelector: () => ({}) };
+  const shadow = {
+    querySelectorAll: (sel) =>
+      sel === "form" ? [shadowForm] : sel === 'input[type="password"]' ? [{}] : sel === "input" ? [field({ name: "otp" })] : [],
+  };
+  const doc = { forms: [], querySelectorAll: () => [] };
+  const facts = collect(doc, "https://a.com/", [shadow]);
+  assert.equal(facts.passwordFields, 1);
+  assert.equal(facts.credentialFields, 1);
+  assert.deepEqual(facts.forms, [{ hasPassword: true, action: "https://evil.test/p" }]);
 });

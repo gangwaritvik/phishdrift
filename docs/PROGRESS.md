@@ -547,3 +547,23 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Tests: `npm test` extension 41 and js 11, backend pytest 44, e2e smoke 15 steps in headless Chromium (new: frame
   login, banner hiding, SPA route, blob page, back to safety, trust vs blocklist, slow backend with late answer).
 - Not done: rendered-DOM vs raw-HTML difference (train/serve), full-hash blocklist matching (lists thread).
+
+### 2026-10-19 — Tester round 2 on PR #24: frames, shadow roots, stale banner
+- Test thread (real Chromium, `/mnt/project-files/phishdrift/e2e_attack/harness.mjs`): 31 of 35 attack cases passed;
+  four failed. Fixed three, the fourth is a harness artefact:
+  1. A credential frame (cross-site, srcdoc or about:blank) on a page whose address looks safe is judged on its page
+     score alone (`framePageVerdict` in `extension/src/combine.js`; the agree rule needs the address model too, and a
+     frame's address says little). Frames on allowlisted, trusted or shortener addresses are skipped.
+  2. Login forms inside open and closed shadow roots are counted (`chrome.dom.openOrClosedShadowRoot`) and their HTML
+     is added inside `<body>` for the page model.
+  3. A banner from an earlier verdict is removed when the page check comes back safe, unless a warning (from a frame)
+     arrived meanwhile; the page handler re-reads the document's floor after applying its result (race with frames).
+  4. 40,000-character address: the verdict is stored (suspicious, "extremely long"); the harness's Node server answers
+     431, Chrome shows its own error page (`chrome-error://chromewebdata/`), so the harness cannot find the tab by URL
+     and no content script runs there.
+- Results: harness on the new build, all frame / srcdoc / shadow / back-to-safety cases pass; the three trust cases
+  fail only because the harness's stub serves lists without the sha256 manifest the signed list sync now requires.
+  False alarms (`reports/page_fixes_fpr.md`) unchanged at 1.30% (allowlist on) / 2.61% (off) on 2,226 readable
+  pages. Credential-frame rule on the 164 non-allowlisted legitimate pages that ask for credentials, standing in
+  for legitimate login frames (the set has no frames): 7 flagged as a frame (4.3%) against 8 as a page (4.9%).
+- Tests: `npm test` extension 54, js 11, pytest, ruff, e2e smoke 16 steps (new: srcdoc login frame, closed-shadow lure).

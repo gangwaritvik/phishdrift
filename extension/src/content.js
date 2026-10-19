@@ -16,9 +16,40 @@ function isCredentialInput(input) {
   return CREDENTIAL_INPUT.test(text);
 }
 
-function collectPageFacts(doc, base) {
+// Shadow roots, open and closed (a login form drawn inside a web component is invisible to
+// document.querySelectorAll). Our own banner is skipped; at most MAX_SHADOW_ROOTS are read.
+const MAX_SHADOW_ROOTS = 200;
+
+function shadowRootOf(el) {
+  try {
+    const opened = typeof chrome !== "undefined" ? chrome.dom?.openOrClosedShadowRoot?.(el) : null;
+    return opened ?? el.shadowRoot ?? null;
+  } catch {
+    return el.shadowRoot ?? null;
+  }
+}
+
+function shadowRoots(doc) {
+  const found = [];
+  const stack = [doc];
+  while (stack.length && found.length < MAX_SHADOW_ROOTS) {
+    const root = stack.pop();
+    for (const el of Array.from(root.querySelectorAll?.("*") ?? [])) {
+      if (el.tagName === "PHISHDRIFT-BANNER") continue;
+      const shadow = shadowRootOf(el);
+      if (!shadow) continue;
+      found.push(shadow);
+      stack.push(shadow);
+      if (found.length >= MAX_SHADOW_ROOTS) break;
+    }
+  }
+  return found;
+}
+
+function collectPageFacts(doc, base, shadows = shadowRoots(doc)) {
   const forms = [];
-  for (const form of Array.from(doc.forms ?? [])) {
+  const allForms = [...Array.from(doc.forms ?? []), ...shadows.flatMap((r) => Array.from(r.querySelectorAll("form")))];
+  for (const form of allForms) {
     const hasPassword = Boolean(form.querySelector('input[type="password"]'));
     let action = null;
     try {
@@ -28,12 +59,14 @@ function collectPageFacts(doc, base) {
     }
     forms.push({ hasPassword, action });
   }
-  const inputs = Array.from(doc.querySelectorAll("input") ?? []);
-  return {
-    passwordFields: doc.querySelectorAll('input[type="password"]').length,
-    credentialFields: inputs.filter((i) => typeof i.getAttribute === "function" && isCredentialInput(i)).length,
-    forms,
-  };
+  let passwordFields = 0;
+  let credentialFields = 0;
+  for (const root of [doc, ...shadows]) {
+    passwordFields += root.querySelectorAll('input[type="password"]').length;
+    const inputs = Array.from(root.querySelectorAll("input") ?? []);
+    credentialFields += inputs.filter((i) => typeof i.getAttribute === "function" && isCredentialInput(i)).length;
+  }
+  return { passwordFields, credentialFields, forms };
 }
 
 // The banner lives in a closed shadow root, in the browser's top layer (a popover), with its own
@@ -83,7 +116,7 @@ function buildBanner(result) {
   const dismiss = document.createElement("button");
   dismiss.textContent = "Dismiss";
   dismiss.addEventListener("click", () => {
-    banner.dismissed = true;
+    if (banner) banner.dismissed = true;
     host.remove();
   });
   bar.append(text, dismiss);
@@ -104,24 +137,35 @@ function placeBanner() {
 
 function showBanner(result) {
   if (banner) return;
-  banner = { host: buildBanner(result), dismissed: false, restores: 0 };
+  const state = { host: buildBanner(result), dismissed: false, restores: 0 };
+  banner = state;
   placeBanner();
   const restore = () => {
-    if (banner.dismissed || banner.restores >= MAX_RESTORES) return;
+    if (state !== banner || state.dismissed || state.restores >= MAX_RESTORES) return;
     const open = (() => {
       try {
-        return banner.host.matches(":popover-open");
+        return state.host.matches(":popover-open");
       } catch {
         return true;
       }
     })();
-    if (banner.host.isConnected && open) return;
-    banner.restores += 1;
+    if (state.host.isConnected && open) return;
+    state.restores += 1;
     placeBanner();
-    if (banner.restores >= MAX_RESTORES) chrome.runtime.sendMessage({ type: "tamper", url: location.href }).catch(() => {});
+    if (state.restores >= MAX_RESTORES) chrome.runtime.sendMessage({ type: "tamper", url: location.href }).catch(() => {});
   };
   new MutationObserver(restore).observe(document.documentElement, { childList: true });
-  banner.host.addEventListener("toggle", () => setTimeout(restore, 0));
+  state.host.addEventListener("toggle", () => setTimeout(restore, 0));
+}
+
+// A banner from an earlier verdict (the address before the page was read, an earlier in-page
+// route) is taken down when the page's own check comes back safe. Not a page action, so it is never
+// counted as tampering.
+function hideBanner() {
+  if (!banner) return;
+  banner.dismissed = true;
+  banner.host.remove();
+  banner = null;
 }
 
 // The page's HTML for the page model, scored in the service worker on this device; it is never
@@ -130,10 +174,18 @@ const MAX_HTML_CHARS = 5_000_000;
 
 function pageHtml(doc) {
   const doctype = doc.doctype ? new XMLSerializer().serializeToString(doc.doctype) : "";
-  return (doctype + doc.documentElement.outerHTML).slice(0, MAX_HTML_CHARS);
+  // shadow-root content is appended so the page model sees forms drawn inside web components
+  const shadows = shadowRoots(doc)
+    .map((r) => `<div data-phishdrift-shadow>${r.innerHTML}</div>`)
+    .join("");
+  const html = doc.documentElement.outerHTML;
+  const end = html.lastIndexOf("</body>");
+  const joined = end < 0 ? html + shadows : html.slice(0, end) + shadows + html.slice(end);
+  return (doctype + joined).slice(0, MAX_HTML_CHARS);
 }
 
 const isTop = typeof window === "undefined" || window === window.top;
+let verdictsSeen = 0; // warnings the service worker pushed to this page
 const asksCredentials = (facts) => facts.passwordFields + facts.credentialFields > 0;
 
 async function run() {
@@ -147,8 +199,13 @@ async function run() {
     html = null; // the page model is skipped; the address verdict stands
   }
   const message = { type: isTop ? "page" : "frame", url: location.href, origin: self.origin, facts, html };
+  const sentAt = verdictsSeen;
   const result = await chrome.runtime.sendMessage(message);
-  if (isTop && result && !result.error && result.verdict === 1) showBanner(result);
+  if (isTop && result && !result.error) {
+    if (result.verdict === 1) showBanner(result);
+    // the final verdict for this page is safe, unless a warning (from a frame, say) came in meanwhile
+    else if (result.verdict === 0 && verdictsSeen === sentAt) hideBanner();
+  }
   return facts;
 }
 
@@ -192,6 +249,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.id) {
     // verdicts the service worker reached on its own (redirect, in-page address change, a frame, a
     // late backend answer), and requests to check the page again after an in-page address change
     chrome.runtime.onMessage.addListener((msg) => {
+      if (msg?.type === "phishdrift-verdict" && msg.result?.verdict >= 1) verdictsSeen += 1;
       if (msg?.type === "phishdrift-verdict" && msg.result?.verdict === 1) showBanner(msg.result);
       if (msg?.type === "phishdrift-recheck") scheduleRecheck();
     });

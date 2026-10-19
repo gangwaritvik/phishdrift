@@ -109,6 +109,11 @@ const EXTRA = {
     setTimeout(() => { location.href = URL.createObjectURL(b); }, 500);</script></body></html>`,
 };
 
+const signinBody = SIGNIN_PAGE.match(/<body>([\s\S]*)<\/body>/)[1].replace(/<script>[\s\S]*?<\/script>/, "");
+EXTRA["/srcdoc-host"] = `<html><body><h1 id="ok">Bakery</h1><iframe width="600" height="400" srcdoc="${SIGNIN_PAGE.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"></iframe></body></html>`;
+EXTRA["/shadow"] = `<html><body><h1 id="ok">News</h1><div id="sh"></div><script>
+  document.getElementById("sh").attachShadow({ mode: "closed" }).innerHTML = ${JSON.stringify(signinBody)};</script></body></html>`;
+
 const pages = createServer((req, res) => {
   res.setHeader("Content-Type", "text/html");
   const path = req.url.split("?")[0];
@@ -275,6 +280,16 @@ try {
     assert.match(await reasonsOf(page), /registered 2 days ago/);
     console.log(`ok  slow backend: banner after ${shownAfter} ms without waiting; late "high" answer raises to the warning page`);
   }
+
+  // 14. a login form in a srcdoc frame on a safe page is judged on the frame's page score alone
+  page = await open("http://bakery-hours.org:8123/srcdoc-host");
+  await settle(page, async () => isWarning(page) || (await page.locator("phishdrift-banner").count()) === 1, "srcdoc frame warning");
+  console.log(`ok  login form in a srcdoc frame on a safe page is flagged (${isWarning(page) ? "warning page" : "banner"})`);
+
+  // 15. a lure form inside a closed shadow root is read (it no longer looks credential-free)
+  page = await open("http://evil-blocked.com:8123/shadow");
+  await settle(page, async () => isWarning(page), "closed-shadow lure warning");
+  console.log("ok  lure form inside a closed shadow root is read by the page check");
 
   // 6. fail open: backend gone, a flagged page still opens and gets its banner
   if (!real) {

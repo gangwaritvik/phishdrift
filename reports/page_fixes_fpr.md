@@ -30,4 +30,13 @@ Pages whose verdict changed (0 safe, 1 suspicious, 2 dangerous):
 | off | `https://kuple.kr/best` | 0 -> 1 | url-model | True | False |
 | off | `https://othoba.com/${r}` | 0 -> 1 | url-model | True | False |
 
+Credential frames (judged on the page score alone, without the address model's
+agreement). This set has no frames; legitimate pages that ask for credentials, not
+allowlisted, stand in for legitimate login frames:
+
+| allowlist | credential pages | warned as a page | warned as a frame | dangerous as a frame |
+|---|---|---|---|---|
+| on | 164 | 8 (4.9%) | 7 (4.3%) | 1 |
+| off | 223 | 20 (9.0%) | 20 (9.0%) | 4 |
+
 Not measured here: the recall effect on phishing pages (no phishing HTML in this set).

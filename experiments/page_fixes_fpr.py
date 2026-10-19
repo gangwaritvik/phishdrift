@@ -99,6 +99,22 @@ def main() -> None:
                 f"| {y['layer']} | {bool(y['creds'])} | {bool(y['short'])} |"
             )
 
+    # Credential frames are judged on the page score alone (no agree rule). No frames are stored
+    # in this set, so the legitimate pages that ask for credentials stand in for legitimate
+    # login frames: the share flagged if each were shown inside a frame on another page.
+    frame_lines = []
+    for allow in (True, False):
+        d = res[("after", allow)]
+        d = d[d["frame"].notna()] if "frame" in d else d.iloc[0:0]
+        side = "on" if allow else "off"
+        n = len(d)
+        warned = int((d["frame"] >= 1).sum())
+        top = int((d["verdict"] >= 1).sum())
+        frame_lines.append(
+            f"| {side} | {n:,} | {top} ({100 * top / max(n, 1):.1f}%) "
+            f"| {warned} ({100 * warned / max(n, 1):.1f}%) | {int((d['frame'] >= 2).sum())} |"
+        )
+
     lines = [
         "# Page-check fixes: false alarms on natural legitimate pages",
         "",
@@ -126,6 +142,15 @@ def main() -> None:
         "| allowlist | url | verdict | layer after | asks credentials | short page |",
         "|---|---|---|---|---|---|",
         *changed,
+        "",
+        "Credential frames (judged on the page score alone, without the address model's",
+        "agreement). This set has no frames; legitimate pages that ask for credentials, not",
+        "allowlisted, stand in for legitimate login frames:",
+        "",
+        "| allowlist | credential pages | warned as a page | warned as a frame "
+        "| dangerous as a frame |",
+        "|---|---|---|---|---|",
+        *frame_lines,
         "",
         "Not measured here: the recall effect on phishing pages (no phishing HTML in this set).",
         "",
