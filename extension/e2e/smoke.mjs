@@ -175,22 +175,28 @@ try {
   if (!real) assert.deepEqual(scoreCalls.at(-1), { domain: "evil-blocked.com", local_verdict: 1 });
   console.log("ok  suspicious page shows the banner", real ? "(real backend)" : `; backend got ${JSON.stringify(scoreCalls.at(-1))}`);
 
+  // the warning page asks the service worker for its reasons after it opens: wait for them
+  const reasonsOf = async (page) => {
+    await page.waitForSelector("#reasons li", { timeout: 10000 });
+    return page.locator("#reasons").innerText();
+  };
+
   // 3. page check: password form to another site escalates to the warning page
   page = await open("http://evil-blocked.com:8123/login");
   await settle(page, async () => page.url().startsWith(`chrome-extension://${extId}/warning.html`), "warning page");
-  assert.match(await page.locator("#reasons").innerText(), /different website/);
+  assert.match(await reasonsOf(page), /different website/);
   console.log("ok  cross-site password form escalates to the warning page");
 
   // 3b. page model: a lure page on a suspicious address is read on the device and raised to dangerous
   page = await open("http://evil-blocked.com:8123/signin");
   await settle(page, async () => page.url().startsWith(`chrome-extension://${extId}/warning.html`), "page-model warning");
-  assert.ok((await page.locator("#reasons li").count()) >= 1);
+  assert.ok((await reasonsOf(page)).length > 0);
   console.log("ok  page model reads the page and raises it to the warning page");
 
   // 4. dangerous by the model: warning page, report, proceed anyway
   page = await open("http://secure-paypal-login.xyz:8123/");
   await settle(page, async () => page.url().startsWith(`chrome-extension://${extId}/warning.html`), "warning page");
-  assert.ok((await page.locator("#reasons li").count()) >= 1);
+  assert.ok((await reasonsOf(page)).length > 0);
   await page.click("#report");
   await page.waitForFunction(() => true);
   if (!real) {
@@ -208,13 +214,9 @@ try {
   // 5. blocklist hit on an address the model passes
   page = await open("http://quietgarden-recipes.com:8123/soup");
   await settle(page, async () => page.url().startsWith(`chrome-extension://${extId}/warning.html`), "blocklist warning");
-  assert.match(await page.locator("#reasons").innerText(), /list of known phishing/);
+  assert.match(await reasonsOf(page), /list of known phishing/);
   console.log("ok  blocklist hit blocks an address the model passes");
 
-  const reasonsOf = async (page) => {
-    await page.waitForSelector("#reasons li", { timeout: 10000 });
-    return page.locator("#reasons").innerText();
-  };
   const isWarning = (page) => page.url().startsWith(`chrome-extension://${extId}/warning.html`);
 
   // 7. a login form in a frame from a dangerous address raises the safe page that frames it
