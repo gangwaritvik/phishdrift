@@ -1,7 +1,7 @@
 // Browser smoke test (not part of CI): loads extension/dist in Chromium, with a stub backend on
 // 127.0.0.1:8000 and a local page server; every host name resolves to the local page server.
 // With REAL_BACKEND=1 the stub is not started: run `uvicorn backend.app:create_app --factory` on
-// 127.0.0.1:8000 first, with lists built from a feed that lists example.com (see docs/BACKEND.md).
+// 127.0.0.1:8000 first, with lists built from a feed that lists quietgarden-recipes.com (see docs/BACKEND.md).
 // Needs Playwright (global or local) and a Chromium. Run: node build.mjs && node e2e/smoke.mjs
 //
 // Pages (verdicts from the shipped models):
@@ -11,7 +11,7 @@
 //                                                (page too short for the page model: form rule)
 //   http://evil-blocked.com:8123/signin          suspicious address, lure page -> page model: dangerous
 //   http://secure-paypal-login.xyz:8123/         dangerous -> warning page, "proceed anyway"
-//   http://example.com:8123/                     safe by the model, on the stub blocklist -> warning page
+//   http://quietgarden-recipes.com:8123/soup     safe by the model, on the stub blocklist -> warning page
 // 2026-10-15 fixes:
 //   http://bakery-hours.org:8123/frame-host      safe page framing a login form from a dangerous address -> warning
 //   http://evil-blocked.com:8123/hide            suspicious; the page hides and keeps removing the banner -> warning
@@ -47,9 +47,9 @@ let stubCache;
 async function stubLists() {
   if (stubCache) return stubCache;
   const bundled = JSON.parse(readFileSync(join(dist, "data", "allowlist.json"), "utf8"));
-  const blocklist = JSON.stringify({ version: "stub1", prefix_bytes: BYTES, domains: [await hashPrefix("example.com", BYTES)], urls: [] });
+  const blocklist = JSON.stringify({ version: "stub1", prefix_bytes: BYTES, domains: [await hashPrefix("quietgarden-recipes.com", BYTES)], urls: [] });
   // the real builder never allowlists a blocklisted domain
-  const blocked = await hashPrefix("example.com", bundled.prefix_bytes);
+  const blocked = await hashPrefix("quietgarden-recipes.com", bundled.prefix_bytes);
   const allowlist = JSON.stringify({ ...bundled, version: "stub1", domains: bundled.domains.filter((d) => d !== blocked) });
   const manifest = { version: "stub1", sha256: { blocklist: await sha256Hex(blocklist), allowlist: await sha256Hex(allowlist) } };
   stubCache = { manifest, blocklist, allowlist };
@@ -206,7 +206,7 @@ try {
   console.log("ok  dangerous page: reasons shown, false-positive report sends domain only, proceed anyway works");
 
   // 5. blocklist hit on an address the model passes
-  page = await open("http://example.com:8123/");
+  page = await open("http://quietgarden-recipes.com:8123/soup");
   await settle(page, async () => page.url().startsWith(`chrome-extension://${extId}/warning.html`), "blocklist warning");
   assert.match(await page.locator("#reasons").innerText(), /list of known phishing/);
   console.log("ok  blocklist hit blocks an address the model passes");
@@ -261,8 +261,8 @@ try {
   console.log("ok  'Take me back to safety' returns to the last safe page");
 
   // 12. trust never overrides a blocklist hit, and trust entries carry a time (expiry)
-  await worker.evaluate(async () => chrome.storage.local.set({ trusted: [{ key: "example.com", at: Date.now() }] }));
-  page = await open("http://example.com:8123/?again=1");
+  await worker.evaluate(async () => chrome.storage.local.set({ trusted: [{ key: "quietgarden-recipes.com", at: Date.now() }] }));
+  page = await open("http://quietgarden-recipes.com:8123/soup?again=1");
   await settle(page, async () => isWarning(page), "blocklist warning despite trust");
   await worker.evaluate(async () => chrome.storage.local.set({ trusted: [] }));
   console.log("ok  'trust this site' does not override the blocklist");

@@ -287,11 +287,14 @@ class ZoneModel:
     ``path_hosts`` maps every host whose phishing paths look like one tenant each (enough
     distinct tenants, few URLs per tenant) to its generic first segments. ``tenant_domains``
     holds the registrable domains whose phishing subdomains look like one tenant each
-    (``sub_tenant``): only there may the blocklist list a whole tenant host."""
+    (``sub_tenant``): only there may the blocklist list a whole tenant host. ``leaf_zones`` holds
+    the child zones learned from a single phishing URL (``portfolio-x.format.com``): the zone is
+    the attacker's own host, so the blocklist may still list it."""
 
     zones: dict[str, str] = field(default_factory=dict)
     path_hosts: dict[str, frozenset[str]] = field(default_factory=dict)
     tenant_domains: set[str] = field(default_factory=set)
+    leaf_zones: set[str] = field(default_factory=set)
 
 
 def learn_zones(
@@ -346,8 +349,10 @@ def learn_zones(
         elif path_like.get(domain):
             model.zones[domain] = "path"
         else:
-            for child in counts:
+            for child, n in counts.items():
                 model.zones.setdefault(f"{child}.{domain}", "child")
+                if n == 1:
+                    model.leaf_zones.add(f"{child}.{domain}")
     return model
 
 
@@ -488,7 +493,8 @@ def build_lists(
         shared=platforms,
     )
     zones = set(model.zones)
-    protected = cand_domains | platforms | zones
+    # a child zone seen in one phishing URL is that attacker's host, not a shared one
+    protected = cand_domains | platforms | (zones - model.leaf_zones)
     block_domains: set[str] = set()
     block_urls: set[str] = set()
     plain_block_domains: set[str] = set()
