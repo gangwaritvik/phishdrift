@@ -519,3 +519,31 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - The 10-split model numbers are unchanged: no model changed, and they are measured with the allowlist off.
 - Tests: pytest, ruff, `npm test` in `js/` (11) and `extension/` (30), e2e smoke passes.
 - Not done: back-to-safe navigation, full-hash blocklist matching, iframes/blob pages, list-sync sanity checks.
+
+### 2026-10-15/19 — Page-check gaps from the red-team review and stress test (extension 0.1.1)
+- Changed (`extension/src/{combine,background,content,address,pagefacts,warning}.js`, new `trust.js`,
+  `domain.js`, `navigation.js`; `js/src/{page,html_features}.js`; `backend/app.py`; manifest):
+  1. The page model can raise any verdict but lower one only on a page with no password, one-time-code, card or
+     PIN field (in the page or a frame); the address model's dangerous verdict always stands.
+  2. In-page route changes also ask the content script to send the page again (up to 5 rechecks).
+  3. Content script in all frames (`all_frames`, `match_about_blank`, `match_origin_as_fallback`, file pages):
+     a frame asking for credentials blocks lowering; a cross-site one is judged at its own address and HTML.
+     blob: pages stand for the site that built them, about:blank/srcdoc for the inherited origin; pages with no
+     address (data:, sandboxed frames, malformed) are not scored and warn only if they ask for credentials
+     (a blob: address used to score 0.99, a malformed one 0.98).
+  4. "Take me back to safety" goes to the tab's last safe page on another site, else a new tab (no history.back()).
+  5. Banner in a closed shadow root in the top layer (popover) with important inline styles; a page that keeps
+     removing or hiding it gets the full warning page ("tried to hide PhishDrift's warning").
+  6. A blocklist hit beats "trust this site"; trust entries expire after 30 days.
+  7. The backend is never waited for: the verdict shows at once and a late "high" answer raises it. A failed
+     lookup is `risk: "unknown"` with `error` (also on `/score`), never "low"; the extension remembers failures 30 s.
+     Verdict cache cleared after a list sync.
+  8. A bare login form (under 200 visible characters) is read by the page model, which can only raise there;
+     the password-form rule still applies to such pages.
+- Results (`python -m experiments.page_fixes_fpr`, `reports/page_fixes_fpr.md`; 2,373 natural legitimate pages
+  with HTML, 2,226 readable by the page model; no backend, no blocklist; facts from stored HTML): warned with the
+  bundled allowlist 1.21% -> 1.30% (27 -> 29 pages), dangerous 0.49% unchanged; without the allowlist 2.47% ->
+  2.61%, dangerous 1.17% unchanged. Recall effect on phishing pages not measured (no phishing HTML in the cloud).
+- Tests: `npm test` extension 41 and js 11, backend pytest 44, e2e smoke 15 steps in headless Chromium (new: frame
+  login, banner hiding, SPA route, blob page, back to safety, trust vs blocklist, slow backend with late answer).
+- Not done: rendered-DOM vs raw-HTML difference (train/serve), full-hash blocklist matching (lists thread).

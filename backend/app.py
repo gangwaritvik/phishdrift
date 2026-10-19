@@ -7,7 +7,8 @@ request fields are rejected, and feedback lines hold exactly domain, kind, verdi
 
 The signals and risk returned by ``/score`` and ``/domain-info`` come from placeholder
 threshold rules (``backend/checks.py``), not a trained tier C model, and are not validated.
-Every lookup fails soft: on an error or timeout the answer is risk "low" with ``error`` set.
+Every lookup fails soft: on an error or timeout the answer is risk "unknown" with ``error`` set
+(never "low": a failed lookup is not evidence that a domain is fine), and it is not cached.
 """
 
 from __future__ import annotations
@@ -118,11 +119,11 @@ def create_app(
             facts = {k: raw.get(k) for k in FACT_KEYS}
         except FutureTimeout:
             error = "timeout"
-        except Exception as exc:  # noqa: BLE001 - fail soft: any lookup problem means "low"
+        except Exception as exc:  # noqa: BLE001 - fail soft: any lookup problem means "unknown"
             log.warning("domain check failed: %s", type(exc).__name__)
             error = "lookup_failed"
         if error is not None:
-            return {"facts": facts, "signals": [], "risk": "low", "error": error}, False
+            return {"facts": facts, "signals": [], "risk": "unknown", "error": error}, False
         signals, risk = evaluate(facts, cfg["rules"])
         entry = {"facts": facts, "signals": signals, "risk": risk, "error": None}
         cache.put(domain, entry)
@@ -147,6 +148,7 @@ def create_app(
             "signals": entry["signals"],
             "tier_c_model": False,
             "cached": cached,
+            "error": entry["error"],
         }
 
     @app.post("/feedback", dependencies=[Depends(rate_limit)])

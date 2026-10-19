@@ -14,9 +14,11 @@ if (result) {
   $("note").textContent = result.notes.join(" ");
 }
 
-$("back").addEventListener("click", () => {
-  if (history.length > 1) history.back();
-  else window.close();
+// Never history.back(): the previous entry can be the phishing page or a redirect to it. The service
+// worker sends the tab to the last safe address it saw on another site, or a new tab page.
+$("back").addEventListener("click", async () => {
+  const reply = await send({ type: "leave" }).catch(() => null);
+  if (!reply?.ok) window.close();
 });
 $("proceed").addEventListener("click", async () => {
   const { ok, url } = await send({ type: "bypass" });

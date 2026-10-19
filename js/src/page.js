@@ -32,12 +32,21 @@ export function loadPage(bundle) {
 const calibrated = (prob, iso, tie) => interp(prob, iso.x, iso.y) + tie * prob;
 
 // address: loadHybrid(...) model; page: loadPage(...) model.
-export function scorePage(address, page, url, html, { withReasons = false } = {}) {
+// `allowShort`: also read a page with less visible text than training pages had (a bare login form
+// clone); the result is marked `short`. The extension asks for it only on pages with a password
+// field, and the combiner never lets the page model lower a verdict there, so on such a page the
+// model can only add a warning.
+export function scorePage(address, page, url, html, { withReasons = false, allowShort = false } = {}) {
   const aValues = featureValues(address, url);
   const probAddress = 1 / (1 + Math.exp(-rawScore(address, aValues)));
   const byName = Object.fromEntries(address.names.map((n, i) => [n, aValues[i]]));
-  const pageFeatures = extractHtml(url, html, address.lists);
-  const hasHtml = Object.values(pageFeatures).some((v) => !Number.isNaN(v));
+  let pageFeatures = extractHtml(url, html, address.lists);
+  let hasHtml = Object.values(pageFeatures).some((v) => !Number.isNaN(v));
+  let short = false;
+  if (!hasHtml && allowShort) {
+    pageFeatures = extractHtml(url, html, address.lists, null, { minVisibleChars: 1 });
+    hasHtml = short = Object.values(pageFeatures).some((v) => !Number.isNaN(v));
+  }
   let probPage = null;
   let values = null;
   let blended;
@@ -61,5 +70,5 @@ export function scorePage(address, page, url, html, { withReasons = false } = {}
     withReasons && hasHtml
       ? reasons(contributions(page.trees, values), values, page.names, page.reasonRules, page.explainOptions)
       : [];
-  return { hasHtml, probAddress, probPage, blended, verdict, reasons: why };
+  return { hasHtml, short, probAddress, probPage, blended, verdict, reasons: why };
 }
