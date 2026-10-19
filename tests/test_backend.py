@@ -90,6 +90,7 @@ def test_score_shape(settings):
         "signals": [],
         "tier_c_model": False,
         "cached": False,
+        "error": None,
     }
 
 
@@ -179,17 +180,18 @@ def test_ttl_cache_evicts_oldest():
     assert (cache.get("b"), cache.get("c")) == (1, 2)
 
 
-def test_feedback_file_has_only_four_fields(settings):
+def test_feedback_file_has_only_the_documented_fields(settings):
     fixed = datetime(2026, 10, 12, 23, 59, 30, tzinfo=UTC)
     client, _ = make_client(settings, utcnow=lambda: fixed)
+    headers = {"X-PhishDrift-Token": client.post("/register").json()["token"]}
     for kind, verdict in (("false_positive", 2), ("missed_phish", 0)):
         body = {"domain": "Shop.Example.com", "kind": kind, "verdict": verdict}
-        assert client.post("/feedback", json=body).json() == {"ok": True}
+        assert client.post("/feedback", json=body, headers=headers).json() == {"ok": True}
     path = settings.feedback_dir / "2026-10-12.jsonl"
     rows = [json.loads(line) for line in path.read_text().splitlines()]
     assert len(rows) == 2
     for row in rows:
-        assert set(row) == {"domain", "kind", "verdict", "timestamp"}
+        assert set(row) == {"domain", "kind", "verdict", "timestamp", "reporter"}
         assert row["domain"] == "shop.example.com"
         assert row["timestamp"] == "2026-10-12T23:59:30+00:00"
     assert [r["kind"] for r in rows] == ["false_positive", "missed_phish"]
@@ -211,7 +213,7 @@ def test_failed_lookup_is_low_with_error_and_not_cached(settings):
     body = client.post("/domain-info", json={"domain": "x.example"})
     assert body.status_code == 200
     data = body.json()
-    assert data["risk"] == "low"
+    assert data["risk"] == "unknown"
     assert data["signals"] == []
     assert data["error"] == "lookup_failed"
     assert "secret" not in json.dumps(data)
@@ -221,10 +223,10 @@ def test_failed_lookup_is_low_with_error_and_not_cached(settings):
     assert boom.calls == 2
     score = client.post("/score", json={"domain": "x.example", "local_verdict": 1})
     assert score.status_code == 200
-    assert score.json()["risk"] == "low"
+    assert (score.json()["risk"], score.json()["error"]) == ("unknown", "lookup_failed")
 
 
-def test_timeout_is_low_with_error(settings):
+def test_timeout_is_unknown_with_error(settings):
     import time
 
     settings.cfg["lookup"]["overall_timeout_s"] = 0.05
@@ -235,7 +237,7 @@ def test_timeout_is_low_with_error(settings):
 
     client, _ = make_client(settings, slow)
     data = client.post("/domain-info", json={"domain": "slow.example"}).json()
-    assert (data["risk"], data["error"], data["signals"]) == ("low", "timeout", [])
+    assert (data["risk"], data["error"], data["signals"]) == ("unknown", "timeout", [])
 
 
 # --- rules and facts --------------------------------------------------------------------
@@ -403,12 +405,19 @@ def test_build_lists_end_to_end(tmp_path):
         "blocklist_urls": 3,
         "allowlist_domains": 3,
         "open_hosting_domains": 1,
+        "allowlist_top": 3,
     }
     assert manifest["prefix_bytes"] == 6
     assert manifest["built_at"] == "2026-10-12T12:00:00+00:00"
     assert len(manifest["version"]) == 12
-    again = lists.build_lists(reversed(urls), reversed(cands), frozenset({"github.io"}), 6)
+    again = lists.build_lists(reversed(urls), cands, frozenset({"github.io"}), 6)
     assert again["manifest"]["version"] == manifest["version"]
+    # rank order matters only for the top-site sentinels
+    swapped = lists.build_lists(urls, reversed(cands), frozenset({"github.io"}), 6)
+    assert swapped["allowlist"]["domains"] == docs["allowlist"]["domains"]
+    assert swapped["allowlist"]["top"] == [
+        h(d) for d in ["wikipedia.org", "example.com", "google.com"]
+    ]
 
 
 def test_open_hosting_zones_are_learned_from_phishing_hosts():
@@ -473,6 +482,35 @@ def test_read_phishing_file_keeps_phishing_rows(tmp_path):
         pq_path
     )
     assert lists.read_phishing_file(pq_path) == ["https://a.x.com/"]
+    txt = tmp_path / "p.txt"
+    txt.write_text("# comment\nhttps://a.x.com/\n\nhttp://b.y.com/z\n")
+    assert lists.read_phishing_file(txt) == ["https://a.x.com/", "http://b.y.com/z"]
+
+
+def test_zone_evidence_opens_hosting_domain(monkeypatch):
+    from backend import __main__ as cli
+
+    history = "\n".join(f"http://tenant{i}.freehost.com/login" for i in range(5))
+    monkeypatch.setattr(cli.HttpClient, "get", lambda self, url, **kw: history.encode())
+    evidence = cli.fetch_zone_evidence(Settings.load())
+    assert len(evidence) == 5
+    docs = lists.build_lists(
+        [], ["freehost.com", "google.com"], frozenset(), 6, extra_phishing_urls=evidence
+    )
+    assert "freehost.com" in docs["allowlist"]["open_hosting"]
+    assert lists.list_hash("freehost.com", 6) not in docs["allowlist"]["domains"]
+    assert lists.list_hash("google.com", 6) in docs["allowlist"]["domains"]
+    assert docs["blocklist"]["domains"] == [] and docs["blocklist"]["urls"] == []
+
+
+def test_zone_evidence_download_failure_is_skipped(monkeypatch):
+    from backend import __main__ as cli
+
+    def boom(self, url, **kw):
+        raise OSError("offline")
+
+    monkeypatch.setattr(cli.HttpClient, "get", boom)
+    assert cli.fetch_zone_evidence(Settings.load()) == []
 
 
 def test_list_endpoints(settings):
@@ -487,7 +525,14 @@ def test_list_endpoints(settings):
     assert client.get("/lists/blocklist.json").json() == docs["blocklist"]
     assert client.get("/lists/allowlist.json").json() == docs["allowlist"]
     assert set(docs["blocklist"]) == {"version", "prefix_bytes", "domains", "urls"}
-    assert set(docs["allowlist"]) == {"version", "prefix_bytes", "domains", "open_hosting"}
+    assert set(docs["allowlist"]) == {
+        "version",
+        "prefix_bytes",
+        "domains",
+        "open_hosting",
+        "top",
+    }
+    assert client.get("/lists/blocklist.json").content == lists._canonical(docs["blocklist"])
 
 
 def test_cli_build_lists_without_tranco_continues(tmp_path, monkeypatch, caplog):
@@ -527,3 +572,24 @@ def test_live_checker_treats_a_broken_resolver_as_unknown():
 
     checker = LiveChecker(settings, client=NoRdap(), query=working_resolver, now=lambda: NOW)
     assert checker("nonexistent.example.com")["resolves"] is False
+
+
+def test_path_tenants_open_the_whole_domain():
+    urls = [f"https://telegra.ph/page-{i}" for i in range(4)] + ["https://www.google.com/x/y"]
+    zones = lists.open_hosting_zones(urls, {"telegra.ph", "google.com"}, 3, 0.5)
+    assert zones == {"telegra.ph"}
+
+
+def test_many_busy_tenants_open_the_whole_domain():
+    urls = [f"https://t{i}.host.me/{j}" for i in range(25) for j in range(5)]
+    assert lists.open_hosting_zones(urls, {"host.me"}, 3, 0.5) == {
+        f"t{i}.host.me" for i in range(25)
+    }
+    assert lists.open_hosting_zones(urls, {"host.me"}, 3, 0.5, min_children_whole=20) == {"host.me"}
+
+
+def test_shorteners_are_never_allowlisted():
+    docs = lists.build_lists(
+        [], ["t.co", "example.com"], frozenset(), 6, shorteners=frozenset({"t.co"})
+    )
+    assert docs["allowlist"]["domains"] == [lists.list_hash("example.com", 6)]

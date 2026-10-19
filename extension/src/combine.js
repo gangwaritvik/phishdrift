@@ -1,47 +1,74 @@
 // Combiner: turns the layers' outputs into safe / suspicious / dangerous with plain-English reasons.
 //
-// Order follows CLAUDE.md (cheapest first): user trust and allowlist, blocklist, URL model, then
+// Order follows CLAUDE.md (cheapest first): blocklist, user trust and allowlist, URL model, then
 // backend domain checks and page checks. Before the page has loaded only the URL model has run.
-// Once the content script sends the page, the page model's verdict (js/src/page.js, the
-// "shipped" rule measured in reports/blend2_rules.md) replaces the URL model's: it can lower a
-// suspicious address to safe or raise it, and the address model's dangerous verdict stands.
-// Domain evidence (backend, tier C rules checked in reports/domain_rules.md) can only raise
-// suspicious to dangerous, never turn a safe verdict into a warning. The password-form rule is
-// used only when the page model could not read the page (no usable HTML).
+// - A blocklist hit always warns: neither "trust this site" nor the allowlist overrides an exact
+//   listed URL (a domain-level hit never co-occurs with an allowlist hit).
+// - Once the content script sends the page, the page model (js/src/page.js, the "agree" rule of
+//   reports/blend2_rules.md) can raise the address verdict. It can lower it only on a page that asks
+//   for no credentials at all (no password, one-time code, card or PIN field, in the page or any of
+//   its frames): the page's HTML belongs to whoever runs it, so on a login page the attacker's own
+//   markup must not be able to clear an address warning.
+// - Domain evidence (backend, tier C rules checked in reports/domain_rules.md) can only raise
+//   suspicious to dangerous, never turn a safe verdict into a warning.
+// - The password-form rule is used only when the page model could not read the page fully.
+// - A page with no web address of its own (data:, sandboxed frames) is not scored by the address
+//   model; it is suspicious only if it asks for credentials.
 
 export const SAFE = 0;
 export const SUSPICIOUS = 1;
 export const DANGEROUS = 2;
 
 export const BLOCKLIST_REASON = "This address is on a list of known phishing sites.";
+export const NO_ADDRESS_REASON = "This page asks for a password or card details but has no web address of its own.";
+export const NO_ADDRESS_NOTE = "This page has no web address to check.";
 
 // layers: {
 //   trusted: bool,               user pressed "trust this site"
 //   allow: bool,                 allowlist hit
+//   shortener: bool,             link shortener (judged by where it redirects, never by itself)
 //   blocked: null|"domain"|"url",
 //   model: {verdict, prob, reasons:[{text}]} | null,
 //   domain: {risk, signals:[{severity,text}]} | null,   backend answer
 //   backendFailed: bool,
+//   unscored: bool,              the document has no web address (address.js effectiveUrl)
 // }
-// page: {hasPassword, credFormCrossDomain, credFormInsecure} | null
-// pageModel: {hasHtml, blended, verdict, reasons:[{text}]} | null   (scorePage in page.js)
+// page: {hasPassword, credFormCrossDomain, credFormInsecure, asksCredentials} | null (pagefacts.js)
+// pageModel: {hasHtml, blended, verdict, reasons:[{text}], allowedPageWarning?} | null
+//            (scorePage in page.js)
 export function combine(layers, page = null, pageModel = null) {
   const out = { verdict: SAFE, layer: "url-model", reasons: [], notes: [], prob: null };
-  if (layers.trusted) return { ...out, layer: "user-trusted" };
-  // An exact listed URL is evidence about that page, so it overrides the allowlist (a big site
-  // can still host one bad file); a domain-level hit never co-occurs with an allowlist hit.
-  if (layers.allow && layers.blocked !== "url") return { ...out, layer: "allowlist" };
-  if (layers.blocked) {
+  const allowed = layers.allow && layers.blocked !== "url";
+  if (layers.blocked && !allowed) {
     return { ...out, verdict: DANGEROUS, layer: "blocklist", reasons: [BLOCKLIST_REASON] };
   }
+  if (layers.trusted) return { ...out, layer: "user-trusted" };
+  // Allowlisted pages and short links skip the address model, but not the page: a site anyone can
+  // publish on (forms, file shares, link pages) is only as safe as the page it serves. The page
+  // model warns there only on strong evidence (page.js `allowedPageWarning`), and never more than
+  // suspicious, because the address itself is trusted or says nothing.
+  if (allowed || layers.shortener) {
+    if (pageModel?.allowedPageWarning) {
+      const reasons = [...new Set(pageModel.reasons.map((r) => r.text))];
+      return { ...out, verdict: SUSPICIOUS, layer: "page-model", reasons, prob: pageModel.blended };
+    }
+    return { ...out, layer: allowed ? "allowlist" : "shortener" };
+  }
 
+  if (layers.unscored) {
+    if (page?.asksCredentials) return { ...out, verdict: SUSPICIOUS, layer: "page", reasons: [NO_ADDRESS_REASON] };
+    return { ...out, layer: "none", notes: [NO_ADDRESS_NOTE] };
+  }
   const model = layers.model;
   if (!model) return { ...out, layer: "none", notes: ["The address could not be read."] };
   out.verdict = model.verdict;
   out.prob = model.prob;
   out.reasons = model.reasons.map((r) => r.text);
   const pageRead = Boolean(pageModel?.hasHtml);
-  if (pageModel) {
+  // Lowering needs page facts that show no credential field (without facts, nothing is lowered),
+  // and the address model's dangerous verdict always stands.
+  const mayLower = page !== null && !page.asksCredentials && model.verdict < DANGEROUS;
+  if (pageModel && (pageModel.verdict >= model.verdict || mayLower)) {
     out.verdict = pageModel.verdict;
     out.prob = pageModel.blended;
     if (pageRead) {
@@ -54,7 +81,7 @@ export function combine(layers, page = null, pageModel = null) {
   }
   if (out.verdict === SAFE) return { ...out, reasons: [] };
 
-  // The URL model flagged it: add what the domain and the page say.
+  // The URL or page model flagged it: add what the domain and the page say.
   if (layers.domain) {
     const flagged = layers.domain.signals.filter((s) => s.severity !== "info");
     out.reasons.push(...flagged.map((s) => s.text));
@@ -65,7 +92,9 @@ export function combine(layers, page = null, pageModel = null) {
   } else if (layers.backendFailed) {
     out.notes.push("Domain checks were unavailable, so this uses the address check only.");
   }
-  if (!pageRead && page?.hasPassword && (page.credFormCrossDomain || page.credFormInsecure)) {
+  // The password-form rule, when the page model could not read the page or read it only as a bare
+  // form (too little text for training pages).
+  if ((!pageRead || pageModel.short) && page?.hasPassword && (page.credFormCrossDomain || page.credFormInsecure)) {
     out.reasons.push(
       page.credFormCrossDomain
         ? "This page asks for a password and sends it to a different website."
@@ -77,4 +106,17 @@ export function combine(layers, page = null, pageModel = null) {
     }
   }
   return out;
+}
+
+// A frame that asks for credentials (a login form in an iframe, srcdoc or about:blank frame) is
+// judged on its own page score alone: the address model's agreement is not required, because the
+// frame's address (often the hosting page's) says little about the form inside it. Frames from
+// allowlisted or trusted sites are skipped by the caller.
+export const FRAME_PAGE_REASON = "This page shows a login form inside an embedded frame, and that form looks like phishing.";
+
+export function framePageVerdict(scored, thresholds) {
+  if (!scored?.hasHtml) return SAFE;
+  if (scored.blended >= thresholds.dangerous) return DANGEROUS;
+  if (scored.blended >= thresholds.suspicious) return SUSPICIOUS;
+  return SAFE;
 }

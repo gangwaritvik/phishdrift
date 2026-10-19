@@ -1,11 +1,55 @@
-// Content script (classic script, no imports). When the page has loaded it hands the page's HTML
-// and its password forms to the service worker, which scores the page on this device, gets the
-// final verdict back, and shows a banner for "suspicious". Nothing leaves the device from here:
-// the page model runs in the service worker and the backend only ever sees a domain name.
+// Content script (classic script, no imports), in every frame. In the top frame, when the page has
+// loaded it hands the page's HTML and its credential fields to the service worker, which scores the
+// page on this device, gets the final verdict back, and shows a banner for "suspicious". In other
+// frames it reports only frames that ask for credentials (a login form in an iframe, about:blank or
+// srcdoc frame). Nothing leaves the device from here: the page model runs in the service worker and
+// the backend only ever sees a domain name.
 
-function collectPageFacts(doc, base) {
+const CREDENTIAL_INPUT = /\b(otp|one[-_ ]?time|passcode|cvv|cvc|csc|card[-_ ]?(number|no)|cc[-_ ]?(num|number)|upi[-_ ]?pin|atm[-_ ]?pin|pin[-_ ]?code)\b/i;
+const CREDENTIAL_AUTOCOMPLETE = /\b(one-time-code|cc-number|cc-csc)\b/i;
+
+function isCredentialInput(input) {
+  const type = (input.getAttribute("type") || "text").toLowerCase();
+  if (type === "hidden" || type === "password" || type === "submit" || type === "button") return false;
+  if (CREDENTIAL_AUTOCOMPLETE.test(input.getAttribute("autocomplete") || "")) return true;
+  const text = ["name", "id", "placeholder", "aria-label"].map((a) => input.getAttribute(a) || "").join(" ");
+  return CREDENTIAL_INPUT.test(text);
+}
+
+// Shadow roots, open and closed (a login form drawn inside a web component is invisible to
+// document.querySelectorAll). Our own banner is skipped; at most MAX_SHADOW_ROOTS are read.
+const MAX_SHADOW_ROOTS = 200;
+
+function shadowRootOf(el) {
+  try {
+    const opened = typeof chrome !== "undefined" ? chrome.dom?.openOrClosedShadowRoot?.(el) : null;
+    return opened ?? el.shadowRoot ?? null;
+  } catch {
+    return el.shadowRoot ?? null;
+  }
+}
+
+function shadowRoots(doc) {
+  const found = [];
+  const stack = [doc];
+  while (stack.length && found.length < MAX_SHADOW_ROOTS) {
+    const root = stack.pop();
+    for (const el of Array.from(root.querySelectorAll?.("*") ?? [])) {
+      if (el.tagName === "PHISHDRIFT-BANNER") continue;
+      const shadow = shadowRootOf(el);
+      if (!shadow) continue;
+      found.push(shadow);
+      stack.push(shadow);
+      if (found.length >= MAX_SHADOW_ROOTS) break;
+    }
+  }
+  return found;
+}
+
+function collectPageFacts(doc, base, shadows = shadowRoots(doc)) {
   const forms = [];
-  for (const form of Array.from(doc.forms ?? [])) {
+  const allForms = [...Array.from(doc.forms ?? []), ...shadows.flatMap((r) => Array.from(r.querySelectorAll("form")))];
+  for (const form of allForms) {
     const hasPassword = Boolean(form.querySelector('input[type="password"]'));
     let action = null;
     try {
@@ -15,24 +59,39 @@ function collectPageFacts(doc, base) {
     }
     forms.push({ hasPassword, action });
   }
-  return {
-    passwordFields: doc.querySelectorAll('input[type="password"]').length,
-    forms,
-  };
+  let passwordFields = 0;
+  let credentialFields = 0;
+  for (const root of [doc, ...shadows]) {
+    passwordFields += root.querySelectorAll('input[type="password"]').length;
+    const inputs = Array.from(root.querySelectorAll("input") ?? []);
+    credentialFields += inputs.filter((i) => typeof i.getAttribute === "function" && isCredentialInput(i)).length;
+  }
+  return { passwordFields, credentialFields, forms };
 }
 
-function showBanner(result) {
-  if (document.getElementById("phishdrift-banner-host")) return;
-  const host = document.createElement("div");
-  host.id = "phishdrift-banner-host";
+// The banner lives in a closed shadow root, in the browser's top layer (a popover), with its own
+// styles marked important, so the page can neither restyle it, cover it nor find it by id. If the
+// page removes or hides it, it is put back; a page that keeps doing so is reported to the service
+// worker, which treats hiding the warning as a sign of phishing and shows the full warning page.
+let banner = null; // { host, dismissed, restores }
+const MAX_RESTORES = 5;
+
+function buildBanner(result) {
+  const host = document.createElement("phishdrift-banner");
+  for (const [k, v] of Object.entries({
+    all: "initial", display: "block", position: "fixed", inset: "0 0 auto 0", margin: "0", padding: "0",
+    border: "0", background: "transparent", "z-index": "2147483647", opacity: "1", visibility: "visible",
+    width: "100%", height: "auto", overflow: "visible", transform: "none", filter: "none", "clip-path": "none",
+  })) {
+    host.style.setProperty(k, v, "important");
+  }
   const root = host.attachShadow({ mode: "closed" });
   const reasons = result.reasons.slice(0, 2);
   const style = document.createElement("style");
   style.textContent = `
-    .bar { all: initial; position: fixed; top: 0; left: 0; right: 0; z-index: 2147483647;
-      display: flex; gap: 12px; align-items: center; padding: 10px 16px;
+    .bar { all: initial; display: flex; gap: 12px; align-items: center; padding: 10px 16px;
       background: #fef3c7; color: #451a03; border-bottom: 2px solid #d97706;
-      font: 14px/1.4 system-ui, sans-serif; box-sizing: border-box; }
+      font: 14px/1.4 system-ui, sans-serif; box-sizing: border-box; width: 100%; }
     .bar strong { font-weight: 600; }
     .bar ul { margin: 2px 0 0; padding-left: 18px; }
     .bar div { flex: 1; }
@@ -40,6 +99,7 @@ function showBanner(result) {
       border-radius: 4px; color: #451a03; font: 13px system-ui, sans-serif; }`;
   const bar = document.createElement("div");
   bar.className = "bar";
+  bar.setAttribute("role", "alert");
   const text = document.createElement("div");
   const head = document.createElement("strong");
   head.textContent = "PhishDrift: this page looks suspicious. Be careful with passwords and payments.";
@@ -55,10 +115,57 @@ function showBanner(result) {
   }
   const dismiss = document.createElement("button");
   dismiss.textContent = "Dismiss";
-  dismiss.addEventListener("click", () => host.remove());
+  dismiss.addEventListener("click", () => {
+    if (banner) banner.dismissed = true;
+    host.remove();
+  });
   bar.append(text, dismiss);
   root.append(style, bar);
-  document.documentElement.append(host);
+  return host;
+}
+
+function placeBanner() {
+  const { host } = banner;
+  if (!host.isConnected) document.documentElement.append(host);
+  try {
+    host.setAttribute("popover", "manual");
+    if (!host.matches(":popover-open")) host.showPopover();
+  } catch {
+    // no popover support: the fixed position and z-index still apply
+  }
+}
+
+function showBanner(result) {
+  if (banner) return;
+  const state = { host: buildBanner(result), dismissed: false, restores: 0 };
+  banner = state;
+  placeBanner();
+  const restore = () => {
+    if (state !== banner || state.dismissed || state.restores >= MAX_RESTORES) return;
+    const open = (() => {
+      try {
+        return state.host.matches(":popover-open");
+      } catch {
+        return true;
+      }
+    })();
+    if (state.host.isConnected && open) return;
+    state.restores += 1;
+    placeBanner();
+    if (state.restores >= MAX_RESTORES) chrome.runtime.sendMessage({ type: "tamper", url: location.href }).catch(() => {});
+  };
+  new MutationObserver(restore).observe(document.documentElement, { childList: true });
+  state.host.addEventListener("toggle", () => setTimeout(restore, 0));
+}
+
+// A banner from an earlier verdict (the address before the page was read, an earlier in-page
+// route) is taken down when the page's own check comes back safe. Not a page action, so it is never
+// counted as tampering.
+function hideBanner() {
+  if (!banner) return;
+  banner.dismissed = true;
+  banner.host.remove();
+  banner = null;
 }
 
 // The page's HTML for the page model, scored in the service worker on this device; it is never
@@ -67,21 +174,94 @@ const MAX_HTML_CHARS = 5_000_000;
 
 function pageHtml(doc) {
   const doctype = doc.doctype ? new XMLSerializer().serializeToString(doc.doctype) : "";
-  return (doctype + doc.documentElement.outerHTML).slice(0, MAX_HTML_CHARS);
+  // shadow-root content is appended so the page model sees forms drawn inside web components
+  const shadows = shadowRoots(doc)
+    .map((r) => `<div data-phishdrift-shadow>${r.innerHTML}</div>`)
+    .join("");
+  const html = doc.documentElement.outerHTML;
+  const end = html.lastIndexOf("</body>");
+  const joined = end < 0 ? html + shadows : html.slice(0, end) + shadows + html.slice(end);
+  return (doctype + joined).slice(0, MAX_HTML_CHARS);
 }
+
+const isTop = typeof window === "undefined" || window === window.top;
+let raisesSeen = 0; // later warnings (frame, in-page address, backend) pushed to this page
+let pageAnswered = false; // the page check has answered at least once
+const asksCredentials = (facts) => facts.passwordFields + facts.credentialFields > 0;
 
 async function run() {
   const facts = collectPageFacts(document, location.href);
+  // Frames report only when they ask for credentials (ad and widget frames cost nothing).
+  if (!isTop && !asksCredentials(facts)) return facts;
   let html = null;
   try {
     html = pageHtml(document);
   } catch {
     html = null; // the page model is skipped; the address verdict stands
   }
-  const result = await chrome.runtime.sendMessage({ type: "page", url: location.href, facts, html });
-  if (result && !result.error && result.verdict === 1) showBanner(result);
+  const message = { type: isTop ? "page" : "frame", url: location.href, origin: self.origin, facts, html };
+  const sentAt = raisesSeen;
+  const result = await chrome.runtime.sendMessage(message);
+  if (isTop && result && !result.error) {
+    pageAnswered = true;
+    if (result.verdict === 1) showBanner(result);
+    // the final verdict for this page is safe, unless a later warning (from a frame, say) came in
+    // meanwhile; the address verdict from commit time does not count (the page check replaces it)
+    else if (result.verdict === 0 && raisesSeen === sentAt) hideBanner();
+  }
+  return facts;
+}
+
+// The page is checked again (a few times at most, once it has been quiet for a moment) when a new
+// password or other credential field appears (forms drawn by script or after a click), and when the
+// service worker sees an in-page address change (single-page apps).
+const MAX_RECHECKS = 5;
+const RECHECK_DELAY_MS = 750;
+let rechecks = 0;
+let recheckTimer = null;
+
+function scheduleRecheck() {
+  if (recheckTimer || rechecks >= MAX_RECHECKS) return;
+  recheckTimer = setTimeout(async () => {
+    recheckTimer = null;
+    rechecks += 1;
+    await run().catch(() => {});
+  }, RECHECK_DELAY_MS);
+}
+
+function watchForLateForms(seen) {
+  let fields = seen.passwordFields + seen.credentialFields;
+  let timer = null;
+  const observer = new MutationObserver(() => {
+    if (timer) return;
+    timer = setTimeout(() => {
+      timer = null;
+      const now = collectPageFacts(document, location.href);
+      const count = now.passwordFields + now.credentialFields;
+      if (count <= fields) return;
+      fields = count;
+      if (rechecks >= MAX_RECHECKS) observer.disconnect();
+      scheduleRecheck();
+    }, RECHECK_DELAY_MS);
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["type"] });
 }
 
 if (typeof chrome !== "undefined" && chrome.runtime?.id) {
-  run().catch(() => {}); // fail open: a failed check never affects the page
+  if (isTop) {
+    // verdicts the service worker reached on its own (redirect, in-page address change, a frame, a
+    // late backend answer), and requests to check the page again after an in-page address change
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (msg?.type === "phishdrift-verdict") {
+        const commit = msg.kind === "commit";
+        if (commit && pageAnswered) return; // stale: the page check has already answered
+        if (!commit && msg.result?.verdict >= 1) raisesSeen += 1;
+        if (msg.result?.verdict === 1) showBanner(msg.result);
+      }
+      if (msg?.type === "phishdrift-recheck") scheduleRecheck();
+    });
+  }
+  run()
+    .then(watchForLateForms)
+    .catch(() => {}); // fail open: a failed check never affects the page
 }

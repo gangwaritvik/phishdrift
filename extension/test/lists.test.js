@@ -95,7 +95,7 @@ test("inZone matches a zone and hosts below it, never a longer label", () => {
 test("empty or missing lists match nothing; unparsable URLs give no domain", async () => {
   const empty = new ListSet(null, { platforms, psl });
   assert.deepEqual(await empty.check("https://evil-login.com/"), {
-    domain: "evil-login.com", shared: false, trustKey: "evil-login.com", allow: false, blocked: null,
+    domain: "evil-login.com", shared: false, shortener: false, trustKey: "evil-login.com", allow: false, blocked: null,
   });
   assert.equal((await empty.check("")).domain, null);
   assert.equal(listDomainKey("http://192.168.0.1/x", psl), "192.168.0.1");
@@ -117,4 +117,15 @@ test("the bundled allowlist applies until a synced one exists, and covers big si
   const merged = withBundledAllowlist(blocked, bundled).allowlist.domains;
   assert.equal(merged.includes(google), false);
   assert.equal(merged.length, bundled.domains.length - 1);
+});
+
+test("a shortener is never allowlisted, even when its domain is on the allowlist", async () => {
+  const set = new ListSet(
+    { allowlist: { prefix_bytes: BYTES, domains: [await h("t.co"), await h("example.com")] } },
+    { platforms, psl, shorteners: new Set(["t.co"]) },
+  );
+  const short = await set.check("https://t.co/AbC123");
+  assert.deepEqual([short.shortener, short.allow], [true, false]);
+  const site = await set.check("https://example.com/");
+  assert.deepEqual([site.shortener, site.allow], [false, true]);
 });

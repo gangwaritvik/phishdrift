@@ -473,3 +473,117 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   0.3%) as the default; the `_ws` threshold is set by PhreshPhish's cal slice and may not generalise to other new
   sources better than the pooled threshold does.
 - Next: update the report draft with these results; real-site check (Ritvik's browsing); tier C rerun.
+
+### 2026-10-14 — URL-layer test on fresh feed URLs; open-hosting zones learned from phishing history
+- Test (`js/bench/verdicts.mjs`, address layer + bundled allowlist, no page model): 200 active hosts from
+  Phishing.Database and 104 regional brand / login URLs (Indian, EU and Asian banks, payment apps, big login pages).
+  Before: 62.5% of phishing warned, 0 of 104 false alarms; 12 model-flagged phishing hosts shipped safe because
+  their hosting domain (`000webhostapp.com`, `blogspot.be`, `tw1.ru`, `xsph.ru`, `ydns.eu`, ...) was allowlisted.
+- Cause: the open-hosting learner had almost no evidence for these domains. The corpus drops domains shared by
+  several phishing sources (the pool has 0 phishing URLs on `000webhostapp.com` or `weebly.com`), and the PC's
+  feeds cover only a few days.
+- Changed (Ritvik: no hand-written addresses): `backend/__main__.py` downloads `lists.open_hosting.evidence_urls`
+  (Phishing.Database `phishing-links-ACTIVE.txt`, 789k URLs, cached 1 day) and passes it to the unchanged learner
+  as zone evidence only (never blocklisted, never training data); `--no-evidence` skips it; `.txt` URL lists
+  accepted by `--phishing-file`; tests for both. The learner then marks 174 allowlisted domains as whole open
+  zones (all those above plus `mystrikingly.com`, `squarespace.com`, `tumblr.com`, regional blogspot, dynamic DNS,
+  ...) and adds child zones (`sites.google.com`, `chat.whatsapp.com`); `google.com`, `microsoft.com`, `apple.com`,
+  `paypal.com`, `github.com` stay allowlisted.
+- Bundled `extension/data/allowlist.json` updated in the cloud by applying those zones to the existing list (no
+  Tranco download here); the 200 test hosts were left out of the evidence so the re-test is independent. The
+  next PC `build-lists` run produces the same from scratch.
+- Results after: 68.5% of the 200 phishing hosts warned (73 dangerous, 64 suspicious), none silenced by the
+  allowlist; 0 of 104 regional brand URLs flagged; natural legitimate pages 69 of 2,555 flagged (2.7%; was 71).
+- Open: the 63 remaining misses are bare hosts the address model scores clean; the page layer is the next check.
+
+### 2026-10-15 — Extension stress test and five fixes
+- Stress test (report in the project folder: `phishdrift/report/stress_test_2026-10-15.md`): fresh feed phishing,
+  hosting-platform phishing, six evasion families, hand-made long URLs, a robustness set and 138 legitimate login
+  pages in headless Chromium. Five real gaps found and fixed:
+  1. A very long URL threw in `wordStats` (`Math.min(...array)` overflow) and every check was skipped. Now a loop;
+     URLs over 32,768 characters and scoring errors give a soft warning (`extension/src/address.js`).
+  2. Allowlisted sites were never page-checked, and the zone learner missed path tenants (`telegra.ph/x`,
+     `notion.so/x`) and busy subdomain tenants. Path segments on the bare domain now count as tenants, 20 distinct
+     phishing subdomains open a whole domain (`min_children_whole`), and on allowlisted pages the page model can
+     raise a banner (never more) when the page has a password field and scores at the dangerous threshold.
+  3. Shorteners are never allowlisted (18 removed) and never judged by the address model; the target is scored.
+  4. The redirect target is scored at `onCommitted`, before the page renders, not only from the content script.
+  5. `history.replaceState` cannot lower a verdict (per-tab floor; the page message takes the worst of the reported,
+     committed and floor verdicts); login forms added after load are re-checked (MutationObserver, at most 3 times).
+- Results (address layer + bundled allowlist; before -> after): hosting-platform phishing warned 81.0% -> 85.9%;
+  OpenPhish 92.3% -> 92.7%; Phishing.Database active 82.0% -> 82.2%; natural legitimate pages 2.7% unchanged;
+  regional brand sites 0%; legitimate pages with HTML through the page path 1.17% -> 1.21% flagged; short links:
+  legitimate links wrapped in a shortener 29.6% -> 0.0% flagged at the address, phishing wrapped 24.6% -> 0.0% at the
+  address, which is now decided at the target (unwrapped phishing in that set: 86.6% warned; inferred from the code
+  path, not measured in a browser). Robustness set: no errors, slowest URL 631 ms.
+- The 10-split model numbers are unchanged: no model changed, and they are measured with the allowlist off.
+- Tests: pytest, ruff, `npm test` in `js/` (11) and `extension/` (30), e2e smoke passes.
+- Not done: back-to-safe navigation, full-hash blocklist matching, iframes/blob pages, list-sync sanity checks.
+
+### 2026-10-15/19 — Page-check gaps from the red-team review and stress test (extension 0.1.1)
+- Changed (`extension/src/{combine,background,content,address,pagefacts,warning}.js`, new `trust.js`,
+  `domain.js`, `navigation.js`; `js/src/{page,html_features}.js`; `backend/app.py`; manifest):
+  1. The page model can raise any verdict but lower one only on a page with no password, one-time-code, card or
+     PIN field (in the page or a frame); the address model's dangerous verdict always stands.
+  2. In-page route changes also ask the content script to send the page again (up to 5 rechecks).
+  3. Content script in all frames (`all_frames`, `match_about_blank`, `match_origin_as_fallback`, file pages):
+     a frame asking for credentials blocks lowering; a cross-site one is judged at its own address and HTML.
+     blob: pages stand for the site that built them, about:blank/srcdoc for the inherited origin; pages with no
+     address (data:, sandboxed frames, malformed) are not scored and warn only if they ask for credentials
+     (a blob: address used to score 0.99, a malformed one 0.98).
+  4. "Take me back to safety" goes to the tab's last safe page on another site, else a new tab (no history.back()).
+  5. Banner in a closed shadow root in the top layer (popover) with important inline styles; a page that keeps
+     removing or hiding it gets the full warning page ("tried to hide PhishDrift's warning").
+  6. A blocklist hit beats "trust this site"; trust entries expire after 30 days.
+  7. The backend is never waited for: the verdict shows at once and a late "high" answer raises it. A failed
+     lookup is `risk: "unknown"` with `error` (also on `/score`), never "low"; the extension remembers failures 30 s.
+     Verdict cache cleared after a list sync.
+  8. A bare login form (under 200 visible characters) is read by the page model, which can only raise there;
+     the password-form rule still applies to such pages.
+- Results (`python -m experiments.page_fixes_fpr`, `reports/page_fixes_fpr.md`; 2,373 natural legitimate pages
+  with HTML, 2,226 readable by the page model; no backend, no blocklist; facts from stored HTML): warned with the
+  bundled allowlist 1.21% -> 1.30% (27 -> 29 pages), dangerous 0.49% unchanged; without the allowlist 2.47% ->
+  2.61%, dangerous 1.17% unchanged. Recall effect on phishing pages not measured (no phishing HTML in the cloud).
+- Tests: `npm test` extension 41 and js 11, backend pytest 44, e2e smoke 15 steps in headless Chromium (new: frame
+  login, banner hiding, SPA route, blob page, back to safety, trust vs blocklist, slow backend with late answer).
+- Not done: rendered-DOM vs raw-HTML difference (train/serve), full-hash blocklist matching (lists thread).
+
+### 2026-10-19 — Tester round 2 on PR #24: frames, shadow roots, stale banner
+- Test thread (real Chromium, `/mnt/project-files/phishdrift/e2e_attack/harness.mjs`): 31 of 35 attack cases passed;
+  four failed. Fixed three, the fourth is a harness artefact:
+  1. A credential frame (cross-site, srcdoc or about:blank) on a page whose address looks safe is judged on its page
+     score alone (`framePageVerdict` in `extension/src/combine.js`; the agree rule needs the address model too, and a
+     frame's address says little). Frames on allowlisted, trusted or shortener addresses are skipped.
+  2. Login forms inside open and closed shadow roots are counted (`chrome.dom.openOrClosedShadowRoot`) and their HTML
+     is added inside `<body>` for the page model.
+  3. A banner from an earlier verdict is removed when the page check comes back safe, unless a warning (from a frame)
+     arrived meanwhile; the page handler re-reads the document's floor after applying its result (race with frames).
+  4. 40,000-character address: the verdict is stored (suspicious, "extremely long"); the harness's Node server answers
+     431, Chrome shows its own error page (`chrome-error://chromewebdata/`), so the harness cannot find the tab by URL
+     and no content script runs there.
+- Results: harness on the new build, all frame / srcdoc / shadow / back-to-safety cases pass; the three trust cases
+  fail only because the harness's stub serves lists without the sha256 manifest the signed list sync now requires.
+  False alarms (`reports/page_fixes_fpr.md`) unchanged at 1.30% (allowlist on) / 2.61% (off) on 2,226 readable
+  pages. Credential-frame rule on the 164 non-allowlisted legitimate pages that ask for credentials, standing in
+  for legitimate login frames (the set has no frames): 7 flagged as a frame (4.3%) against 8 as a page (4.9%).
+- Tests: `npm test` extension 54, js 11, pytest, ruff, e2e smoke 16 steps (new: srcdoc login frame, closed-shadow lure).
+
+### 2026-10-19 — Tester round 3: stale banner and "back to safety" timing
+- Test thread rerun on e68eac6: 34 of 35 attack cases (PR #23: 21 of 35). Left: the address banner from commit
+  time still showed after the page check said safe (G1 control; aoscforums.com and mehrhost.com natural pages),
+  and "Take me back to safety" sometimes bounced back to the warning page.
+- Cause and fix (`extension/src/background.js`, `content.js`, `warning.js`):
+  1. The commit-time address verdict reached the page after the page check had started and was counted as a later
+     warning, so the safe answer did not remove the banner. Verdict messages now carry `kind` ("commit" or
+     "raise"); a commit-time one is ignored once the page check has answered and never blocks the safe answer.
+  2. Verdicts still being worked out for a page the tab had left (the page check, slow scoring, a late backend
+     answer) re-opened the warning page after "Take me back to safety". The worker now keeps each tab's current
+     navigation; a verdict for an older one is dropped, and the warning page opens only if the tab has not moved
+     on since the verdict was reached. A page judged safe after the tab left is still kept as a place to go back to.
+  3. The warning page attaches its button handlers before it asks for the verdict, so an early click is not lost.
+- Results: the tester's harness (`/mnt/project-files/phishdrift/e2e_attack/harness.mjs`) gives 35 of 35 in 4 full
+  runs in a row (before the last fix: 1 or 2 of 4 runs clean). `npm test` extension 54, e2e smoke 16 steps.
+  False-alarm numbers unchanged (the combiner did not change).
+- Accepted cost of the page-model rule from 2026-10-15: on the tester's 400 natural pages, 3 more suspicious
+  verdicts (fdownload.app/hi, dropmefiles.com/d1m2f, telegram.cn/buy/11): the address model flags them and the
+  page model may no longer clear a page with login fields (5 -> 8 warned).

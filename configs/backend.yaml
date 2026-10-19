@@ -28,11 +28,46 @@ rate_limit:                      # token bucket per client address
   max_clients: 10000
 
 feedback:
-  dir: data/feedback             # one JSON line per report: domain, kind, verdict, timestamp
+  dir: data/feedback             # one JSON line per report: domain, kind, verdict, timestamp, reporter
+  # POST /register issues a per-install token "<install_id>.<hmac>" (no user data); /feedback needs
+  # it in the X-PhishDrift-Token header. The HMAC secret comes from this environment variable; if it
+  # is unset, a random one is created once in <dir>/.secret (mode 0600) so tokens survive restarts.
+  secret_env: PHISHDRIFT_FEEDBACK_SECRET
+  register_rate:                 # token bucket per client address, for /register only
+    capacity: 3
+    refill_per_s: 0.000277778    # 1/3600: one more registration per hour
+    max_clients: 10000
+  max_per_install_per_day: 20    # accepted reports per install per UTC day, then 429
+  dedupe_window_s: 86400         # same install + domain + kind again: answered, not stored again
+  max_installs: 100000           # in-memory per-install counters and dedupe keys are capped here
+
+remote_config:                   # GET /config (backend/remote_config.py); checked at start-up
+  path: configs/remote_config.yaml
+  platforms_file: configs/platforms.yaml   # never_warn may not name a hosting platform
+  bounds:                        # every threshold set there must lie in [min, max]
+    min: 0.5
+    max: 0.9999
+  max_never_warn: 200
+  list_sync_minutes:
+    min: 15
+    max: 1440
 
 lists:
   out_dir: data/lists
-  prefix_bytes: 6                # hash = sha256(key)[:2 * prefix_bytes] as hex
+  prefix_bytes: 8                # blocklist hash = sha256(key)[:2 * prefix_bytes] as hex
+  allow_prefix_bytes: 16         # allowlist hashes: 128 bits, so no domain can be registered to
+                                 # collide with a trusted one (6 bytes took about 2^48 tries)
+  sentinel_top_n: 1000           # allowlist.top: the extension refuses a list that blocks or drops these
+  specific_segment_len: 16       # a path segment this long names one object: list the URL without query
+  history_keep: 48               # builds kept in <out_dir>/history for /lists/delta
+  # ECDSA P-256 key that signs manifest.json and /config (python -m backend make-signing-key).
+  # The environment variable, if set, names the key file instead. No key: unsigned (development).
+  signing_key: data/keys/list_signing_key.pem
+  signing_key_env: PHISHDRIFT_LIST_SIGNING_KEY
+  rate:                          # token bucket per client address for /lists/* and /config only,
+    capacity: 60                 # so a feedback burst cannot stop list syncs
+    refill_per_s: 1.0
+    max_clients: 10000
   allowlist_top_n: 50000         # Tranco rank only cuts the list; never a model feature
   # Open hosting (backend/lists.py): a phishing host below an allowlisted domain makes the child
   # zone that contains it (cloudapp.azure.com, drive.google.com) open: no allowlist there, blocklist
@@ -41,6 +76,17 @@ lists:
   open_hosting:
     min_tenant_children: 3
     min_children_per_url: 0.5
+    min_children_whole: 20           # this many distinct phishing subdomains open the whole domain
+                                     # whatever their URL counts (busy tenants, as on mybluehost.me)
+    # Phishing on the bare domain counts its first path segment as the tenant (telegra.ph/x); path
+    # tenants can only open the whole domain, with the same two thresholds above.
+    # Phishing history used only as zone evidence (never blocklisted, never training data). The
+    # corpus drops domains seen in several phishing sources (hosting platforms) and our own feeds
+    # cover days, so without a long history 000webhostapp.com and the like stayed allowlisted.
+    evidence_urls:
+      - https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-ACTIVE.txt
+    evidence_cache_ttl_s: 86400
+    evidence_timeout_s: 300
 
 rules:                           # heuristics, see backend/checks.py and reports/domain_rules.md
   very_young_domain_days: 7
