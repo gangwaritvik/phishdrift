@@ -41,7 +41,7 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802 - http.server API
         path = self.path.split("?")[0]
         if path == "/menu":
-            time.sleep(15)  # longer than the test's per-page limit: the browser gets killed
+            time.sleep(30)  # longer than the test's per-page limit: the browser gets killed
         name = PAGES.get(path)
         body = (FIXTURES / name).read_bytes() if name else b"<html><body>not found</body></html>"
         self.send_response(200 if name else 404)
@@ -79,11 +79,17 @@ def test_render_and_gap_end_to_end(tmp_path, server):
     exe = _browser()
     bcfg = {
         "virtual_time_budget_ms": 2000,
-        "timeout_s": 6,
+        "timeout_s": 20,  # a cold Chrome start on a 2-CPU CI runner takes over 6 s
         "window_size": "1366,768",
         "user_agent": None,
         "max_html_chars": 5_000_000,
-        "extra_args": ["--no-proxy-server", "--no-sandbox"],  # CI runners block the sandbox
+        # CI runners block the sandbox and have a small /dev/shm
+        "extra_args": [
+            "--no-proxy-server",
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+        ],
     }
     local = {url: f"http://127.0.0.1:{server}/" + url.split("/", 3)[3] for url in URLS}
     cfg = {"sample": {"seed": 1, "size": 10, "max_per_site": 2}}
