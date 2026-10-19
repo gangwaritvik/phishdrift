@@ -587,3 +587,8 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Accepted cost of the page-model rule from 2026-10-15: on the tester's 400 natural pages, 3 more suspicious
   verdicts (fdownload.app/hi, dropmefiles.com/d1m2f, telegram.cn/buy/11): the address model flags them and the
   page model may no longer clear a page with login fields (5 -> 8 warned).
+
+### 2026-10-19 — PR #24 merged
+- Ritvik said "merge" in the project thread. PR #24 (page-check fixes, extension 0.1.1 + round 2/3 tester fixes)
+  merged into `claude/detector-improvements-0wjzl0` at 912e003 (merge commit 8e84033), CI green (`test`, GitGuardian).
+- Next: PR #23 (detector improvements) is the base branch; its merge into main is Ritvik's call.
