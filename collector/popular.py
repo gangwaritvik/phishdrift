@@ -207,6 +207,42 @@ def pick_urls(urls: Iterable[str], host: str, per_host: int, seed: int) -> list[
     return cands[:per_host]
 
 
+def commoncrawl_client(cfg: dict) -> HttpClient:
+    """Its own client for the index. The crawler's fail-fast settings (8 s connect, one retry) made
+    every index request fail, and 48 workers overran one connection pool."""
+    ccfg = cfg["popular"]["commoncrawl"]
+    http = {
+        **cfg["http"],
+        "timeout_s": ccfg["timeout_s"],
+        "retries": ccfg["retries"],
+        "backoff_factor": ccfg["backoff_factor"],
+        "connect_timeout_s": ccfg["connect_timeout_s"],
+        "default_min_interval_s": ccfg["min_interval_s"],
+    }
+    from phishdrift.config import resolve
+
+    return HttpClient.from_config(http, resolve(cfg["paths"]["http_cache_dir"]))
+
+
+def summary_text(crawl_dir) -> str:
+    """Outcome counts per seed set (attempts) and pages kept, for the popular-sites crawl."""
+    import pandas as pd
+
+    mine = ["popular", "commoncrawl"]
+    attempts = store.load_attempts(crawl_dir)
+    attempts = attempts[attempts["seed_source"].isin(mine)]
+    if attempts.empty:
+        return "No popular-site attempts recorded yet."
+    out = [pd.crosstab(attempts["seed_source"], attempts["status"]).to_string()]
+    pages = store.load_crawl(crawl_dir)
+    pages = pages[pages["seed_source"].isin(mine)]
+    out.append(
+        f"pages: {pages.groupby('seed_source').size().to_dict()}"
+        f"  sites with pages: {pages['seed_domain'].nunique()}"
+    )
+    return "\n".join(out)
+
+
 def latest_collection(client: HttpClient, pcfg: dict) -> str:
     """CDX endpoint of the newest Common Crawl collection (``collinfo.json``, cached a day)."""
     body = client.get(

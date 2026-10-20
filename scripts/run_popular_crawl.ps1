@@ -70,21 +70,5 @@ Write-Host ""
 if ($code -eq 130) { Write-Host "Interrupted: finished sites are saved. Run this script again to continue." -ForegroundColor Yellow }
 elseif ($code -ne 0) { Write-Host "crawl failed (exit code $code). See $log" -ForegroundColor Red }
 
-$summary = @'
-import pandas as pd
-from collector import store
-from phishdrift.config import load_config, resolve
-
-crawl_dir = resolve(load_config("collector")["paths"]["crawl_dir"])
-a = store.load_attempts(crawl_dir)
-a = a[a["seed_source"].isin(["popular", "commoncrawl"])]
-if a.empty:
-    print("No popular-site attempts recorded yet.")
-else:
-    print(pd.crosstab(a["seed_source"], a["status"]).to_string())
-    pages = store.load_crawl(crawl_dir)
-    pages = pages[pages["seed_source"].isin(["popular", "commoncrawl"])]
-    print("pages:", pages.groupby("seed_source").size().to_dict(), " sites with pages:", pages["seed_domain"].nunique())
-'@
-& $py -c $summary
+& $py -m collector popular-summary
 exit $code

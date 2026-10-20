@@ -392,18 +392,26 @@ def crawl(
         except Exception as exc:  # noqa: BLE001 - a missing seed list must not stop the run
             log.error("crawl %s: no seeds: %s", name, exc)
             continue
-        done = set(attempts.loc[attempts["seed_source"] == name, "seed_domain"])
+        mine = attempts[attempts["seed_source"] == name]
+        if scfg.get("retry_errors"):  # a failed or timed-out site is not "done": try it again
+            mine = mine[~mine["status"].isin([ERROR, TIMED_OUT])]
+        done = set(mine["seed_domain"])
         picked = sample_domains(domains, scfg["domains_per_run"], run_seed(now.date(), name), done)
         rows, log_rows = [], []
         base_seed = run_seed(now.date(), name)
         workers = max(1, int(cfg.get("workers", 1)))
+        if scfg["from"] == "commoncrawl":  # the index server copes with only a few clients at once
+            workers = max(1, int(cfg["popular"]["commoncrawl"].get("workers", workers)))
+            seed_client = cfg.get("popular_client", client)
+        else:
+            seed_client = client
         chunk = max(1, int(cfg.get("checkpoint_every", 100)))
 
         include_home = scfg["include_homepage"]
         endpoint = None
         if scfg["from"] == "commoncrawl":
             try:
-                endpoint = popular.latest_collection(client, cfg["popular"])
+                endpoint = popular.latest_collection(seed_client, cfg["popular"])
             except Exception as exc:  # noqa: BLE001 - no index, no commoncrawl seed set this run
                 log.error("crawl %s: no Common Crawl collection: %s", name, exc)
                 continue
@@ -414,14 +422,15 @@ def crawl(
             base_seed: int = base_seed,
             include_home: bool = include_home,
             endpoint: str | None = endpoint,
+            seed_client: HttpClient = seed_client,
         ) -> DomainResult:
             i, domain = item
             try:
                 if endpoint is not None:
                     return popular.commoncrawl_pages(
-                        client, endpoint, domain, cfg["popular"], base_seed + i
+                        seed_client, endpoint, domain, cfg["popular"], base_seed + i
                     )
-                return crawl_domain(client, domain, cfg, base_seed + i, include_home)
+                return crawl_domain(seed_client, domain, cfg, base_seed + i, include_home)
             except Exception as exc:  # noqa: BLE001 - one bad site must not stop the run
                 log.debug("crawl %s: %s", domain, exc)
                 return DomainResult(domain, ERROR, [])

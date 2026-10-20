@@ -67,12 +67,14 @@ crawler:                               # benign inner pages; robots.txt and Craw
     popular:                           # CrUX hosts, inner pages with HTML; pages belong to the "popular" source
       from: crux
       scheduled: false
+      retry_errors: true               # sites that failed or timed out are tried again next run
       domains_per_run: 1500
       include_homepage: false
     commoncrawl:                       # CrUX hosts, URLs from the Common Crawl index (no HTML)
       from: commoncrawl
       source: popular                  # pages belong to the "popular" source with the crawled ones
       scheduled: false
+      retry_errors: true
       domains_per_run: 3000
       include_homepage: false
     live:                              # Tranco-seeded pages belong to the "live" source
@@ -104,6 +106,10 @@ popular:
     collections_url: https://index.commoncrawl.org/collinfo.json
     timeout_s: 60
     min_interval_s: 1.0                # the index asks clients to be gentle: one request a second
+    workers: 3                         # the index server is slow and resets busy clients: few at once
+    connect_timeout_s: 30              # its connections are slow to open (8 s timed out for every site)
+    retries: 4                         # resets and timeouts are retried with a growing wait
+    backoff_factor: 3.0
     fetch_limit: 300                   # CDX lines read at the chosen index page
     per_host: 10                       # deep URLs kept per host
     min_pages: 3                       # fewer is logged as few_pages
