@@ -743,3 +743,9 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   same per-case results as before (33 of 35; the 2 trust cases fail on its stub lists, as on main).
 - Cost: a phishing page whose address alone is dangerous now renders with the banner until the page check
   (document_idle, at most 5 s) before the warning page replaces it.
+
+### 2026-10-20 — Ponytail plugin enabled for the project (cloud)
+- Changed: `.claude/settings.json` adds the `DietrichGebert/ponytail` marketplace (MIT, v5.3.2) and enables
+  `ponytail@ponytail`, so Claude Code sessions in this repo offer it after the user trusts the folder.
+  Default level is `full`. Its two Node.js hooks need `node` on PATH. Not tested in a live Claude Code session.
+- Next: open the repo in Claude Code on the PC, accept the plugin prompt, run `/ponytail-help`.
