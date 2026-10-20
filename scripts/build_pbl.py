@@ -58,22 +58,75 @@ VERDICT_WORDS = [
     ("partly replicated", "holds in part"),
     ("replicated", "holds"),
 ]
-QUESTION_IDS = [("F1", "Q1"), ("F2", "Q2"), ("F3", "Q3"), ("F4", "Q4"), ("HP", "Q5"), ("H6", "Q6"), ("OOD", "Q7")]
+QUESTION_IDS = [
+    ("F1", "Q1"),
+    ("F2", "Q2"),
+    ("F3", "Q3"),
+    ("F4", "Q4"),
+    ("HP", "Q5"),
+    ("H6", "Q6"),
+    ("OOD", "Q7"),
+]
 
 
 def reframe_study(t: str) -> str:
     """Turn the study text into stand-alone findings: no earlier report, no replication wording."""
     t = sub(t, ", including the character n-gram model that held up best in the first study.", ".")
-    t = sub(t, r"The first study put most of the R1 to R4 drop.*?Here the host and subdomain step", "The host and subdomain step", regex=True)
-    t = sub(t, r"This run uses 99 features rather than 38, balances depth, and caps URLs per domain, all of which can change where the information sits; the main report does not choose among those explanations.", "The feature set, depth balancing and the per-domain cap can all change where the information sits; the main study does not choose among those explanations.")
-    t = sub(t, r"The first study's pattern is therefore visible again on the raw benchmark for XGBoost, and it fades as the benchmark is cleaned. That is consistent with the F2 pattern being tied", "A host-dominated drop is therefore visible on the raw benchmark for XGBoost and fades as the benchmark is cleaned. That is consistent with the pattern being tied")
-    t = sub(t, r'; the first study also called it inconclusive, so a "not replicated" verdict here is the expected outcome.', "; an interaction is hard to establish with this many settings, so it is treated as inconclusive.")
-    t = sub(t, r"The first study saw R4 AUC vary far more across splits than raw AUC \(SD up to 0.1164 against at most 0.0026\). Here the median SD", "The median SD", regex=True)
-    t = sub(t, " the variability is smaller than in a single 10-split study on one benchmark.", " the variability is small.")
-    t = sub(t, r"The first study's 0.694 and 0.706 rested on 119 benign domains; the pairs here each use thousands.", "Each pair uses thousands of legitimate domains.")
-    t = sub(t, r"The first study's reversal \(1.0 on natural pages for the raw model\) is not reproduced in this setting, but a benchmark threshold", "No model flags every natural page, but a benchmark threshold", regex=True)
-    t = sub(t, r"\*\*Why the PhiUSIIL cell scores lower than published\.\*\*.*?(?=\n\n\*\*The flagged)", "**How data preparation changes the PhiUSIIL result.** PhiUSIIL was re-run alone, adding one cleaning step at a time (5 splits). Raw PhiUSIIL through our loader scores about 0.94 (XGBoost); sampling to 10,000 per class, removing domains shared with other phishing sources, the pool rules and the study caps take it to 0.867, so data preparation alone moves the raw score by about 0.07. R4 stays between 0.79 and 0.85 at every stage.", regex=True)
-    t = sub(t, "- **Feature engine.** 99 hand-built features replace the first study's 38; R3 equals R2 by construction.", "- **Feature engine.** R3 equals R2 by construction, because the engine drops a leading `www`.")
+    t = sub(
+        t,
+        r"The first study put most of the R1 to R4 drop.*?Here the host and subdomain step",
+        "The host and subdomain step",
+        regex=True,
+    )
+    t = sub(
+        t,
+        r"This run uses 99 features rather than 38, balances depth, and caps URLs per domain, all of which can change where the information sits; the main report does not choose among those explanations.",
+        "The feature set, depth balancing and the per-domain cap can all change where the information sits; the main study does not choose among those explanations.",
+    )
+    t = sub(
+        t,
+        r"The first study's pattern is therefore visible again on the raw benchmark for XGBoost, and it fades as the benchmark is cleaned. That is consistent with the F2 pattern being tied",
+        "A host-dominated drop is therefore visible on the raw benchmark for XGBoost and fades as the benchmark is cleaned. That is consistent with the pattern being tied",
+    )
+    t = sub(
+        t,
+        r'; the first study also called it inconclusive, so a "not replicated" verdict here is the expected outcome.',
+        "; an interaction is hard to establish with this many settings, so it is treated as inconclusive.",
+    )
+    t = sub(
+        t,
+        r"The first study saw R4 AUC vary far more across splits than raw AUC \(SD up to 0.1164 against at most 0.0026\). Here the median SD",
+        "The median SD",
+        regex=True,
+    )
+    t = sub(
+        t,
+        " the variability is smaller than in a single 10-split study on one benchmark.",
+        " the variability is small.",
+    )
+    t = sub(
+        t,
+        r"The first study's 0.694 and 0.706 rested on 119 benign domains; the pairs here each use thousands.",
+        "Each pair uses thousands of legitimate domains.",
+    )
+    t = sub(
+        t,
+        r"The first study's reversal \(1.0 on natural pages for the raw model\) is not reproduced in this setting, but a benchmark threshold",
+        "No model flags every natural page, but a benchmark threshold",
+        regex=True,
+    )
+    t = sub(
+        t,
+        r"\*\*Why the PhiUSIIL cell scores lower than published\.\*\*.*?(?=\n\n\*\*The flagged)",
+        "**How data preparation changes the PhiUSIIL result.** PhiUSIIL was re-run alone, adding one cleaning step at a time (5 splits). Raw PhiUSIIL through our loader scores about 0.94 (XGBoost); sampling to 10,000 per class, removing domains shared with other phishing sources, the pool rules and the study caps take it to 0.867, so data preparation alone moves the raw score by about 0.07. R4 stays between 0.79 and 0.85 at every stage.",
+        regex=True,
+    )
+    t = sub(
+        t,
+        "- **Feature engine.** 99 hand-built features replace the first study's 38; R3 equals R2 by construction.",
+        "- **Feature engine.** R3 equals R2 by construction, because the engine drops a leading `www`.",
+    )
+
     # claim register: drop the "First study" column
     def drop_col(m: re.Match) -> str:
         rows = []
@@ -92,17 +145,44 @@ def reframe_study(t: str) -> str:
     for a, b in QUESTION_IDS:
         t = re.sub(rf"\b{a}\b", b, t)
     t = re.sub(r"\bH5\b", "the interaction check", t)
-    t = t.replace("## 4.14 What can and cannot be claimed", "## 4.14 What can and cannot be claimed")
+    t = t.replace(
+        "## 4.14 What can and cannot be claimed", "## 4.14 What can and cannot be claimed"
+    )
     return t
 
 
 def reframe_drift(t: str) -> str:
-    t = sub(t, "A separate research study that re-tests the prior report's findings (PhishGuard) is covered in its own chapter and is not repeated here.", "The evaluation study (Chapters 3 and 4) is not repeated here.")
-    t = sub(t, r"The prior study \(`docs/prior_work/representation_sensitivity_report.pdf`\) found that.*?\(`docs/PROJECT_SPEC.md`, lessons L1 and L3\)\.", "The evaluation study (Chapter 4) shows that a benchmark score depends on how URLs are written, which sources make up each class and which split is used, and that a threshold set on a benchmark understates false alarms on ordinary pages (`docs/PROJECT_SPEC.md`).", regex=True)
-    t = sub(t, "which matches the prior report's finding that hosting platforms and shorteners dominate the overlap between phishing corpora", "consistent with hosting platforms and shorteners dominating the overlap between phishing corpora")
-    t = sub(t, ", following the prior report's result that masking raised held-out AUC in 60 of 60 comparisons", ", so that platform identity cannot stand in for phishing (the effect of masking was not testable in Chapter 4: no platform domains remain in the study cells)")
-    t = sub(t, "The gap is smaller than the prior report's (0.9988 to 0.7297 on PhiUSIIL), but it is large.", "The gap is large.")
-    t = sub(t, "No model collapsed the way the prior report's raw benchmark model did (all 11,895 natural URLs flagged), so the homepage shortcut has not returned.", "No model flags every natural page, so the homepage shortcut has not returned.")
+    t = sub(
+        t,
+        "A separate research study that re-tests the prior report's findings (PhishGuard) is covered in its own chapter and is not repeated here.",
+        "The evaluation study (Chapters 3 and 4) is not repeated here.",
+    )
+    t = sub(
+        t,
+        r"The prior study \(`docs/prior_work/representation_sensitivity_report.pdf`\) found that.*?\(`docs/PROJECT_SPEC.md`, lessons L1 and L3\)\.",
+        "The evaluation study (Chapter 4) shows that a benchmark score depends on how URLs are written, which sources make up each class and which split is used, and that a threshold set on a benchmark understates false alarms on ordinary pages (`docs/PROJECT_SPEC.md`).",
+        regex=True,
+    )
+    t = sub(
+        t,
+        "which matches the prior report's finding that hosting platforms and shorteners dominate the overlap between phishing corpora",
+        "consistent with hosting platforms and shorteners dominating the overlap between phishing corpora",
+    )
+    t = sub(
+        t,
+        ", following the prior report's result that masking raised held-out AUC in 60 of 60 comparisons",
+        ", so that platform identity cannot stand in for phishing (the effect of masking was not testable in Chapter 4: no platform domains remain in the study cells)",
+    )
+    t = sub(
+        t,
+        "The gap is smaller than the prior report's (0.9988 to 0.7297 on PhiUSIIL), but it is large.",
+        "The gap is large.",
+    )
+    t = sub(
+        t,
+        "No model collapsed the way the prior report's raw benchmark model did (all 11,895 natural URLs flagged), so the homepage shortcut has not returned.",
+        "No model flags every natural page, so the homepage shortcut has not returned.",
+    )
     t = re.sub(r"^# PhishDrift chapters \(5 to 9\)\n+", "", t)
     t = re.sub(r"^---\n", "", t, flags=re.M)
     m = re.search(r"^# 5 .*$", t, flags=re.M)
@@ -123,7 +203,12 @@ def build(guard: Path, drift: Path, out: Path) -> Path:
     r1, r4 = piv.R1.median(), piv.R4.median()
     ood = pd.read_csv(TABLES / "OOD.csv")
     ood_nat, ood_test = ood.natural_fpr.median(), ood.test_fpr.median()
-    word = {"replicated": "holds", "partly replicated": "holds in part", "not replicated": "does not hold", "not testable": "not testable"}
+    word = {
+        "replicated": "holds",
+        "partly replicated": "holds in part",
+        "not replicated": "does not hold",
+        "not testable": "not testable",
+    }
     v = lambda k: word[verd.loc[k, "verdict"]]  # noqa: E731
     pct = lambda k: f"{100 * verd.loc[k, 'share']:.0f}%"  # noqa: E731
 
@@ -170,7 +255,12 @@ The study and the detector draw on public datasets (PhreshPhish, PhiUSIIL, URL-P
 """
     rule = "A setting (one cell and model, or one pair of cells) *holds* when the direction is the same in at least 9 of 10 splits and the pooled bootstrap 95% interval excludes the null. A question's answer **holds** if it holds in at least 80% of its testable settings, **holds in part** at 50 to 80%, and **does not hold** below 50%; with fewer than 3 testable settings it is **not testable**. A setting is testable with at least 500 URLs and 100 domains per class. The rule and `configs/phishguard.yaml` were frozen at commit `082b058` before any result was seen. \"Does not hold\" describes this design's data; it is not a claim that the effect is absent elsewhere."
     ch3 = "# 3. Part I: design and method\n\n" + body(g["3"])
-    ch3 = sub(ch3, r"## 3\.4 The rule for calling a finding replicated.*", "## 3.4 The rule for calling a result consistent\n\n" + rule, regex=True)
+    ch3 = sub(
+        ch3,
+        r"## 3\.4 The rule for calling a finding replicated.*",
+        "## 3.4 The rule for calling a result consistent\n\n" + rule,
+        regex=True,
+    )
     ch4_parts = [
         "# 4. Part I: results\n",
         body(g["4"]),
@@ -247,8 +337,22 @@ date: "Project-Based Learning final report, 6th semester, October 2026"
     ]
     contents = "# Contents\n\n" + "\n".join(f"- {h}" for h in heads) + "\n\n"
     text = (
-        title + contents + "# Abstract\n\n" + abstract + "\n\n" + ch1 + "\n" + ch2 + "\n"
-        + ch3 + "\n" + ch4 + "\n" + drift_txt + "\n" + ch10
+        title
+        + contents
+        + "# Abstract\n\n"
+        + abstract
+        + "\n\n"
+        + ch1
+        + "\n"
+        + ch2
+        + "\n"
+        + ch3
+        + "\n"
+        + ch4
+        + "\n"
+        + drift_txt
+        + "\n"
+        + ch10
     )
     path = out / "pbl_report.md"
     path.write_text(text, encoding="utf-8")
