@@ -749,6 +749,7 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   `ponytail@ponytail`, so Claude Code sessions in this repo offer it after the user trusts the folder.
   Default level is `full`. Its two Node.js hooks need `node` on PATH. Not tested in a live Claude Code session.
 - Next: open the repo in Claude Code on the PC, accept the plugin prompt, run `/ponytail-help`.
+
 ### 2026-10-20 — Popular-sites test crawl on the PC: Common Crawl index failed for every site (cloud)
 - Ritvik's 20-site test (`run_popular_crawl.ps1 -DomainsPerRun 20`): Common Crawl seed set 20 of 20 sites `error`, 0 pages
   (log: connect timeout after 8 s, connection reset by the server, "connection pool is full"); the summary step then
