@@ -344,3 +344,26 @@ def test_commoncrawl_client_and_summary_text(tmp_path):
     c = popular.commoncrawl_client(cfg)
     assert (c.retries, c.connect_timeout_s, c.timeout_s, c.backoff_factor) == (4, 30, 60, 3.0)
     assert popular.summary_text(tmp_path / "empty") == "No popular-site attempts recorded yet."
+
+
+def test_popular_urls_seed_set_keeps_sitemap_urls_without_downloading_pages(tmp_path, fixtures):
+    crux = gzip.compress(b"origin,rank\nhttps://example.org,5000\n")
+    pages = {**_site(fixtures), "https://crux.test/202609.csv.gz": crux}
+    pages["https://example.org/sitemap.xml"] = pages["https://example.org/sitemap_index.xml"]
+    client = CCClient(pages)
+    cfg = _crawl_cfg(tmp_path)
+    cfg["seeds"]["popular_urls"] = {
+        "from": "crux",
+        "source": "popular",
+        "scheduled": False,
+        "domains_per_run": 5,
+        "include_homepage": False,
+        "crawl": {"store_html": False, "inner_pages_max": 20},
+    }
+    crawl_dir, seed_dir = tmp_path / "crawl", tmp_path / "seeds"
+    seed_dir.mkdir()
+    benign.crawl(client, cfg, crawl_dir, seed_dir, NOW, only=["popular_urls"])
+    got = store.load_crawl(crawl_dir)
+    assert len(got) > 0 and got["html"].isna().all()
+    assert set(got["seed_source"]) == {"popular_urls"}
+    assert "popular_urls" in crawl_seed_names("popular", cfg["seeds"])

@@ -20,6 +20,9 @@
   next time. Every request has a time limit and a site that hangs is abandoned. It uses its own lock,
   so the scheduled collector keeps running. Output is also appended to data\logs\popular_crawl_*.log.
 
+  popular_urls like popular, but only the sitemap addresses are kept (up to 20 per site, no page
+    download): fast and small, for the address model. Run it alone: -Seeds popular_urls -DomainsPerRun 500
+
   Options: -DomainsPerRun N (sites per seed set this run; try 20 first as a test), -Seeds NAMES,
   -MinFreeGB N (stop if the drive has less free space).
 

@@ -228,7 +228,7 @@ def summary_text(crawl_dir) -> str:
     """Outcome counts per seed set (attempts) and pages kept, for the popular-sites crawl."""
     import pandas as pd
 
-    mine = ["popular", "commoncrawl"]
+    mine = ["popular", "popular_urls", "commoncrawl"]
     attempts = store.load_attempts(crawl_dir)
     attempts = attempts[attempts["seed_source"].isin(mine)]
     if attempts.empty:
