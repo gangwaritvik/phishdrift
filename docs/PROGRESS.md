@@ -678,3 +678,16 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   transitions; `prefers-reduced-motion` turns animation off; light and dark themes. `demo/check.js` now returns a
   per-layer `trace` (same decisions as before; no scoring change). Test added in `extension/test/demo.test.js`.
 - The requested "UI UX Pro Max" skill is not available in this environment; the design follows general UI guidance.
+
+### 2026-10-20 — Stitch false alarm: popular tenant sites on platforms (cloud)
+- Found by Ritvik's URL check page: `stitch.withgoogle.com` was suspicious. Cause: `withgoogle.com` is on the
+  hosting-platform list (public suffix list), so the allowlist was skipped; the address model scored 0.902.
+- Changed: `backend/lists.py` `tenant_sites` + `popular_origins` (CrUX top origins, `lists.tenant_sites` in
+  `configs/backend.yaml`, `--origins-file`, `--no-tenant-sites`): a popular tenant that is its own site is allowlisted
+  by exact host unless phishing was seen on it, it is a zone or a shortener. `extension/src/lists.js` looks the host up
+  on shared addresses; demo wording. Bundled `extension/data/allowlist.json` gained 137 tenant hosts.
+- Results (`reports/tenant_sites.md`): popular tenant homepages flagged 60 of 137 -> 0; phishing on platform hosts
+  unchanged (2,740 of 3,000); natural legitimate pages unchanged (72 of 2,555); held-out phishing (OpenPhish 1,800,
+  half of ACTIVE 394,527) on kept tenants 0. Tests: pytest, `npm test` extension 66.
+- Next on the PC: `python -m backend build-lists --tranco-file ...` downloads the CrUX list itself.
+

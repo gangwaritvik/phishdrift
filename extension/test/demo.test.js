@@ -61,3 +61,12 @@ test("trace lists every layer in order, with the deciding tone", async () => {
   assert.equal(bad.trace[4].tone, "bad");
   assert.equal(bad.trace[5].tone, "na");
 });
+
+test("a popular tenant site on a hosting platform is allowlisted by its host", async () => {
+  const c = await checker;
+  const r = await checkUrl(c, "https://stitch.withgoogle.com/projects/5662571052682527?pli=1");
+  assert.equal(r.verdict, "safe");
+  assert.equal(r.layer, "allowlist");
+  const other = await checkUrl(c, "https://codetolearn.withgoogle.com/projects/5662571052682527?pli=1");
+  assert.equal(other.layer === "allowlist", false);
+});
