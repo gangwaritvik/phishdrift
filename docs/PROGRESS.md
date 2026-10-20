@@ -658,3 +658,13 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Not done: the models still use the old list (shipped address bundle: the 67-name seed list) until
   `scripts\refresh_brands.ps1 -Model` runs on the PC; brand-to-domain map needs Wikidata (PC).
 - Open: Ritvik's review of the list (left-out candidates: halifax and huntington recommended).
+
+### 2026-10-20 — URL check page without the extension (cloud)
+- Changed: `demo/` (`index.html`, `app.js`, `check.js`, `__main__.py`): `python -m demo` serves the repository on
+  127.0.0.1 and opens a page where a pasted address gets the extension's verdict, score (against the suspicious and
+  dangerous thresholds), reasons and the deciding layer. `check.js` loads the extension's own modules
+  (`extension/src` with `js/src` as `lib/` through an import map; `extension/dist` in Node) and follows
+  `layersFor()` / `evaluate()`: lists (`data/lists/` when built, else the bundled allowlist), tier A model,
+  look-alike rules, combiner. The model's own score is also shown for allowlisted addresses. Model files are read
+  from `js/data` at run time. Not applied: page model, password-form rule, backend, user trust, shortener expansion.
+  Tests: `extension/test/demo.test.js` (5), `tests/test_demo.py`; checked in headless Chromium (desktop and phone width).
