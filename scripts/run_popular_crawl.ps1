@@ -23,6 +23,9 @@
   popular_urls like popular, but only the sitemap addresses are kept (up to 20 per site, no page
     download): fast and small, for the address model. Run it alone: -Seeds popular_urls -DomainsPerRun 500
 
+
+  Default is the crawler only (popular). Add the index with -Seeds popular,commoncrawl; it stops by itself
+  after 6 sites in a row fail (the index server is often down) and can be run again later.
   Options: -DomainsPerRun N (sites per seed set this run; try 20 first as a test), -Seeds NAMES,
   -MinFreeGB N (stop if the drive has less free space).
 
@@ -33,7 +36,7 @@
 [CmdletBinding()]
 param(
     [int]$DomainsPerRun = 0,
-    [string[]]$Seeds = @("popular", "commoncrawl"),
+    [string[]]$Seeds = @("popular"),
     [int]$MinFreeGB = 5
 )
 
