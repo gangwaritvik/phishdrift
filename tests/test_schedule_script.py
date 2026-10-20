@@ -14,6 +14,7 @@ NAMES = [
     "run_collector_once.ps1",
     "schedule_collector.ps1",
     "run_ood_crawl.ps1",
+    "render_ood.ps1",
 ]
 
 
@@ -77,3 +78,10 @@ def test_scripts_parse_with_powershell(name):
         f"'{SCRIPTS / name}',[ref]$null,[ref]$e);if($e){{$e|%{{$_.Message}};exit 1}}"
     )
     assert subprocess.run(["pwsh", "-NoProfile", "-Command", cmd]).returncode == 0
+
+
+def test_render_script_runs_render_ood_then_the_gap_report():
+    src = text("render_ood.ps1")
+    assert '"collector", "render-ood"' in src and "experiments.render_gap" in src
+    assert "Get-FreeDiskGB" in src and "Find-PhishDriftPython" in src
+    assert "$code -eq 130" in src  # Ctrl+C tells the user to rerun

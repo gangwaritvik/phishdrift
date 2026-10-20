@@ -1,10 +1,10 @@
-"""Pure helpers of experiments/render_gap.py (no browser, no node)."""
+"""Pure helpers of experiments/render_gap_offline.py (no browser, no node)."""
 
 from __future__ import annotations
 
 import pandas as pd
 
-from experiments.render_gap import compare, rates, sample_pages, top_changes, transitions
+from experiments.render_gap_offline import compare, rates, sample_pages, top_changes, transitions
 
 
 def _side(verdicts, pages, has_html, creds=None):

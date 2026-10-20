@@ -35,12 +35,19 @@ const calibrated = (prob, iso, tie) => interp(prob, iso.x, iso.y) + tie * prob;
 // `allowShort`: also read a page with less visible text than training pages had (a bare login form
 // clone); the result is marked `short`. The extension asks for it only on pages with a password
 // field, and the combiner never lets the page model lower a verdict there, so on such a page the
-// model can only add a warning.
-export function scorePage(address, page, url, html, { withReasons = false, allowShort = false } = {}) {
+// model can only add a warning. With `facts` (an object), the page facts for the brand rules
+// (html_features.js pageFacts, brands from `factBrands`) are put in it from the same parse.
+export function scorePage(
+  address,
+  page,
+  url,
+  html,
+  { withReasons = false, allowShort = false, facts = null, factBrands = null } = {},
+) {
   const aValues = featureValues(address, url);
   const probAddress = 1 / (1 + Math.exp(-rawScore(address, aValues)));
   const byName = Object.fromEntries(address.names.map((n, i) => [n, aValues[i]]));
-  let pageFeatures = extractHtml(url, html, address.lists);
+  let pageFeatures = extractHtml(url, html, address.lists, null, { facts, factBrands });
   let hasHtml = Object.values(pageFeatures).some((v) => !Number.isNaN(v));
   let short = false;
   if (!hasHtml && allowShort) {

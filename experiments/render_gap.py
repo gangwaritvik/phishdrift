@@ -1,296 +1,254 @@
-"""Train/serve gap of the page model: raw server HTML against the rendered DOM (red-team gap 5).
+"""Train/serve gap of the page model: raw server HTML vs the rendered DOM on legitimate pages.
 
-``python -m experiments.render_gap --pages PAGES --cache DIR [--dist extension/dist] [--sample N]``
+``python -m experiments.render_gap --index data/raw/ood_render/render_index.csv [--no-allowlist]``
 
-The page model was trained, and its false alarms measured, on raw HTML, but the extension scores
-the live DOM after scripts ran (``extension/src/content.js`` ``pageHtml``). This renders each
-natural legitimate page's stored HTML offline in headless Chromium (``js/bench/render_pages.mjs``:
-the stored HTML is served at the page's real address, every other request is aborted, so inline
-scripts run but external scripts, styles and frames do not), serialises the DOM as ``pageHtml``
-does and reads the content script's page facts from it. Both versions then go through
-``js/bench/page_verdicts.mjs`` (allowlist, URL model, page model and combiner; no backend, no
-blocklist), with and without the bundled allowlist (four runs in parallel).
+The page model (tier B) was trained on raw HTML (dataset-saved pages and plain HTTP fetches); the
+extension scores the rendered DOM. ``python -m collector render-ood`` renders a sample of the
+naturally browsed legitimate pages that have stored raw HTML; this script scores both forms of every
+successfully rendered page with the shipped page path (``js/bench/render_verdicts.mjs``:
+js/src/page.js ``scorePage`` with the bundles the extension ships) and compares the false
+alarms. Every page is legitimate, so every warning is a false alarm.
 
-Raw side: stored HTML, facts from the bench's tag scan (as in ``page_fixes_fpr``). Rendered side:
-rendered DOM, facts from the DOM (as the extension reads them). Only pages that rendered are
-compared. A lower bound on the real gap: external scripts did not run here.
-
-The rendered HTML is cached in ``--cache`` (``raw.jsonl``, ``rendered.jsonl``; resumable); keep it
-out of the repository and ``data/``. Writes ``reports/render_gap.md`` and
-``reports/tables/render_gap.csv``.
+Writes ``reports/render_gap.md``, ``reports/tables/render_gap.csv`` (one row per HTML form) and
+``reports/tables/render_gap_pages.csv`` (one row per page).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import subprocess
-from concurrent.futures import ThreadPoolExecutor
+import tempfile
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
-from experiments.page_fixes_fpr import load_pages, run
-from phishdrift.domains import registered_domain
-
 ROOT = Path(__file__).resolve().parents[1]
-RENDER = ROOT / "js" / "bench" / "render_pages.mjs"
-SEED = 0
-VERDICT = {0: "safe", 1: "suspicious", 2: "dangerous"}
+BENCH = ROOT / "js" / "bench" / "render_verdicts.mjs"
+ALLOWLIST = ROOT / "extension" / "data" / "allowlist.json"
+FORMS = ("raw", "rendered")
+WARN = ("suspicious", "dangerous")
+MAX_FLIPS_LISTED = 60
+
+MEASURED = " ".join(
+    [
+        "What is measured: the page model was trained on raw server HTML (dataset-saved pages",
+        "and the crawler's plain HTTP fetches) while the extension scores the rendered DOM",
+        "(`outerHTML` after the page's scripts ran). The same naturally browsed legitimate pages",
+        "are scored both ways with the shipped page path (`js/src/page.js` `scorePage`: address",
+        "model + page model, `agree` rule, the bundles in `js/data/`). Every page is legitimate,",
+        "so every warning is a false alarm.",
+    ]
+)
+HOW_RENDERED = " ".join(
+    [
+        "How the rendered form was made: `python -m collector render-ood` loaded each URL afresh",
+        "in the locally installed Chrome/Edge (`--headless=new --dump-dom`, a new empty profile",
+        "per page). Pages therefore render without the user's extensions, cookies or sign-ins",
+        "(no logged-in views; consent banners as for a first-time visitor) and with a headless",
+        "browser's user agent. The raw HTML was fetched earlier by the crawler, so content",
+        "changes between the two fetches are part of the difference. The address is the sampled",
+        "URL in both forms (redirects are not followed into the address). The backend domain",
+        "checks and the password-form rule are not applied; the allowlist rows show what a user",
+        "meets with the allowlist on.",
+    ]
+)
 
 
-def sample_pages(pages: pd.DataFrame, n: int | None, seed: int = SEED) -> pd.DataFrame:
-    """All pages, or a fixed-seed sample of ``n`` of them (in the input order)."""
-    if n is None or n >= len(pages):
-        return pages.reset_index(drop=True)
-    return pages.sample(n, random_state=seed).sort_index().reset_index(drop=True)
+def load_index(index: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """All index rows, and the pages with both a raw and a rendered file (status ok)."""
+    d = pd.read_csv(index, dtype=str, keep_default_na=False)
+    ok = d[(d["status"] == "ok") & (d["raw_file"] != "") & (d["rendered_file"] != "")]
+    return d, ok.drop_duplicates("url").reset_index(drop=True)
 
 
-def read_jsonl(path: Path) -> pd.DataFrame:
-    with path.open(encoding="utf-8") as f:
-        rows = [json.loads(line) for line in f if line.strip()]
-    return pd.DataFrame(rows)
+def run_node(pairs: pd.DataFrame, base: Path, allowlist: Path | None) -> pd.DataFrame:
+    """Score (url, file) pairs with the bench; files are relative to ``base``."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "pairs.json"
+        path.write_text(json.dumps(pairs[["url", "file"]].to_dict("records")), encoding="utf-8")
+        cmd = ["node", str(BENCH), str(path), "--base", str(base)]
+        if allowlist is not None:
+            cmd += ["--allowlist", str(allowlist)]
+        out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", check=True)
+    return pd.DataFrame(json.loads(out.stdout))
 
 
-def write_jsonl(path: Path, rows: list[dict]) -> None:
-    with path.open("w", encoding="utf-8") as f:
-        for r in rows:
-            f.write(json.dumps(r) + "\n")
-
-
-def compare(raw: pd.DataFrame, ren: pd.DataFrame) -> pd.DataFrame:
-    """One row per URL scored on both sides: verdicts, blended page scores, readability."""
-    cols = ["url", "verdict", "layer", "page", "probPage", "hasHtml", "creds", "short"]
-    m = raw[cols].merge(ren[cols], on="url", suffixes=("_raw", "_ren"), validate="one_to_one")
-    for side in ("raw", "ren"):
-        m[f"page_{side}"] = pd.to_numeric(m[f"page_{side}"], errors="coerce")
-        m[f"creds_{side}"] = m[f"creds_{side}"].fillna(False).astype(bool)
-    m["delta"] = m["page_ren"] - m["page_raw"]
-    m["change"] = np.sign(m["verdict_ren"] - m["verdict_raw"]).astype(int)
-    return m
-
-
-def rates(m: pd.DataFrame) -> list[dict]:
-    """Warned (verdict >= 1) and dangerous counts on each side, over all pages and over pages the
-    page model reads on both sides."""
-    both = m["hasHtml_raw"] & m["hasHtml_ren"]
-    out = []
-    for subset, d in (("all rendered pages", m), ("page model reads both", m[both])):
-        for side, name in (("raw", "raw HTML"), ("ren", "rendered DOM")):
-            n = len(d)
-            warned = int((d[f"verdict_{side}"] >= 1).sum())
-            dangerous = int((d[f"verdict_{side}"] >= 2).sum())
-            out.append(
-                {
-                    "subset": subset,
-                    "side": name,
-                    "pages": n,
-                    "warned": warned,
-                    "warned_pct": 100 * warned / n if n else float("nan"),
-                    "dangerous": dangerous,
-                    "dangerous_pct": 100 * dangerous / n if n else float("nan"),
-                }
+def score(ok: pd.DataFrame, base: Path, allowlist: Path | None) -> pd.DataFrame:
+    """One row per page with ``raw_*`` and ``rendered_*`` columns from the bench."""
+    if allowlist is not None:
+        subprocess.run(
+            ["node", str(ROOT / "extension" / "build.mjs")], check=True, capture_output=True
+        )
+    out = ok[["id", "url", "domain"]].copy()
+    for form in FORMS:
+        res = run_node(ok.assign(file=ok[f"{form}_file"]), base, allowlist)
+        if "error" in res and res["error"].notna().any():
+            bad = res[res["error"].notna()]
+            raise RuntimeError(
+                f"{form}: {len(bad)} pages failed in the bench, e.g. {bad.iloc[0].to_dict()}"
             )
+        if "allowlisted" in res and "allowlisted" not in out:
+            out["allowlisted"] = res["allowlisted"].astype(bool).to_numpy()
+        for col in ("htmlChars", "hasHtml", "probAddress", "probPage", "blended", "verdict"):
+            out[f"{form}_{col}"] = res[col].to_numpy()
+    for form in FORMS:
+        out[f"{form}_hasHtml"] = out[f"{form}_hasHtml"].astype(bool)
+        out[f"{form}_warned"] = out[f"{form}_verdict"].isin(WARN)
+        out[f"{form}_dangerous"] = out[f"{form}_verdict"] == "dangerous"
     return out
 
 
-def transitions(m: pd.DataFrame) -> dict[str, int]:
-    """Counts of verdict changes raw -> rendered, e.g. ``{"safe->suspicious": 3}``."""
-    d = m[m["verdict_raw"] != m["verdict_ren"]]
-    keys = [
-        f"{VERDICT[a]}->{VERDICT[b]}"
-        for a, b in zip(d["verdict_raw"], d["verdict_ren"], strict=True)
-    ]
-    return dict(sorted(pd.Series(keys, dtype=object).value_counts().items()))
+def mcnemar_exact(b: int, c: int) -> float:
+    """Two-sided exact McNemar p-value for b and c discordant pairs."""
+    n = b + c
+    if n == 0:
+        return 1.0
+    k = min(b, c)
+    tail = sum(math.comb(n, i) for i in range(k + 1)) / 2**n
+    return min(1.0, 2 * tail)
 
 
-def top_changes(m: pd.DataFrame, n: int = 10) -> pd.DataFrame:
-    """The ``n`` pages with the largest absolute change in the blended page score, by domain."""
-    d = m[m["delta"].notna()].copy()
-    d["abs_delta"] = d["delta"].abs()
-    d = d.sort_values(["abs_delta", "url"], ascending=[False, True]).head(n)
-    d["domain"] = [registered_domain(u) for u in d["url"]]
-    return d
+def summarise(pages: pd.DataFrame) -> list[dict]:
+    rows = []
+    sets = {"all pages (allowlist off)": pages}
+    if "allowlisted" in pages:
+        sets["pages not on the allowlist"] = pages[~pages["allowlisted"]]
+    for name, d in sets.items():
+        for form in FORMS:
+            rows.append(
+                {
+                    "set": name,
+                    "html": form,
+                    "pages": len(d),
+                    "sites": d["domain"].nunique(),
+                    "usable_html": int(d[f"{form}_hasHtml"].sum()),
+                    "warned": int(d[f"{form}_warned"].sum()),
+                    "dangerous": int(d[f"{form}_dangerous"].sum()),
+                    "warned_rate": d[f"{form}_warned"].mean() if len(d) else float("nan"),
+                    "dangerous_rate": d[f"{form}_dangerous"].mean() if len(d) else float("nan"),
+                    "median_blended": d[f"{form}_blended"].median(),
+                }
+            )
+    return rows
 
 
-def render(pages_jsonl: Path, out: Path, workers: int, settle_ms: int, timeout_ms: int) -> None:
-    cmd = ["node", str(RENDER), str(pages_jsonl), str(out), "--workers", str(workers)]
-    cmd += ["--settle-ms", str(settle_ms), "--timeout-ms", str(timeout_ms)]
-    subprocess.run(cmd, check=True, timeout=6 * 3600)
-
-
-def _pct(x: float) -> str:
-    return f"{x:.2f}%"
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--pages", type=Path, required=True, help="parquet file or dir (url, html)")
-    ap.add_argument("--cache", type=Path, required=True, help="scratch dir for rendered HTML")
-    ap.add_argument("--dist", type=Path, default=ROOT / "extension" / "dist")
-    ap.add_argument(
-        "--sample", type=int, default=None, help="fixed-seed sample size (all if unset)"
-    )
-    ap.add_argument("--seed", type=int, default=SEED)
-    ap.add_argument("--workers", type=int, default=4)
-    ap.add_argument("--settle-ms", type=int, default=1500)
-    ap.add_argument("--timeout-ms", type=int, default=15000)
-    ap.add_argument("--reports", type=Path, default=ROOT / "reports")
-    a = ap.parse_args()
-
-    pages = sample_pages(load_pages(a.pages), a.sample, a.seed)
-    a.cache.mkdir(parents=True, exist_ok=True)
-    raw_jl = a.cache / "raw.jsonl"
-    pairs = list(zip(pages["url"], pages["html"], strict=True))
-    write_jsonl(raw_jl, [{"url": u, "html": h} for u, h in pairs])
-    ren_out = a.cache / "rendered.jsonl"
-    render(raw_jl, ren_out, a.workers, a.settle_ms, a.timeout_ms)
-
-    rendered = read_jsonl(ren_out)
-    rendered = rendered[rendered["url"].isin(set(pages["url"]))].drop_duplicates("url", keep="last")
-    ok = rendered[rendered["ok"]]
-    failed = rendered[~rendered["ok"]]
-    ren_jl = a.cache / "rendered_ok.jsonl"
-    write_jsonl(
-        ren_jl,
-        [
-            {"url": u, "html": h, "facts": f}
-            for u, h, f in zip(ok["url"], ok["html"], ok["facts"], strict=True)
-        ],
-    )
-    raw_ok_jl = a.cache / "raw_ok.jsonl"
-    keep = set(ok["url"])
-    write_jsonl(
-        raw_ok_jl,
-        [{"url": u, "html": h} for u, h in pairs if u in keep],
-    )
-
-    jobs = {
-        (side, allow): (raw_ok_jl if side == "raw" else ren_jl, allow)
-        for side in ("raw", "ren")
-        for allow in (True, False)
+def paired(d: pd.DataFrame, col: str) -> dict:
+    r, n = d[f"raw_{col}"], d[f"rendered_{col}"]
+    return {
+        "both": int((r & n).sum()),
+        "only_raw": int((r & ~n).sum()),
+        "only_rendered": int((~r & n).sum()),
+        "neither": int((~r & ~n).sum()),
     }
-    with ThreadPoolExecutor(len(jobs)) as ex:
-        futs = {k: ex.submit(run, a.dist, jl, False, allow) for k, (jl, allow) in jobs.items()}
-        res = {k: f.result() for k, f in futs.items()}
 
-    cmp = {allow: compare(res[("raw", allow)], res[("ren", allow)]) for allow in (True, False)}
 
-    # per-page table
-    parts = []
-    for allow, m in cmp.items():
-        t = m.copy()
-        t.insert(0, "allowlist", "on" if allow else "off")
-        parts.append(t)
-    fail_rows = pd.DataFrame({"url": failed["url"], "render_error": failed["error"]})
-    table = pd.concat(parts, ignore_index=True)
-    table["render_ok"] = True
-    table = pd.concat([table, fail_rows.assign(render_ok=False)], ignore_index=True)
-    (a.reports / "tables").mkdir(parents=True, exist_ok=True)
-    table.to_csv(a.reports / "tables" / "render_gap.csv", index=False)
+def _pct(a: int, b: int) -> str:
+    return f"{a} / {b} ({100 * a / b:.1f}%)" if b else f"{a} / 0 (n/a)"
 
-    raw_len = pages.set_index("url")["html"].str.len()
-    ren_len = ok.set_index("url")["html"].str.len()
-    len_ratio = ren_len / raw_len.reindex(ren_len.index)
-    ratio = len_ratio.median()
-    grew = int((len_ratio > 1.1).sum())
-    shrank = int((len_ratio < 0.9).sum())
-    err_kinds = failed["error"].str.extract(r"^([^:]+)")[0].value_counts()
 
-    off = cmp[False]
-    sampled = "" if a.sample is None else f", sample of {a.sample} with seed {a.seed}"
+def render(index: pd.DataFrame, pages: pd.DataFrame, rows: list[dict], allowlist_used: bool) -> str:
+    status = index["status"].value_counts()
+    n, sites = len(pages), pages["domain"].nunique() if len(pages) else 0
     lines = [
-        "# Raw HTML against the rendered DOM: the page path's verdicts (red-team gap 5)",
+        "# Page model on raw HTML vs the rendered DOM (natural legitimate pages)",
         "",
-        "**Offline approximation, a lower bound.** The stored raw HTML of each page was rendered",
-        "in headless Chromium with every network request other than the page itself aborted:",
-        "inline scripts ran; external scripts, styles, frames and XHR did not. Real pages that",
-        "build their content with external scripts (most single-page apps) change much more when",
-        "rendered live, so the real gap is likely larger than this. The real measurement needs",
-        "live rendering on Ritvik's PC (sandboxed browser).",
+        "Generated by `python -m experiments.render_gap`. Do not edit by hand.",
         "",
-        f"Pages: {len(pages):,} naturally browsed legitimate pages with stored HTML "
-        f"(`{a.pages.name}`{sampled}).",
-        f"Rendered OK: {len(ok):,}; failed: {len(failed):,}"
-        + (" (" + ", ".join(f"{k}: {v}" for k, v in err_kinds.items()) + ")" if len(failed) else "")
-        + f". Median render time {ok['ms'].median() / 1000:.1f} s; settle {a.settle_ms} ms after "
-        f"load, hard limit {a.timeout_ms / 1000:.0f} s per page. Median rendered/raw HTML length "
-        f"{ratio:.2f} (more than 10% longer: {grew}, more than 10% shorter: {shrank}).",
+        MEASURED,
         "",
-        "Verdicts from `js/bench/page_verdicts.mjs` (allowlist, URL model, page model, combiner as",
-        "in the service worker; no backend, no blocklist). Raw side: stored HTML, page facts from",
-        "the bench's tag scan. Rendered side: DOM serialised as `content.js` `pageHtml` does",
-        "(shadow roots appended; closed roots captured by wrapping `attachShadow`), page facts",
-        "read from the DOM as `collectPageFacts` does. Only pages that rendered are compared.",
+        HOW_RENDERED,
         "",
-        "## False alarms",
+        f"Sample: {len(index):,} pages; render status: "
+        + ", ".join(f"{k} {v:,}" for k, v in status.items())
+        + f". Compared: {n:,} pages from {sites:,} sites with both forms.",
         "",
-        "| allowlist | subset | side | pages | warned | % | dangerous | % |",
+        "| set | HTML | pages | sites | usable HTML | warned (suspicious or worse) | dangerous |"
+        " median blended score |",
         "|---|---|---|---|---|---|---|---|",
     ]
-    for allow in (True, False):
-        for r in rates(cmp[allow]):
-            lines.append(
-                f"| {'on' if allow else 'off'} | {r['subset']} | {r['side']} | {r['pages']:,} "
-                f"| {r['warned']} | {_pct(r['warned_pct'])} | {r['dangerous']} "
-                f"| {_pct(r['dangerous_pct'])} |"
-            )
-    lines += [
-        "",
-        "## Verdict changes (raw -> rendered)",
-        "",
-        "| allowlist | raised | lowered | transitions |",
-        "|---|---|---|---|",
-    ]
-    for allow in (True, False):
-        m = cmp[allow]
-        tr = ", ".join(f"{k} {v}" for k, v in transitions(m).items()) or "none"
+    for r in rows:
         lines.append(
-            f"| {'on' if allow else 'off'} | {int((m['change'] > 0).sum())} "
-            f"| {int((m['change'] < 0).sum())} | {tr} |"
+            f"| {r['set']} | {r['html']} | {r['pages']:,} | {r['sites']:,} "
+            f"| {_pct(r['usable_html'], r['pages'])} | {_pct(r['warned'], r['pages'])} "
+            f"| {_pct(r['dangerous'], r['pages'])} | {r['median_blended']:.4f} |"
         )
-    both = off["hasHtml_raw"] & off["hasHtml_ren"]
-    d_all = off["delta"].abs()
-    d_both = off.loc[both, "delta"].abs()
+    if not n:
+        return "\n".join(lines + ["", "No page has both forms: nothing to compare.", ""])
+    lines += ["", "## Paired (same page, all pages, allowlist off)", ""]
     lines += [
-        "",
-        "## Page model input (allowlist off, every page scored)",
-        "",
-        f"- Page model reads the page: raw {int(off['hasHtml_raw'].sum()):,}, rendered "
-        f"{int(off['hasHtml_ren'].sum()):,}; readable only raw "
-        f"{int((off['hasHtml_raw'] & ~off['hasHtml_ren']).sum())}, only rendered "
-        f"{int((~off['hasHtml_raw'] & off['hasHtml_ren']).sum())}.",
-        f"- Asks for credentials (password, one-time-code, card or PIN field): raw "
-        f"{int(off['creds_raw'].sum())}, rendered {int(off['creds_ren'].sum())}; changed on "
-        f"{int((off['creds_raw'] != off['creds_ren']).sum())} pages.",
-        f"- Blended page score, median absolute change: {d_all.median():.4f} over all "
-        f"{len(off):,} pages (95th percentile {d_all.quantile(0.95):.4f}, max {d_all.max():.4f}); "
-        f"{d_both.median():.4f} over the {int(both.sum()):,} pages the page model reads on both "
-        f"sides. Changed by more than 0.05 on {int((d_all > 0.05).sum())} pages.",
-        "",
-        "## Largest changes in the blended page score (allowlist off)",
-        "",
-        "| domain | raw score | rendered score | change | verdict raw -> rendered "
-        "| page model reads raw / rendered |",
+        "| outcome | both forms | only raw | only rendered | neither | exact McNemar p |",
         "|---|---|---|---|---|---|",
     ]
-    for r in top_changes(off).itertuples():
+    for col, label in (
+        ("warned", "warned"),
+        ("dangerous", "dangerous"),
+        ("hasHtml", "usable HTML"),
+    ):
+        p = paired(pages, col)
         lines.append(
-            f"| {r.domain} | {r.page_raw:.3f} | {r.page_ren:.3f} | {r.delta:+.3f} "
-            f"| {VERDICT[r.verdict_raw]} -> {VERDICT[r.verdict_ren]} "
-            f"| {'yes' if r.hasHtml_raw else 'no'} / {'yes' if r.hasHtml_ren else 'no'} |"
+            f"| {label} | {p['both']} | {p['only_raw']} | {p['only_rendered']} | {p['neither']} "
+            f"| {mcnemar_exact(p['only_raw'], p['only_rendered']):.3g} |"
         )
+    diff = (pages["rendered_blended"] - pages["raw_blended"]).abs()
     lines += [
         "",
-        "Not measured here: live rendering with external scripts, other extensions' injected",
-        "nodes (password managers, ad blockers), and the recall effect on phishing pages (no",
-        "phishing HTML in this set).",
+        f"Median |blended score difference| (rendered - raw): {diff.median():.4f} "
+        f"(90th percentile {diff.quantile(0.9):.4f}, max {diff.max():.4f}).",
         "",
     ]
-    (a.reports / "render_gap.md").write_text("\n".join(lines), encoding="utf-8")
-    print("\n".join(lines))
+    flips = pages[pages["raw_verdict"] != pages["rendered_verdict"]]
+    lines += [f"## Pages whose verdict changes ({len(flips)})", ""]
+    if len(flips):
+        lines += [
+            "| domain | URL | raw verdict | rendered verdict | raw blended | rendered blended "
+            "| usable HTML raw / rendered |" + (" allowlisted |" if allowlist_used else ""),
+            "|---|---|---|---|---|---|---|" + ("---|" if allowlist_used else ""),
+        ]
+        for r in flips.head(MAX_FLIPS_LISTED).itertuples(index=False):
+            url = r.url if len(r.url) <= 90 else r.url[:87] + "..."
+            row = (
+                f"| {r.domain} | {url} | {r.raw_verdict} | {r.rendered_verdict} "
+                f"| {r.raw_blended:.4f} | {r.rendered_blended:.4f} "
+                f"| {bool(r.raw_hasHtml)} / {bool(r.rendered_hasHtml)} |"
+            )
+            if allowlist_used:
+                row += f" {bool(r.allowlisted)} |"
+            lines.append(row)
+        if len(flips) > MAX_FLIPS_LISTED:
+            lines.append(
+                f"\n{len(flips) - MAX_FLIPS_LISTED} more in `tables/render_gap_pages.csv`."
+            )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def run(index_path: Path, reports: Path, allowlist: Path | None) -> Path:
+    index, ok = load_index(index_path)
+    base = index_path.resolve().parent
+    pages = score(ok, base, allowlist) if len(ok) else pd.DataFrame(columns=["url", "domain"])
+    rows = summarise(pages) if len(pages) else []
+    tables = reports / "tables"
+    tables.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(tables / "render_gap.csv", index=False)
+    pages.to_csv(tables / "render_gap_pages.csv", index=False)
+    out = reports / "render_gap.md"
+    out.write_text(render(index, pages, rows, allowlist is not None), encoding="utf-8")
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="experiments.render_gap")
+    ap.add_argument("--index", type=Path, required=True, help="render_index.csv of render-ood")
+    ap.add_argument("--reports", type=Path, default=Path("reports"))
+    ap.add_argument("--allowlist", type=Path, default=ALLOWLIST)
+    ap.add_argument("--no-allowlist", action="store_true", help="skip the allowlist rows")
+    a = ap.parse_args(argv)
+    allowlist = None if a.no_allowlist or not a.allowlist.exists() else a.allowlist
+    print(run(a.index, a.reports, allowlist))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

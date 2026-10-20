@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Harbor Notes</title>
+</head>
+<body>
+<div id="app">Loading...</div>
+<script>
+  // A single-page app: the raw HTML has almost no text; everything below exists only after this runs.
+  var app = document.getElementById("app");
+  app.innerHTML =
+    "<h1>Harbor Notes</h1>" +
+    "<p>Harbor Notes keeps your shared shopping lists, meeting notes and household plans in one place. " +
+    "Lists sync between your phone and laptop, and you can invite family members to edit them with you. " +
+    "Sign in to see your notebooks, or create a free account in under a minute.</p>" +
+    "<form action='https://accounts.harbor-auth.net/session' method='post'>" +
+    "<label>Email <input type='email' name='email'></label>" +
+    "<label>Password <input type='password' name='password'></label>" +
+    "<button type='submit'>Sign in</button></form>" +
+    "<p><a href='/help'>Help</a> <a href='/privacy'>Privacy</a> <a href='/terms'>Terms</a></p>";
+</script>
+</body>
+</html>
