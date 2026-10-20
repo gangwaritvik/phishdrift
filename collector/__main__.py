@@ -23,8 +23,9 @@ from datetime import UTC, datetime
 
 import pandas as pd
 
-from collector import benign, domain_capture, feeds, ood, store
+from collector import benign, domain_capture, feeds, ood, popular, store
 from collector.lock import AlreadyRunning, run_lock
+from features.lists import load_lists
 from phishdrift.config import load_config, resolve
 from phishdrift.http import HttpClient
 
@@ -180,12 +181,31 @@ def crawler_client(client: HttpClient, cfg: dict) -> HttpClient:
     )
 
 
-def run_crawl(client: HttpClient, cfg: dict, now: datetime, only: list[str] | None = None):
+def run_crawl(
+    client: HttpClient,
+    cfg: dict,
+    now: datetime,
+    only: list[str] | None = None,
+    heartbeat=None,
+):
     paths = cfg["paths"]
     crawler_cfg = {
         **cfg["crawler"],
         "tranco_cache_dir": resolve(cfg["crawler"]["tranco_cache_dir"]),
+        "heartbeat": heartbeat,
     }
+    wanted = [
+        s
+        for n, s in cfg["crawler"]["seeds"].items()
+        if (n in only if only else s.get("scheduled", True))
+    ]
+    if any(s["from"] in ("crux", "commoncrawl") for s in wanted):
+        # the popular-sites seed sets skip what the corpus, the OOD set and the feeds hold
+        crawler_cfg["popular"] = cfg["popular"]
+        crawler_cfg["popular_exclusions"] = popular.build_exclusions(cfg, now)
+        crawler_cfg["popular_shorteners"] = load_lists().shorteners
+    if any(s["from"] == "commoncrawl" for s in wanted):
+        crawler_cfg["popular_client"] = popular.commoncrawl_client(cfg)
     client = crawler_client(client, cfg)
     return benign.crawl(
         client, crawler_cfg, resolve(paths["crawl_dir"]), resolve(paths["seed_dir"]), now, only
@@ -268,7 +288,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--no-crawl", action="store_true", help="skip the benign inner-page crawl")
     r.add_argument("--no-capture", action="store_true", help="skip RDAP/DNS/TLS capture")
     c = sub.add_parser("crawl", help="benign inner-page crawl only")
-    c.add_argument("--seeds", nargs="+", help="seed sets to crawl (default: all)")
+    c.add_argument("--seeds", nargs="+", help="seed sets to crawl (default: all scheduled ones)")
+    c.add_argument(
+        "--domains-per-run", type=int, help="override domains_per_run of the chosen seed sets"
+    )
     o = sub.add_parser("crawl-ood", help="legitimate inner pages for the OOD false-positive set")
     o.add_argument("--sample-size", type=int, help="override ood.sample_size (first draw only)")
     o.add_argument("--limit", type=int, help="crawl at most this many sites in this run")
@@ -294,21 +317,44 @@ def main(argv: list[str] | None = None) -> int:
     rr.add_argument("--retry-failed", action="store_true", default=None, help="retry failed pages")
     rr.add_argument("--browser", help="path to chrome.exe / msedge.exe (else searched)")
     rr.add_argument("--resample", action="store_true", help="draw a new sample")
-    for p in (r, c, o, rr):
+    ps = sub.add_parser("popular-summary", help="outcome counts of the popular-sites seed sets")
+    for p in (r, c, o, rr, ps):
         p.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    if args.cmd == "popular-summary":
+        print(popular.summary_text(resolve(load_config("collector")["paths"]["crawl_dir"])))
+        return 0
     if args.cmd == "crawl":
         cfg = load_config("collector")
         client = HttpClient.from_config(cfg["http"], resolve(cfg["paths"]["http_cache_dir"]))
+        seeds = cfg["crawler"]["seeds"]
+        if args.domains_per_run:
+            for name in args.seeds or []:
+                if name in seeds:
+                    seeds[name]["domains_per_run"] = args.domains_per_run
+        # A long popular-sites crawl takes its own lock, so it never blocks the 12 h collector run
+        # (feeds and first-seen capture); its lock shows it is alive at every checkpoint.
+        big = bool(args.seeds) and all(
+            not seeds.get(n, {}).get("scheduled", True) for n in args.seeds
+        )
+        lock_path = (
+            resolve(cfg["paths"]["crawl_dir"]) / "popular_crawl.lock"
+            if big
+            else resolve(cfg["run"]["lock_path"])
+        )
         try:
-            with run_lock(resolve(cfg["run"]["lock_path"]), cfg["run"]["lock_stale_s"]):
-                run_crawl(client, cfg, datetime.now(UTC), args.seeds)
+            stale_s = cfg["ood"]["lock_stale_s"] if big else cfg["run"]["lock_stale_s"]
+            with run_lock(lock_path, stale_s) as lock:
+                run_crawl(client, cfg, datetime.now(UTC), args.seeds, lock.touch if big else None)
         except AlreadyRunning as exc:
             log.warning("crawl skipped: %s", exc)
+        except KeyboardInterrupt:
+            log.warning("crawl interrupted; finished sites are saved, rerun to continue")
+            return 130
         return 0
     if args.cmd == "crawl-ood":
         try:

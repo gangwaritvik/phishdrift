@@ -81,6 +81,7 @@ already flagged. The allowlist (Tranco top 50,000, hashed) skips learned open-ho
 | `attacks/` | six URL evasion families for the robustness section |
 | `js/`, `extension/` | JavaScript port of tier A (identical to Python on 272 URLs) and the MV3 extension |
 | `backend/` | FastAPI service and hashed list builder |
+| `demo/` | URL check page: paste an address, get the extension's verdict without the extension |
 
 ## Try the extension
 
@@ -92,6 +93,23 @@ Then open `chrome://extensions`, turn on Developer mode, choose **Load unpacked*
 `extension/dist`. After an update, click the reload arrow on the PhishDrift card. The backend is
 optional (`uvicorn backend.app:create_app --factory`); without it the extension still scores
 addresses and uses its bundled allowlist.
+
+## Try the URL check page (no extension)
+
+```bash
+python -m demo        # from the repository folder; opens http://127.0.0.1:8765/demo/
+```
+
+Paste an address and each layer (allowlist, blocklist, address model, look-alike rules, combiner)
+takes its own screen in turn and shows what it checked for that exact address: the domain and its hash
+looked up in the list, the clues that built the model's score, the letters compared with the closest
+brand, and the combiner's steps. It ends in the verdict (safe / suspicious / dangerous) with the reasons. It runs the extension's own address
+layers in the browser tab (allowlist, blocklist from `data/lists/` when built, tier A model,
+look-alike rules, combiner) and reads the model files from `js/data` on every load, so a
+re-exported model shows up after a reload. It does not open the page, so the page model, the
+login-form checks and the backend domain checks are not applied. No extra packages are needed;
+`python -m http.server` from the repository root also works on Linux and macOS (on Windows it may
+serve `.js` with the wrong type, which `python -m demo` avoids).
 
 ## Setup
 

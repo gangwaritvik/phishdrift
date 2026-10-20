@@ -77,5 +77,7 @@ export function scorePage(
     withReasons && hasHtml
       ? reasons(contributions(page.trees, values), values, page.names, page.reasonRules, page.explainOptions)
       : [];
-  return { hasHtml, short, probAddress, probPage, blended, verdict, reasons: why };
+  // the page model's own dangerous call (the verdict above is also dangerous on the address alone)
+  const pageDangerous = hasHtml && blended >= page.thresholds.dangerous;
+  return { hasHtml, short, probAddress, probPage, blended, verdict, pageDangerous, reasons: why };
 }

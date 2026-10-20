@@ -27,7 +27,7 @@ import threading
 import time
 import zlib
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from urllib.parse import urljoin
 from urllib.robotparser import RobotFileParser
@@ -335,12 +335,37 @@ def run_parallel(items, work, workers: int, hard_limit_s: float, poll_s: float =
 # --- one run ---------------------------------------------------------------------------
 
 
-def seed_domains(name: str, scfg: dict, cfg: dict, seed_dir: Path) -> list[str]:
+def seed_domains(
+    name: str, scfg: dict, cfg: dict, seed_dir: Path, client=None, now: datetime | None = None
+) -> list[str]:
+    if scfg["from"] in ("crux", "commoncrawl"):
+        return popular_hosts(name, scfg, cfg, client, now)
     if scfg["from"] == "tranco":
         return tranco_domains(scfg["top_n"], Path(cfg["tranco_cache_dir"]))
     if scfg["from"] == "seed_file":
         return read_seed_file(Path(seed_dir) / f"{name}.txt")
     raise ValueError(f"unknown seed type {scfg['from']!r} for {name}")
+
+
+def popular_hosts(name: str, scfg: dict, cfg: dict, client, now: datetime | None) -> list[str]:
+    """Hosts of a popular-sites seed set (collector/popular.py): the CrUX list minus everything the
+    corpus, the OOD evaluation set, the feed index and earlier crawls already hold. The sample is
+    seeded per run, so each run takes new hosts."""
+    from collector import ood, popular
+
+    now = now or datetime.now(UTC)
+    pcfg = cfg["popular"]
+    rows = popular.fetch_crux(client, pcfg, now)
+    exclude_domains, exclude_hosts = cfg["popular_exclusions"]
+    return popular.select_hosts(
+        rows,
+        exclude_domains=exclude_domains,
+        exclude_hosts=exclude_hosts,
+        platforms=ood.load_platforms(),
+        shorteners=cfg["popular_shorteners"],
+        k=scfg["domains_per_run"] * 4,  # the run then takes the unattempted ones
+        seed=pcfg["seed"] + zlib.crc32(name.encode()),  # each seed set takes its own hosts
+    )
 
 
 def crawl(
@@ -353,31 +378,61 @@ def crawl(
 ) -> dict[str, dict]:
     """Crawl each seed set once. Returns per seed set: domains tried, pages kept, the
     seed domains that yielded pages, and outcome counts."""
+    from collector import popular  # imported here: collector.popular imports this module
+
     attempts = store.load_attempts(crawl_dir)
     summary: dict[str, dict] = {}
     for name, scfg in cfg["seeds"].items():
         if only and name not in only:
             continue
+        if not only and not scfg.get("scheduled", True):
+            continue  # big one-off seed sets run only when asked for by name
         try:
-            domains = seed_domains(name, scfg, cfg, seed_dir)
+            domains = seed_domains(name, scfg, cfg, seed_dir, client, now)
         except Exception as exc:  # noqa: BLE001 - a missing seed list must not stop the run
             log.error("crawl %s: no seeds: %s", name, exc)
             continue
-        done = set(attempts.loc[attempts["seed_source"] == name, "seed_domain"])
+        mine = attempts[attempts["seed_source"] == name]
+        if scfg.get("retry_errors"):  # a failed or timed-out site is not "done": try it again
+            mine = mine[~mine["status"].isin([ERROR, TIMED_OUT])]
+        done = set(mine["seed_domain"])
         picked = sample_domains(domains, scfg["domains_per_run"], run_seed(now.date(), name), done)
         rows, log_rows = [], []
         base_seed = run_seed(now.date(), name)
         workers = max(1, int(cfg.get("workers", 1)))
+        if scfg["from"] == "commoncrawl":  # the index server copes with only a few clients at once
+            workers = max(1, int(cfg["popular"]["commoncrawl"].get("workers", workers)))
+            seed_client = cfg.get("popular_client", client)
+        else:
+            seed_client = client
         chunk = max(1, int(cfg.get("checkpoint_every", 100)))
 
         include_home = scfg["include_homepage"]
+        site_cfg = {**cfg, **scfg.get("crawl", {})}  # per seed set: store_html, inner_pages_max
+        endpoint = None
+        if scfg["from"] == "commoncrawl":
+            try:
+                endpoint = popular.latest_collection(seed_client, cfg["popular"])
+            except Exception as exc:  # noqa: BLE001 - no index, no commoncrawl seed set this run
+                log.error("crawl %s: no Common Crawl collection: %s", name, exc)
+                continue
+            log.info("crawl %s: reading %s", name, endpoint)
 
         def one(
-            item: tuple[int, str], base_seed: int = base_seed, include_home: bool = include_home
+            item: tuple[int, str],
+            base_seed: int = base_seed,
+            include_home: bool = include_home,
+            endpoint: str | None = endpoint,
+            seed_client: HttpClient = seed_client,
+            site_cfg: dict = site_cfg,
         ) -> DomainResult:
             i, domain = item
             try:
-                return crawl_domain(client, domain, cfg, base_seed + i, include_home)
+                if endpoint is not None:
+                    return popular.commoncrawl_pages(
+                        seed_client, endpoint, domain, cfg["popular"], base_seed + i
+                    )
+                return crawl_domain(seed_client, domain, site_cfg, base_seed + i, include_home)
             except Exception as exc:  # noqa: BLE001 - one bad site must not stop the run
                 log.debug("crawl %s: %s", domain, exc)
                 return DomainResult(domain, ERROR, [])
@@ -385,6 +440,9 @@ def crawl(
         items = list(enumerate(picked))
         hard_limit_s = cfg.get("domain_deadline_s", 240) + 180  # deadline + a slow last request
         chunk_rows, chunk_log = [], []
+        failures = 0  # sites in a row the Common Crawl index could not answer
+        index_cfg = cfg.get("popular", {}).get("commoncrawl", {})
+        max_failures = int(index_cfg.get("max_consecutive_errors", 0))
         # Different sites run in parallel; each host keeps its own politeness delay.
         for n_done, ((_, domain), res) in enumerate(
             run_parallel(items, one, workers, hard_limit_s), 1
@@ -401,19 +459,31 @@ def crawl(
                 }
             )
             chunk_rows += [{**p, "seed_source": name, "seed_domain": res.domain} for p in res.pages]
-            if len(chunk_log) >= chunk or n_done == len(items):
+            failures = failures + 1 if endpoint is not None and res.status == ERROR else 0
+            give_up = endpoint is not None and 0 < max_failures <= failures
+            if len(chunk_log) >= chunk or n_done == len(items) or give_up:
                 if chunk_rows:  # checkpoint: a stopped run keeps everything finished so far
                     pages = pd.DataFrame(chunk_rows).assign(crawled_at=now)
                     store.write_crawl(pages, crawl_dir, now.date(), name)
                 store.append_attempts(
                     pd.DataFrame(chunk_log, columns=store.ATTEMPT_COLUMNS), crawl_dir
                 )
+                if cfg.get("heartbeat"):
+                    cfg["heartbeat"]()  # a long run shows its lock is alive
                 rows += chunk_rows
                 log_rows += chunk_log
                 chunk_rows, chunk_log = [], []
                 log.info(
                     "crawl %s: %d/%d domains, %d pages so far", name, n_done, len(items), len(rows)
                 )
+            if give_up:  # the sites not reached stay untried for the next run
+                log.error(
+                    "crawl %s: %d sites in a row failed, the index is not answering; stopping "
+                    "this seed set (run it again later)",
+                    name,
+                    failures,
+                )
+                break
         statuses = pd.Series([r["status"] for r in log_rows], dtype=object).value_counts()
         summary[name] = {
             "domains": len(picked),

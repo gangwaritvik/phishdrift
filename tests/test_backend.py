@@ -404,6 +404,7 @@ def test_build_lists_end_to_end(tmp_path):
         "blocklist_domains": 1,
         "blocklist_urls": 3,
         "allowlist_domains": 3,
+        "allowlist_tenant_sites": 0,
         "open_hosting_domains": 1,
         "allowlist_top": 3,
     }
@@ -542,6 +543,7 @@ def test_cli_build_lists_without_tranco_continues(tmp_path, monkeypatch, caplog)
         raise OSError("offline")
 
     monkeypatch.setattr(lists, "tranco_from_package", no_tranco)
+    monkeypatch.setattr(cli, "fetch_popular_origins", lambda settings: [])
     out = tmp_path / "out"
     assert cli.main(["build-lists", "--out", str(out)]) == 0
     manifest = json.loads((out / "manifest.json").read_text())
@@ -593,3 +595,69 @@ def test_shorteners_are_never_allowlisted():
         [], ["t.co", "example.com"], frozenset(), 6, shorteners=frozenset({"t.co"})
     )
     assert docs["allowlist"]["domains"] == [lists.list_hash("example.com", 6)]
+
+
+def test_popular_tenant_sites_are_allowlisted_by_host():
+    platforms = frozenset({"withgoogle.com", "github.io", "amazonaws.com", "bit.ly"})
+    origins = [
+        "https://stitch.withgoogle.com",  # popular tenant, no phishing: kept
+        "https://codetolearn.withgoogle.com",  # phishing seen on it: dropped
+        "https://withgoogle.com",  # the platform itself: never
+        "https://s3.amazonaws.com",  # not a tenant site (buckets are paths): dropped
+        "https://goodguy.github.io",
+        "https://badguy.github.io",  # phishing below it: dropped
+        "https://bit.ly",  # shortener
+        "https://www.example.com",  # not a platform: Tranco decides
+    ]
+    phishing = ["https://codetolearn.withgoogle.com/x", "https://a.badguy.github.io/login"]
+    docs = lists.build_lists(
+        [],
+        ["example.com"],
+        platforms,
+        6,
+        extra_phishing_urls=phishing,
+        shorteners=frozenset({"bit.ly"}),
+        popular_origins=origins,
+    )
+    allowed = set(docs["allowlist"]["domains"])
+    want = {"stitch.withgoogle.com", "goodguy.github.io", "example.com"}
+    assert allowed == {lists.list_hash(k, 6) for k in want}
+    assert docs["manifest"]["counts"]["allowlist_tenant_sites"] == 2
+    assert lists.list_hash("withgoogle.com", 6) not in allowed
+
+
+def test_tenant_sites_inside_open_hosting_zones_are_dropped():
+    got = lists.tenant_sites(
+        ["https://x.web.app", "https://y.web.app"], {"web.app"}, {"x.web.app"}, []
+    )
+    assert got == ["y.web.app"]
+
+
+def test_origin_ranks_are_cut(tmp_path):
+    import gzip
+
+    text = "origin,rank\nhttps://a.github.io,1000\nhttps://b.github.io,50000\nhttps://c.github.io,100000\n"
+    assert lists.parse_origin_ranks(text, 50000) == ["https://a.github.io", "https://b.github.io"]
+    path = tmp_path / "crux.csv.gz"
+    path.write_bytes(gzip.compress(text.encode()))
+    assert lists.read_origins_file(path, 1000) == ["https://a.github.io"]
+
+
+def test_popular_origins_fall_back_to_an_older_month(monkeypatch):
+    import gzip
+    from datetime import UTC, datetime
+
+    from backend import __main__ as cli
+
+    asked = []
+
+    def get(self, url, **kw):
+        asked.append(url)
+        if "202609" in url:
+            raise OSError("not published yet")
+        return gzip.compress(b"origin,rank\nhttps://stitch.withgoogle.com,50000\n")
+
+    monkeypatch.setattr(cli.HttpClient, "get", get)
+    got = cli.fetch_popular_origins(Settings.load(), now=datetime(2026, 10, 20, tzinfo=UTC))
+    assert got == ["https://stitch.withgoogle.com"]
+    assert ["202609" in asked[0], "202608" in asked[1]] == [True, True]

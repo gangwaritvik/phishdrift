@@ -3,11 +3,15 @@
 // suspicious; only the domain name is sent), then the page model on the HTML the content script
 // sends (on device), and the login forms of the page's frames.
 // Webnavigation cannot hold a page back, so a slow check never delays loading (fail open); a
-// dangerous verdict redirects the tab to the warning page once it is known. The backend is never
+// dangerous verdict redirects the tab to the warning page once it is known. Before commit only a
+// blocklist hit does that (the address before server redirects may be a form post or a redirect
+// hop), and a dangerous verdict from the address model alone waits for the page check: it is shown
+// as a banner, and becomes the warning page if the page asks for credentials, the page model
+// agrees, or no page check arrives within HOLD_MS (combine.js `addressOnly`). The backend is never
 // waited for: the verdict is shown at once and raised when (and if) the backend answers.
 
 import { sanitizeSettings } from "./config.js";
-import { combine, DANGEROUS, FRAME_PAGE_REASON, SAFE, SUSPICIOUS, framePageVerdict } from "./combine.js";
+import { addressOnly, combine, DANGEROUS, FRAME_PAGE_REASON, SAFE, SUSPICIOUS, framePageVerdict } from "./combine.js";
 import { listDomainKey, listUrlKey } from "./keys.js";
 import { MAX_URL_CHARS, effectiveUrl, isLocalAddress, scoreAddress } from "./address.js";
 import { DOMAIN_FAILURE_MS, usableAnswer } from "./domain.js";
@@ -420,8 +424,26 @@ async function raiseTab(tabId, result) {
   notifyTab(tabId, shown);
 }
 
-// Before the request: the address as typed or clicked (earliest possible warning). A late
-// backend answer is applied after commit, not here.
+// A dangerous verdict shown as suspicious for now (before commit, or until the page check).
+const held = (result) => ({ ...result, verdict: SUSPICIOUS, held: true });
+const HOLD_MS = 5000;
+
+// Committed but not yet read: the address model's dangerous verdict alone becomes the warning page
+// only if no page check has started by HOLD_MS (pages where the content script cannot run).
+function holdForPage(tabId, url, result) {
+  setTimeout(
+    () =>
+      guarded(async () => {
+        const doc = await session.get(`doc:${tabId}`);
+        if (doc?.url !== url || doc.pageSeen || !stillAt(tabId, url)) return;
+        await raiseTab(tabId, result);
+      }),
+    HOLD_MS,
+  );
+}
+
+// Before the request: the address as typed or clicked (earliest possible warning, but only a
+// blocklist hit opens the warning page here). A late backend answer is applied after commit.
 // The address each tab is navigating to now. A verdict reached for an older navigation (slow
 // scoring, a late backend answer) is dropped, so it can never send the tab that has since moved on
 // ("Take me back to safety", a new link) back to the warning page. Lost if the worker restarts;
@@ -435,7 +457,8 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   lastNav.set(tabId, url);
   guarded(async () => {
     const { result } = await evaluate(url);
-    if (stillAt(tabId, url)) await applyResult(tabId, result);
+    const early = result.verdict === DANGEROUS && result.layer !== "blocklist" ? held(result) : result;
+    if (stillAt(tabId, url)) await applyResult(tabId, early);
   });
 }, navFilter);
 
@@ -455,9 +478,11 @@ chrome.webNavigation.onCommitted.addListener((details) => {
       }
       if (earlier) return raiseTab(tabId, result); // late backend answer
       if (doc.pageDone) return; // the page check won
-      await applyResult(tabId, result);
-      await rememberSafe(tabId, result);
-      notifyTab(tabId, result, "commit");
+      const shown = addressOnly(result) ? held(result) : result;
+      await applyResult(tabId, shown);
+      await rememberSafe(tabId, shown);
+      notifyTab(tabId, shown, "commit");
+      if (shown !== result) holdForPage(tabId, url, result);
     });
   });
 }, navFilter);
@@ -472,7 +497,8 @@ chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
     if (!committed) await session.set(`doc:${tabId}`, { url, floor: null, pageDone: false, frameCredentials: false });
     const doc = committed ?? url;
     await check(url, {}, async (result) => {
-      if (stillAt(tabId, doc) && (await sameDoc(tabId, doc))) await raiseTab(tabId, result);
+      // the page is asked to send its content again below; that check decides an address-only block
+      if (stillAt(tabId, doc) && (await sameDoc(tabId, doc))) await raiseTab(tabId, addressOnly(result) ? held(result) : result);
     });
     chrome.tabs.sendMessage(tabId, { type: "phishdrift-recheck" }, { frameId: 0 }).catch(() => {});
   });
@@ -538,6 +564,7 @@ const handlers = {
     const tabId = sender.tab?.id;
     const at = tabId === undefined ? undefined : lastNav.get(tabId); // before any await
     const doc = tabId === undefined ? null : await session.get(`doc:${tabId}`);
+    if (doc) await session.set(`doc:${tabId}`, { ...doc, pageSeen: true }); // stops holdForPage
     const facts = { ...msg.facts, frameCredentials: Boolean(doc?.frameCredentials) };
     const options = { facts, html: msg.html ?? null, origin: msg.origin ?? null };
     // Returns { result, pending }; `pending` settles when a backend lookup it started is done.

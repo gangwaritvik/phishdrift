@@ -3,7 +3,9 @@
 // full URL, never the domain, and the allowlist does not apply. Shared hosting is the platform list
 // (configs/platforms.yaml, bundled with the model) plus the "open hosting" zones the list builder
 // learned from phishing hosts below allowlisted domains (allowlist.open_hosting, for example
-// cloudapp.azure.com or drive.google.com; backend/lists.py `open_hosting_zones`).
+// cloudapp.azure.com or drive.google.com; backend/lists.py `open_hosting_zones`). There the
+// allowlist is looked up by exact host instead: the builder lists popular tenant sites on
+// platforms (stitch.withgoogle.com) by host (backend/lists.py `tenant_sites`).
 
 import { hashPrefix, listDomainKey, listUrlExpressions, listUrlKey } from "./keys.js";
 
@@ -74,7 +76,11 @@ export class ListSet {
         }
       }
     }
-    if (!shared) {
+    if (shared) {
+      if (!shortener && !blocked && this.allowBytes && this.allowDomains.size) {
+        allow = this.allowDomains.has(await hashPrefix(host, this.allowBytes));
+      }
+    } else {
       if (!blocked && this.blockBytes && this.blockDomains.size) {
         if (this.blockDomains.has(await hashPrefix(domain, this.blockBytes))) blocked = "domain";
       }

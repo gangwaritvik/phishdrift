@@ -659,6 +659,7 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   `scripts\refresh_brands.ps1 -Model` runs on the PC; brand-to-domain map needs Wikidata (PC).
 - Open: Ritvik's review of the list (left-out candidates: halifax and huntington recommended).
 
+<<<<<<< HEAD
 ### 2026-10-19 — Known gaps: local addresses, zone-aware scoring (measured, not shipped)
 - Found while checking red-team gap 13 (IP hosts): public IP hosts are already warned (dangerous) by the address
   model, but so are local ones. `http://192.168.0.1/` (a router), `http://127.0.0.1:8000/login` and
@@ -686,3 +687,166 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   external scripts did not run. The live-rendering number needs the PC: `scripts/render_ood.ps1` with `experiments/render_gap.py` (brand thread) does that.
 - Still open (need Ritvik's PC): `python -m backend make-signing-key` + rebuild, and the Tranco `build-lists`
   run; live rendering for gap 5. Brand list additions (Slack, Revolut, Swiggy) are with the brand thread.
+=======
+### 2026-10-20 — URL check page without the extension (cloud)
+- Changed: `demo/` (`index.html`, `app.js`, `check.js`, `__main__.py`): `python -m demo` serves the repository on
+  127.0.0.1 and opens a page where a pasted address gets the extension's verdict, score (against the suspicious and
+  dangerous thresholds), reasons and the deciding layer. `check.js` loads the extension's own modules
+  (`extension/src` with `js/src` as `lib/` through an import map; `extension/dist` in Node) and follows
+  `layersFor()` / `evaluate()`: lists (`data/lists/` when built, else the bundled allowlist), tier A model,
+  look-alike rules, combiner. The model's own score is also shown for allowlisted addresses. Model files are read
+  from `js/data` at run time. Not applied: page model, password-form rule, backend, user trust, shortener expansion.
+  Tests: `extension/test/demo.test.js` (5), `tests/test_demo.py`; checked in headless Chromium (desktop and phone width).
+
+### 2026-10-20 — URL check page: animated layer-by-layer view (cloud)
+- Ritvik found the first page vague and choppy. Redesigned `demo/index.html` and `demo/app.js`: the address is shown
+  entering a vertical pipeline; a marker moves from layer to layer (allowlist, blocklist, address model, look-alike
+  rules, combiner, and a greyed "page and domain checks" step that only the extension runs), each lighting up with what it
+  found; the verdict panel then draws a shield (check, warning or cross) with the reasons and the model score on a
+  meter against both thresholds. Row heights are fixed before the run so nothing jumps; only transform and opacity
+  transitions; `prefers-reduced-motion` turns animation off; light and dark themes. `demo/check.js` now returns a
+  per-layer `trace` (same decisions as before; no scoring change). Test added in `extension/test/demo.test.js`.
+- The requested "UI UX Pro Max" skill is not available in this environment; the design follows general UI guidance.
+
+### 2026-10-20 — URL check page: one screen per layer, new palette (cloud)
+- Ritvik: the layer view was fixed cards with generic paragraphs. Reworked `demo/` so each layer is its own screen,
+  played one after another, showing what it checked for the typed address: allowlist (domain, SHA-256 fingerprint,
+  found or not), blocklist (the URL keys that were hashed and looked up), address model (score built from the real
+  clues, in log-odds, on a gauge with both thresholds), look-alike rules (letters compared with the closest brand,
+  after mapping look-alike characters), combiner (steps on a safe / suspicious / dangerous ladder), then the verdict.
+  Step bar at the top; click a finished step to replay it; "Skip to verdict". New violet palette, light and dark.
+- Changed: `demo/evidence.js` (new, reads the extension's own objects, changes no verdict), `demo/check.js`,
+  `demo/index.html`, `demo/app.js`, test in `extension/test/demo.test.js`. No backend or list code touched.
+- Checked in headless Chromium (desktop, 390 px dark) on the look-alike, normal, punycode and phishing examples;
+  not on Ritvik's PC.
+
+### 2026-10-20 — Stitch false alarm: popular tenant sites on platforms (cloud)
+- Found by Ritvik's URL check page: `stitch.withgoogle.com` was suspicious. Cause: `withgoogle.com` is on the
+  hosting-platform list (public suffix list), so the allowlist was skipped; the address model scored 0.902.
+- Changed: `backend/lists.py` `tenant_sites` + `popular_origins` (CrUX top origins, `lists.tenant_sites` in
+  `configs/backend.yaml`, `--origins-file`, `--no-tenant-sites`): a popular tenant that is its own site is allowlisted
+  by exact host unless phishing was seen on it, it is a zone or a shortener. `extension/src/lists.js` looks the host up
+  on shared addresses; demo wording. Bundled `extension/data/allowlist.json` gained 137 tenant hosts.
+- Results (`reports/tenant_sites.md`): popular tenant homepages flagged 60 of 137 -> 0; phishing on platform hosts
+  unchanged (2,740 of 3,000); natural legitimate pages unchanged (72 of 2,555); held-out phishing (OpenPhish 1,800,
+  half of ACTIVE 394,527) on kept tenants 0. Tests: pytest, `npm test` extension 66.
+- Next on the PC: `python -m backend build-lists --tranco-file ...` downloads the CrUX list itself.
+
+### 2026-10-20 — Deep legitimate URLs of popular sites: crawl + Common Crawl seed sets (cloud, code only)
+- Why: the address model's false alarms (2.8% of natural legitimate pages; `stitch.withgoogle.com`) come from benign
+  training URLs that are mostly bare homepages. Ritvik chose "we crawl" and "use both" (crawler and Common Crawl index).
+- Changed: `collector/popular.py` (CrUX host list, host selection, Common Crawl CDX reader), seed sets `popular`
+  (crawler, HTML kept) and `commoncrawl` (index URLs, no HTML) in `configs/collector.yaml` (`scheduled: false`, run by
+  name; own lock so the 12 h collector is never blocked; heartbeat at every checkpoint), new benign-only source
+  `popular` in `configs/datasets.yaml` (`kind: crawl_only`, after `phiusiil` in the source priority; not in the time
+  slice), `data_pipeline/sources.py` (`crawl_seed_names`, `commoncrawl` origin), `scripts/run_popular_crawl.ps1`,
+  `python -m collector crawl --seeds ... --domains-per-run N`. Tests: `tests/test_collector_popular.py` (fixtures only).
+- Rules kept: popularity picks hosts and is never stored or a feature; hosts in the corpus, the OOD evaluation set,
+  the feed index, earlier crawls or with feed phishing are skipped (natural pages stay evaluation-only); robots.txt and
+  Crawl-delay obeyed; the corpus still caps a registrable domain at 20 URLs, so a hosting platform's tenants share 20.
+- Not measured: nothing was fetched (the sandbox cannot reach Common Crawl, CrUX hosts or the open web), so the real
+  yield, the Common Crawl request shapes against the live API, and the effect on false alarms are unknown. Next: run
+  `scripts\run_popular_crawl.ps1 -DomainsPerRun 20` on the PC as a test, then the full run, rebuild the pool
+  (`python -m data_pipeline build --reuse-interim --reload popular`), retrain, and re-measure false alarms on the
+  natural pages (`experiments.shipped_verdicts`, `reports/blend2_rules.md`).
+
+### 2026-10-20 — Address model alone no longer blocks a page that asks for nothing (cloud)
+- Found by Ritvik: the warning page blocked `https://www.mujtoppers.in/api/turnstile/verify` on a college
+  study site. The address model scores it 0.989 against the 0.986 dangerous cutoff (the word "verify" on an
+  unlisted `.in` domain; `/branch/second/subjects/CSE` on the same site scores 0.598). Probably a form post to
+  a Cloudflare Turnstile verify endpoint that redirects back (inferred; the sandbox cannot reach the site):
+  the old worker opened the warning page at `onBeforeNavigate`, before the server's redirect.
+- Changed (`extension/src/background.js`, `combine.js`, `js/src/page.js`): before commit only a blocklist hit
+  opens the warning page; a dangerous verdict from the address model alone (`addressOnly`) is shown as the
+  banner at commit and becomes the warning page only if the page asks for a password, one-time code, card or
+  PIN field, the page model's own score is over its dangerous cutoff (`pageDangerous`; the page verdict echoes
+  the address), a second layer raises it (domain checks, look-alike rules), or no page check starts within
+  5 s. Never lowered below suspicious. Extension 0.1.2.
+- Results (`python -m experiments.address_only_blocks`, `reports/address_only_blocks.md`; warned shares
+  unchanged by construction): natural legitimate pages blocked 11 -> 6 of 2,373 with the allowlist (30 -> 23
+  without); time slice legitimate 85 -> 40 of 51,342, phishing 64.3% -> 62.5% blocked (72.3% warned either way);
+  split 0 test legitimate 21 -> 15 of 19,109, phishing 84.4% -> 83.6%. Page facts come from stored features,
+  not a live DOM; the PC's processed files were staged for this.
+- Tests: `npm test` extension 65, js 15; e2e smoke 18 steps (new: address-only page gets the banner; a slow
+  verify-and-redirect hop is not blocked; both fail on the old build); the tester's attack harness gives the
+  same per-case results as before (33 of 35; the 2 trust cases fail on its stub lists, as on main).
+- Cost: a phishing page whose address alone is dangerous now renders with the banner until the page check
+  (document_idle, at most 5 s) before the warning page replaces it.
+
+### 2026-10-20 — Ponytail plugin enabled for the project (cloud)
+- Changed: `.claude/settings.json` adds the `DietrichGebert/ponytail` marketplace (MIT, v5.3.2) and enables
+  `ponytail@ponytail`, so Claude Code sessions in this repo offer it after the user trusts the folder.
+  Default level is `full`. Its two Node.js hooks need `node` on PATH. Not tested in a live Claude Code session.
+- Next: open the repo in Claude Code on the PC, accept the plugin prompt, run `/ponytail-help`.
+
+### 2026-10-20 — Popular-sites test crawl on the PC: Common Crawl index failed for every site (cloud)
+- Ritvik's 20-site test (`run_popular_crawl.ps1 -DomainsPerRun 20`): Common Crawl seed set 20 of 20 sites `error`, 0 pages
+  (log: connect timeout after 8 s, connection reset by the server, "connection pool is full"); the summary step then
+  crashed because PowerShell 5.1 strips the double quotes of an inline `python -c` script.
+- Cause (from the log, not reproduced here: the sandbox cannot reach the index): the index client inherited the
+  crawler's fail-fast settings (8 s connect timeout, 1 retry) and the 48 crawler workers all used one connection
+  pool, so requests to `index.commoncrawl.org` timed out or were reset and none was retried.
+- Changed: `collector/popular.py` `commoncrawl_client` (own client: 30 s connect timeout, 4 retries with backoff 3,
+  one request a second), 3 workers for the index (`popular.commoncrawl.workers`), `retry_errors` on both seed sets
+  (sites that failed or timed out are tried again; the 20 failed sites are not marked done), `python -m collector
+  popular-summary` replaces the inline script in `scripts/run_popular_crawl.ps1`. Tests added.
+- Not measured: whether the index now answers (needs the PC). The crawler (`popular`) results of the same test run
+  were not seen by me.
+
+### 2026-10-20 — Popular-sites crawl, second PC test: crawler works, Common Crawl index still unreachable (cloud)
+- Read Ritvik's log (`data/logs/popular_crawl_2026-10-20.log`, staged from the PC). The new code was running (retries
+  with a 30 s connect timeout). Crawler seed set `popular`, 20 sites per test: 34 to 58 pages from 7 to 12 sites with
+  pages (about 2 pages per site; 4 runs at 22:45, 23:08, 23:25, 23:28). Common Crawl seed set: 20 of 20 `error` in
+  every run; the last run took 17 minutes and the log has 73 connect timeouts (30 s) and 3 connection resets from
+  `index.commoncrawl.org`, so the PC's connection to the index server mostly never opens (the collection list loads,
+  the index queries do not). Cause on the server or the network side; not fixed by retries.
+- Changed: the summary command crashed (`args.verbose` missing on its parser: my bug in PR #34); the index seed set now
+  stops after `max_consecutive_errors` (6) sites in a row fail and leaves the rest untried; `run_popular_crawl.ps1`
+  runs the crawler only by default (`-Seeds popular,commoncrawl` adds the index). Tests added.
+- Next: Ritvik runs the crawler at full size (about 2 pages per site, so 1,500 sites is roughly 3,000 pages;
+  estimate); the index can be tried again later.
+
+### 2026-10-20 — PhishGuard verification study run (research study, separate from the PhishDrift detector)
+- New `phishguard/` package, `configs/phishguard.yaml` (plan and replication rule frozen at commit 082b058 before
+  the run), `tests/test_phishguard.py`. One command: `python -m phishguard all` (resumable, one result file per job).
+  Proposal: Claude Doc "PhishGuard: Study Report and Verification Proposal".
+- Run: 291 jobs (25 URL cells x 10 splits, 4 page cells x 10 splits, 1 fingerprint check), 4 processes, no failures.
+  Output `reports/phishguard/verification.md` and `reports/phishguard/tables/`.
+- Part A verdicts (URLs): F1 replicated (100/100); H6 replicated (392/392); F3 partly (76%, 53% after depth
+  reweighting); OOD partly (76%); F2 not replicated (0/100; R2-to-R4 share median 0.21 vs 0.87 in the first study);
+  F4 not replicated (45%); H5 not replicated (26%, expected inconclusive); HP not testable (no platform domains
+  left after the 5-per-domain cap). E0: PhiUSIIL cell raw AUC 0.864 vs 0.999 published, R4 0.791 vs 0.730.
+  Shuffled-label controls 0.448-0.525, 1 of 100 flagged (urlphish__phiusiil, R1, LightGBM, 0.448; to investigate).
+- Not done: investigation of the flagged control and of the E0 gap; PhishTank cells (not in the pool).
+
+### 2026-10-20 — PhishGuard follow-up checks: PhiUSIIL gap and the flagged control
+- Changed: `phishguard/checks.py` (`python -m phishguard.checks reproduce|control`); outputs
+  `reports/phishguard/tables/reproduce.csv` (5 splits, XGBoost and char n-gram) and
+  `reports/phishguard/tables/control_urlphish__phiusiil.csv` (10 splits x 5 shuffle seeds).
+- Gap to the published PhiUSIIL numbers (median raw ROC-AUC, XGBoost / char n-gram): raw PhiUSIIL through our loader
+  0.941 / 0.940 (published 0.999); sampled to 10,000 per class 0.934 / 0.923; shared domains removed 0.878 / 0.883;
+  pool URL rules 0.873 / 0.882; study cell 0.867 / 0.853. Cleaning explains about 0.07; about 0.06 is already gone
+  at the raw stage, most likely because our loader canonicalises the URL strings (inferred, not tested; the original
+  CSV strings are not kept). R4 stays 0.79-0.85 at every stage (published 0.730). Benign depth 0 is 100% at every stage.
+- Control: LightGBM on shuffled labels mean ROC-AUC 0.449 (SD 0.031, 50 runs), also 0.441 when the fitted features
+  use shuffled labels; char n-gram 0.506. Below 0.5 for every seed, so a LightGBM artefact of this cell, not chance and
+  not a leak (a leak pushes above 0.5); the same model at R4 and in the other 24 cells was not flagged.
+- Next: write both into the study report as limitations; optionally rerun the control unweighted / larger leaves.
+
+### 2026-10-20 — Addresses-only seed set `popular_urls` for lakhs of legitimate inner pages (cloud, code only)
+- Ritvik asked for lakhs of legitimate inner pages. The sandbox cannot reach Common Crawl, Hugging Face, Tranco or Kaggle
+  (proxy 403), so everything runs on the PC. Chosen (decision card): addresses first, HTML at scale second.
+- Changed: `collector/benign.py` seed sets can override crawler settings with `crawl:`; new seed set `popular_urls` in
+  `configs/collector.yaml` (CrUX hosts, `store_html: false`, `inner_pages_max: 20`, pages belong to source `popular`),
+  included in `popular-summary`; test in `tests/test_collector_popular.py`.
+- Not measured: yield per site, time, effect on false alarms. Estimate only: 8-10 addresses per site, about 1 hour per lakh.
+- Known limit before a big HTML crawl: `store.write_crawl` rewrites the whole day file at each checkpoint and `load_crawl`
+  loads all HTML at once; the HTML round needs part files and a streaming load.
+- Next: Ritvik's 10k-page rebuild finishes first; then a 500-site test of `popular_urls`.
+
+### 2026-10-21 — Popular-sites crawler, 5,000-site pass (cloud)
+- Ritvik's PC run (log excerpt, not the file): 5,000 sites, 10,818 deep pages; status ok 2,133, no_pages 1,295,
+  robots_disallow_all 891, few_pages 364, robots_unreadable 303, crawl_delay_too_long 14. The end-of-run summary crashed
+  with the old `args.verbose` error, so the PC still lacks PR #37.
+- Next: update the PC from PR #37, rebuild the pool with `--reload popular`, retrain, re-measure false alarms.
+>>>>>>> origin/main

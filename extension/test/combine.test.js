@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { BLOCKLIST_REASON, DANGEROUS, NO_ADDRESS_REASON, SAFE, SUSPICIOUS, combine } from "../dist/combine.js";
+import { ADDRESS_ONLY_NOTE, BLOCKLIST_REASON, DANGEROUS, NO_ADDRESS_REASON, SAFE, SUSPICIOUS, addressOnly, combine } from "../dist/combine.js";
 
 const model = (verdict, texts = ["why"]) => ({ verdict, prob: 0.5, reasons: texts.map((text) => ({ text })) });
 const base = { trusted: false, allow: false, blocked: null, model: model(SAFE, []), domain: null, backendFailed: false };
@@ -89,8 +89,34 @@ test("the page model lowers an address warning only on a page that asks for no c
   assert.equal(combine({ ...base, model: model(SUSPICIOUS) }, otp, pageModel(SAFE)).verdict, SUSPICIOUS);
   // without page facts nothing is lowered
   assert.equal(combine({ ...base, model: model(SUSPICIOUS) }, null, pageModel(SAFE)).verdict, SUSPICIOUS);
-  // dangerous by the address is never lowered
-  assert.equal(combine({ ...base, model: model(DANGEROUS) }, noCreds, pageModel(SUSPICIOUS)).verdict, DANGEROUS);
+  // dangerous by the address is never lowered to safe
+  assert.equal(combine({ ...base, model: model(DANGEROUS) }, noCreds, pageModel(SAFE)).verdict, SUSPICIOUS);
+});
+
+test("the address model alone blocks only a page that asks for credentials or that the page model agrees on", () => {
+  const before = combine({ ...base, model: model(DANGEROUS, ["addr"]) });
+  assert.deepEqual([before.verdict, addressOnly(before)], [DANGEROUS, true]);
+  // a page that asks for nothing gets the banner, with the address reasons and a note
+  const banner = combine({ ...base, model: model(DANGEROUS, ["addr"]) }, noCreds, pageModel(SUSPICIOUS, true, ["p"]));
+  assert.equal(banner.verdict, SUSPICIOUS);
+  assert.deepEqual(banner.notes, [ADDRESS_ONLY_NOTE]);
+  assert.ok(banner.reasons.includes("addr"));
+  const unread = combine({ ...base, model: model(DANGEROUS) }, noCreds, pageModel(SAFE, false, []));
+  assert.equal(unread.verdict, SUSPICIOUS);
+  // a login page, or a page model that also says dangerous, keeps the block
+  assert.equal(combine({ ...base, model: model(DANGEROUS) }, login, pageModel(SAFE)).verdict, DANGEROUS);
+  const pageSays = { ...pageModel(DANGEROUS), pageDangerous: true };
+  assert.equal(combine({ ...base, model: model(DANGEROUS) }, noCreds, pageSays).verdict, DANGEROUS);
+  // a page verdict that only echoes the dangerous address is no second opinion
+  assert.equal(combine({ ...base, model: model(DANGEROUS) }, noCreds, pageModel(DANGEROUS)).verdict, SUSPICIOUS);
+  // a second layer can still raise the banner back: high domain risk, a look-alike address
+  const domain = { risk: "high", signals: [{ severity: "high", text: "young" }] };
+  assert.equal(combine({ ...base, model: model(DANGEROUS), domain }, noCreds, pageModel(SAFE)).verdict, DANGEROUS);
+  const look = { address: [{ rule: "edit1", brand: "x", text: "look" }], page: null };
+  const raised = combine({ ...base, model: model(DANGEROUS) }, noCreds, pageModel(SAFE), look);
+  assert.equal(raised.verdict, DANGEROUS);
+  assert.equal(addressOnly(raised), false);
+  assert.equal(addressOnly(combine({ ...base, blocked: "url" })), false);
 });
 
 test("the page model can always raise the address verdict", () => {
