@@ -240,7 +240,8 @@ def test_summarise_and_report():
     text = render_gap.render(index, d, rows, allowlist_used=True)
     assert "render status: ok 4, timeout 1" in text
     assert "| warned | 2 | 0 | 1 | 1 |" in text
-    assert "## Pages whose verdict changes (2)" in text and "b.com" in text
+    assert "## Pages whose verdict changes (2)" in text
+    assert "| raw verdict | rendered verdict |" in text
     assert "without the user's extensions, cookies or sign-ins" in text
 
 
