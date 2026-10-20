@@ -1,12 +1,11 @@
-// Demo page: loads the extension's address layers (check.js) and plays a typed URL through them,
-// layer by layer, ending in a verdict.
+// Demo page: loads the extension's address layers (check.js) and plays one scene per layer for the
+// typed address, each showing what that layer looked at (demo/evidence.js), ending in the verdict.
 
 import { checkUrl, loadChecker } from "./check.js";
 
 const root = new URL("../", import.meta.url);
 const $ = (id) => document.getElementById(id);
 const reduce = matchMedia("(prefers-reduced-motion: reduce)");
-const sleep = (ms) => new Promise((r) => setTimeout(r, reduce.matches ? 0 : ms));
 
 const EXAMPLES = [
   ["Normal site", "https://en.wikipedia.org/wiki/Phishing"],
@@ -17,301 +16,554 @@ const EXAMPLES = [
   ["Phishing style", "http://secure-login-verify-account.xyz/wp-admin/office365/index.php"],
 ];
 
-const ICON = {
-  allowlist: '<path d="M4 7h10M4 12h7M4 17h10"/><path d="m16 15 2.5 2.5L22 12"/>',
-  blocklist: '<circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/>',
+const svg = (inner) =>
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+const I = {
+  allow: '<path d="M4 7h10M4 12h7M4 17h10"/><path d="m16 15 2.5 2.5L22 12"/>',
+  block: '<circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/>',
   model: '<path d="M3 17c2-8 4-8 6-2s4 6 6-4 3-7 6-1"/>',
-  lookalike: '<circle cx="9" cy="12" r="5.5"/><circle cx="15" cy="12" r="5.5"/>',
+  look: '<circle cx="9" cy="12" r="5.5"/><circle cx="15" cy="12" r="5.5"/>',
   combine: '<path d="M5 5v4c0 3 2 4 4 5l3 1.5M19 5v4c0 3-2 4-4 5l-3 1.5M12 15.5V20"/>',
-  page: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3 3 3 14 0 17M12 3.5c-3 3-3 14 0 17"/>',
+  verdict: '<path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z"/>',
+  ok: '<path d="m5 12 4.5 4.5L19 7"/>',
+  bang: '<path d="M12 6v8M12 18v.5"/>',
+  x: '<path d="m6 6 12 12M18 6 6 18"/>',
+  dash: '<path d="M6 12h12"/>',
 };
-const BADGE = {
-  clear: '<path d="m5 12 4.5 4.5L19 7"/>', safe: '<path d="m5 12 4.5 4.5L19 7"/>', warn: '<path d="M12 6v8M12 18v.5"/>',
-  bad: '<path d="m6 6 12 12M18 6 6 18"/>', skip: '<path d="M6 12h12"/>', na: '<path d="M6 12h12"/>',
-};
-const svg = (inner, cls = "") =>
-  `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
-
-const STATIONS = [
-  ["allowlist", "Allowlist", "Widely used sites skip the rest."],
-  ["blocklist", "Blocklist", "Addresses already reported as phishing."],
-  ["model", "Address model", "Machine-learned look of the address."],
-  ["lookalike", "Look-alike rules", "Imitations of well-known brands."],
-  ["combine", "Combiner", "Merges the layers into one verdict."],
-  ["page", "Page and domain checks", "Login forms, domain age and certificate."],
+const STEPS = [
+  ["allow", "Allowlist"],
+  ["block", "Blocklist"],
+  ["model", "Address model"],
+  ["look", "Look-alikes"],
+  ["combine", "Combiner"],
+  ["verdict", "Verdict"],
 ];
-const TONE_COLOR = { clear: "var(--safe)", safe: "var(--safe)", warn: "var(--warn)", bad: "var(--bad)", skip: "var(--idle)", na: "var(--idle)" };
-const VERDICT_TEXT = {
-  safe: ["Looks safe", "Nothing in the address raised a flag."],
-  suspicious: ["Suspicious", "Be careful. This address has traits common to phishing."],
-  dangerous: ["Dangerous", "Harmful. This address is very likely phishing."],
+const TRACE_ID = { allow: "allowlist", block: "blocklist", model: "model", look: "lookalike", combine: "combine" };
+const WORD = { safe: "Looks safe", suspicious: "Suspicious", dangerous: "Dangerous" };
+const TONE = { safe: "safe", suspicious: "warn", dangerous: "bad" };
+const SUB = {
+  safe: "Nothing in the address raised a flag.",
+  suspicious: "Be careful. This address has traits common to phishing.",
+  dangerous: "Harmful. This address is very likely phishing.",
 };
 
-function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
-  for (const c of children) node.append(c);
-  return node;
-}
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const num = (n) => Number(n).toLocaleString("en-US");
+const sign = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}`;
 
-// --- pipeline -------------------------------------------------------------------------------
+// --- timing ---------------------------------------------------------------------------------
 
-const rows = {};
-function buildPipeline() {
-  for (const [id, title, sub] of STATIONS) {
-    const li = el("li", { class: "stn", "data-id": id });
-    li.innerHTML =
-      `<div class="node">${svg(ICON[id])}<span class="badge"></span></div>` +
-      `<div class="body"><div class="head"><b>${title}</b><span class="tag"></span></div>` +
-      `<p class="sub">${sub}</p><p class="detail">&nbsp;</p></div>`;
-    $("pipe").append(li);
-    rows[id] = {
-      li,
-      node: li.querySelector(".node"),
-      badge: li.querySelector(".badge"),
-      tag: li.querySelector(".tag"),
-      detail: li.querySelector(".detail"),
+const CANCEL = Symbol("cancel");
+let token = 0;
+let fast = false;
+const pending = new Set();
+
+function sleepRaw(ms) {
+  if (fast) return Promise.resolve();
+  return new Promise((resolve) => {
+    const release = () => {
+      clearTimeout(timer);
+      pending.delete(release);
+      resolve();
     };
-  }
+    const timer = setTimeout(release, reduce.matches ? ms * 0.3 : ms);
+    pending.add(release);
+  });
 }
+const releaseAll = () => [...pending].forEach((release) => release());
+const waiter = (tok) => async (ms) => {
+  await sleepRaw(ms);
+  if (tok !== token) throw CANCEL;
+};
+const show = (...els) => els.flat().forEach((e) => e?.classList.add("show"));
 
-function resetPipeline() {
-  for (const r of Object.values(rows)) {
-    r.li.className = "stn";
-    r.badge.innerHTML = "";
-    r.tag.textContent = "";
-    r.detail.innerHTML = "&nbsp;";
-  }
-  $("packet").style.opacity = "0";
-  const fill = $("fill");
-  fill.style.transition = "none";
-  fill.style.transform = "scaleY(0)";
-  $("pipewrap").style.removeProperty("--packet");
-  void fill.offsetHeight;
-  fill.style.transition = "";
-}
-
-function centreOf(id) {
-  const n = rows[id].node;
-  return n.offsetTop + n.offsetHeight / 2;
-}
-
-function movePacket(id, animate = true) {
-  const p = $("packet");
-  const y = centreOf(id) - 8;
-  if (!animate) p.style.transition = "none";
-  p.style.transform = `translateY(${y}px)`;
-  p.style.opacity = "1";
-  const fill = $("fill");
-  if (!animate) fill.style.transition = "none";
-  fill.style.transform = `scaleY(${Math.max(0, (y + 8) / $("pipewrap").offsetHeight)})`;
-  if (!animate) {
-    void p.offsetHeight;
-    p.style.transition = "";
-    fill.style.transition = "";
-  }
-}
-
-function hostMarkup(url) {
-  try {
-    const u = new URL(url);
-    const i = url.indexOf(u.host);
-    if (i > 0) {
-      const esc = (t) => t.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
-      return `${esc(url.slice(0, i))}<span class="host">${esc(u.host)}</span>${esc(url.slice(i + u.host.length))}`;
-    }
-  } catch {
-    // fall through to plain text
-  }
-  return null;
-}
-
-// Scrolls the page smoothly when an element is (partly) off screen, so the run stays in view.
-function ensureVisible(node) {
-  const box = node.getBoundingClientRect();
-  const margin = 24;
-  if (box.bottom > innerHeight - margin) scrollBy({ top: box.bottom - innerHeight + margin, behavior: reduce.matches ? "auto" : "smooth" });
-  else if (box.top < margin) scrollBy({ top: box.top - margin, behavior: reduce.matches ? "auto" : "smooth" });
-}
-
-// --- verdict --------------------------------------------------------------------------------
-
-function setVerdictIdle(word = "Ready", sub = "Run a check to see the verdict here.") {
-  const v = $("verdict");
-  v.className = "panel verdict v-idle";
-  $("vword").textContent = word;
-  $("vsub").textContent = sub;
-  $("reasons").replaceChildren();
-  $("extra").replaceChildren();
-}
-
-function countUp(node, to, ms) {
-  if (reduce.matches || ms <= 0) {
-    node.textContent = to.toFixed(3);
+function countUp(node, to, ms, fmt = num) {
+  if (fast || reduce.matches) {
+    node.textContent = fmt(to);
     return;
   }
   const t0 = performance.now();
   const step = (now) => {
     const k = Math.min(1, (now - t0) / ms);
-    node.textContent = (to * (1 - (1 - k) ** 3)).toFixed(3);
+    node.textContent = fmt(Math.round(to * (1 - (1 - k) ** 3)));
     if (k < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
 }
 
-function showVerdict(r, run) {
-  const v = $("verdict");
-  const short = r.layer === "shortener";
-  const [word, sub] = short ? ["Short link", "The extension follows the link and judges the page it leads to."] : VERDICT_TEXT[r.verdict];
-  v.className = `panel verdict v-${short ? "idle" : r.verdict} has-score`;
-  if (r.verdict === "dangerous" && !reduce.matches) {
-    void v.offsetWidth;
-    v.classList.add("shake");
-  }
-  $("vword").textContent = word;
-  $("vsub").textContent = sub;
-  const list = $("reasons");
-  list.replaceChildren(
-    ...r.reasons.map((t, i) => {
-      const li = el("li", { style: `animation-delay:${reduce.matches ? 0 : 350 + i * 130}ms` }, t);
-      return li;
-    }),
-  );
-  const m = r.modelAlone;
-  const info = r.thresholds;
-  if (m) {
-    const used = r.layer === "url-model" || r.layer === "lookalike";
-    $("mlabel").textContent = used ? "Address model score" : "Address model score (not used here)";
-    $("meter").style.setProperty(
-      "--zones",
-      `linear-gradient(90deg, var(--safe-soft) 0 ${info.suspicious * 100}%, var(--warn-soft) ${info.suspicious * 100}% ${info.dangerous * 100}%, var(--bad-soft) ${info.dangerous * 100}% 100%)`,
-    );
-    $("t1").style.left = `${info.suspicious * 100}%`;
-    $("t2").style.left = `${info.dangerous * 100}%`;
-    $("mnote").textContent = `Dashed lines: warns from ${info.suspicious.toFixed(3)} (1% false alarms on held-out legitimate URLs), dangerous from ${info.dangerous.toFixed(3)} (0.1%).`;
-    requestAnimationFrame(() => {
-      $("mdot").style.left = `${m.prob * 100}%`;
-      $("mfill").style.transform = `scaleX(${m.prob})`;
-    });
-    countUp($("mnum"), m.prob, 1000);
-    if (m.reasons.length && !used) {
-      $("extra").replaceChildren(
-        el("details", { class: "detailsbox" }, el("summary", {}, "What the model alone would say"), el("ul", {}, ...m.reasons.map((t) => el("li", {}, t)))),
-      );
-    } else {
-      $("extra").replaceChildren();
-    }
-  } else {
-    v.classList.remove("has-score");
-  }
-  void run;
+// --- scenes ---------------------------------------------------------------------------------
+// Each scene is { html, play(root, w) }. All text comes from the evidence object, so it describes
+// this address and nothing else.
+
+const head = (n, name, title, lead) =>
+  `<p class="kicker">Layer ${n} of 5 · ${name}</p><h2>${title}</h2><p class="lead rv">${lead}</p>`;
+const chip = (tone, icon, text) => `<div class="result rv t-${tone}">${svg(I[icon])}<span>${text}</span></div>`;
+const skipScene = (n, name, title, why) => ({
+  html: `<p class="kicker">Layer ${n} of 5 · ${name}</p><h2>${title}</h2>${chip("skip", "dash", "Not needed here")}<p class="note rv">${esc(why)}</p>`,
+  play: async (el, w) => {
+    show(el.querySelector(".result"));
+    await w(500);
+    show(el.querySelector(".note"));
+    await w(900);
+  },
+});
+
+function allowScene(r) {
+  const e = r.evidence.allowlist;
+  const parts = e.sub ? `<span class="seg">${esc(e.sub)}.</span>` : "";
+  const dom = `<span class="seg dom">${esc(e.label ? `${e.label}.${e.suffix}` : e.domain)}</span>`;
+  const verdict = e.shared
+    ? chip("skip", "dash", e.shared === "shortener" ? "Link shortener: never trusted on its own" : "Shared hosting: the allowlist does not apply")
+    : e.found
+      ? chip("safe", "ok", `Found: ${esc(e.domain)} is on the allowlist`)
+      : chip("na", "dash", "Not on the allowlist, so the check goes on");
+  return {
+    html:
+      head(1, "Allowlist", "Is this a well-known site?", `Looking up <b>${esc(e.domain)}</b> among ${num(e.size)} widely used sites.`) +
+      `<div class="urlparts rv">${parts}${dom}</div>` +
+      `<p class="cap rv">${e.sub ? "The subdomain is ignored: only the registrable domain counts." : "Only the registrable domain counts, the name you would buy."}</p>` +
+      `<div class="lookup"><div class="hashline rv">Fingerprint (SHA-256, first ${e.bytes} bytes): <span class="hash" data-hash></span></div>` +
+      `<div class="scan rv"><span class="count">0 / ${num(e.size)}</span></div></div>${verdict}` +
+      (e.shared === "zone" ? `<p class="note rv">${esc(e.domain)} is an open hosting zone: anyone can publish there, so being on the list proves nothing about this page.</p>` : "") +
+      (e.shared === "platform" ? `<p class="note rv">${esc(e.domain)} is a shared hosting platform. Only the full address is matched against the blocklist.</p>` : ""),
+    play: async (el, w) => {
+      const [lead, urlparts, cap, hashline, scan, result, note] = ["h2 + .lead", ".urlparts", ".cap", ".hashline", ".scan", ".result", ".note"].map((s) => el.querySelector(s));
+      show(lead);
+      await w(450);
+      show(urlparts);
+      await w(500);
+      show(cap);
+      await w(500);
+      show(hashline);
+      const out = el.querySelector("[data-hash]");
+      const hash = e.hash ?? "";
+      for (let i = 2; i <= hash.length; i += 2) {
+        out.textContent = hash.slice(0, i);
+        await w(28);
+      }
+      show(scan);
+      scan.classList.add("run");
+      countUp(scan.querySelector(".count"), e.size, 1000, (n) => `${num(n)} / ${num(e.size)}`);
+      await w(1150);
+      show(result, note);
+      await w(900);
+    },
+  };
 }
 
-// --- one run --------------------------------------------------------------------------------
+function blockScene(r) {
+  const e = r.evidence.blocklist;
+  const rows = [];
+  if (e.domain) rows.push({ tag: "Domain", key: e.domain, hash: e.domainHash, hit: e.domainHit });
+  const seen = new Set(rows.map((x) => x.key));
+  for (const k of e.keys) if (!seen.has(k.key)) rows.push({ tag: "Address", ...k });
+  const shown = rows.slice(0, 8);
+  const more = rows.length - shown.length;
+  const anyHit = rows.some((x) => x.hit);
+  const result = !e.loaded
+    ? chip("na", "dash", "No blocklist on this machine, so nothing could match")
+    : anyHit
+      ? chip("bad", "x", e.blocked === "url" ? "Match: this exact address is a known phishing URL" : "Match: this domain is a known phishing domain")
+      : chip("clear", "ok", `None of the ${rows.length} fingerprints is on the list`);
+  return {
+    html:
+      head(2, "Blocklist", "Has this address already been reported?", e.loaded ? `Checking ${rows.length} fingerprints of this address against ${num(e.domains)} blocked domains and ${num(e.urls)} blocked addresses.` : `The extension would check these ${rows.length} fingerprints of this address against reported phishing sites.`) +
+      `<ul class="keys">${shown.map((x) => `<li class="keyrow rv" data-hit="${x.hit ? 1 : 0}"><span class="tag">${x.tag}</span><span class="k">${esc(x.key)}</span><span class="h">${esc((x.hash ?? "").slice(0, 8))}…</span><span class="st">${svg(I.ok)}</span></li>`).join("")}` +
+      (more > 0 ? `<li class="keyrow rv"><span class="tag"></span><span class="k">and ${more} more variants of the same address</span><span class="h"></span><span class="st">${svg(I.ok)}</span></li>` : "") +
+      `</ul>${result}` +
+      (!e.loaded ? `<p class="note rv">Run <code>python -m backend build-lists</code> to build one. The fingerprints above are real; they have just nothing to be compared with.</p>` : ""),
+    play: async (el, w) => {
+      show(el.querySelector(".lead"));
+      await w(350);
+      for (const row of el.querySelectorAll(".keyrow")) {
+        show(row);
+        row.classList.add("checking");
+        await w(e.loaded ? 260 : 150);
+        row.classList.remove("checking");
+        row.classList.add(!e.loaded ? "off" : row.dataset.hit === "1" ? "hit" : "ok");
+        await w(90);
+      }
+      show(el.querySelector(".result"), el.querySelector(".note"));
+      await w(900);
+    },
+  };
+}
 
-let runId = 0;
+const LO = -6;
+const HI = 10;
+const at = (x) => Math.min(1, Math.max(0, (x - LO) / (HI - LO)));
+const pct = (x) => `${(at(x) * 100).toFixed(2)}%`;
 
-async function play(r) {
-  const id = ++runId;
-  const live = () => id === runId;
-  const addr = $("addr");
-  resetPipeline();
-  $("mdot").style.left = "0%";
-  $("mfill").style.transform = "scaleX(0)";
-  $("mnum").textContent = "0.000";
-  setVerdictIdle("Checking", "Following the address through each layer.");
-  $("verdict").classList.remove("has-score");
+function modelScene(r) {
+  const e = r.evidence.model;
+  if (!e) return skipScene(3, "Address model", "How phishing-like does the address look?", "The address is too long to score here.");
+  if (!e.used) {
+    const why = r.evidence.allowlist.found ? "The allowlist already recognised this domain." : r.evidence.blocklist.blocked ? "The blocklist already decided." : "Short links are judged where they lead.";
+    return skipScene(3, "Address model", "How phishing-like does the address look?", `${why} For comparison, the model on its own would score this address ${e.prob.toFixed(3)} (${e.prob >= e.thresholds.dangerous ? "dangerous" : e.prob >= e.thresholds.suspicious ? "suspicious" : "safe"}), which is why the allowlist matters.`);
+  }
+  const lt = e.logitThresholds;
+  const rowsData = [{ label: "Average address (starting point)", delta: e.base, start: true }, ...e.items];
+  if (Math.abs(e.other) >= 0.05) rowsData.push({ label: "All other, smaller clues", delta: e.other });
+  const verdictTone = e.prob >= e.thresholds.dangerous ? "bad" : e.prob >= e.thresholds.suspicious ? "warn" : "clear";
+  const verdictWord = verdictTone === "bad" ? "dangerous" : verdictTone === "warn" ? "suspicious" : "safe";
+  return {
+    html:
+      head(3, "Address model", "How phishing-like does the address look?", "Every address starts from an average score. Each clue in the address then pushes it toward phishing (right) or toward safe (left).") +
+      `<div class="gauge rv" style="--zones:linear-gradient(90deg,var(--safe-soft) 0 ${pct(lt.suspicious)},var(--warn-soft) ${pct(lt.suspicious)} ${pct(lt.dangerous)},var(--bad-soft) ${pct(lt.dangerous)} 100%);--p0:${pct(e.base)}">` +
+      `<div class="tk" style="left:${pct(lt.suspicious)}"><span>warns</span></div><div class="tk" style="left:${pct(lt.dangerous)}"><span>dangerous</span></div>` +
+      `<div class="val" style="left:${pct(e.base)}">${e.base.toFixed(2)}</div><div class="mk"></div></div>` +
+      `<ul class="clues">${rowsData.map((x) => `<li class="clue rv"><span class="delta ${x.start ? "flat" : x.delta > 0 ? "up" : "down"}">${x.start ? e.base.toFixed(2) : sign(x.delta)}</span><span>${esc(x.label)}</span></li>`).join("")}` +
+      `<li class="clue total rv"><span class="delta flat">${e.raw.toFixed(2)}</span><span>Total score, which is a ${(e.prob * 100).toFixed(1)}% phishing score of ${e.prob.toFixed(3)}</span></li></ul>` +
+      chip(verdictTone, verdictTone === "clear" ? "ok" : verdictTone === "warn" ? "bang" : "x", `Score ${e.prob.toFixed(3)}: the model says ${verdictWord} (warns from ${e.thresholds.suspicious.toFixed(3)}, dangerous from ${e.thresholds.dangerous.toFixed(3)})`),
+    play: async (el, w) => {
+      show(el.querySelector(".lead"));
+      await w(450);
+      const gauge = el.querySelector(".gauge");
+      show(gauge);
+      await w(600);
+      const mk = gauge.querySelector(".mk");
+      const val = gauge.querySelector(".val");
+      const rows = [...el.querySelectorAll(".clue:not(.total)")];
+      let cum = 0;
+      for (const [i, row] of rows.entries()) {
+        show(row);
+        cum += rowsData[i].delta;
+        mk.style.left = pct(cum);
+        val.style.left = pct(cum);
+        val.textContent = cum.toFixed(2);
+        await w(i === 0 ? 650 : 750);
+      }
+      show(el.querySelector(".total"));
+      await w(450);
+      show(el.querySelector(".result"));
+      await w(900);
+    },
+  };
+}
 
-  addr.innerHTML = hostMarkup(r.url) ?? "";
-  if (!addr.innerHTML) addr.textContent = r.url;
-  addr.classList.remove("scan");
-  void addr.offsetWidth;
-  addr.classList.add("scan");
-  await sleep(550);
-  if (!live()) return;
+function tiles(cols, pick, cls) {
+  return cols
+    .map((c, i) => {
+      const ch = pick(c);
+      const klass = cls(c);
+      return `<span class="tile ${klass}" style="transition-delay:${i * 55}ms">${ch === null ? "–" : esc(ch)}</span>`;
+    })
+    .join("");
+}
+
+function lookScene(r) {
+  const e = r.evidence.lookalike;
+  const title = "Does the name imitate a known brand?";
+  if (!e.applicable) return skipScene(4, "Look-alike rules", title, "This address is a number, not a domain name, so there is no name to compare.");
+  if (!e.used) {
+    return skipScene(4, "Look-alike rules", title, `The allowlist already decided, so the brand comparison is not run. (${e.domain} would have been compared with ${num(e.brandCount)} known brands.)`);
+  }
+  const n = e.nearest;
+  const cols = n ? n.cols : [];
+  const cleaned = e.skeleton !== e.decoded;
+  const rowsHtml = [];
+  if (cleaned) {
+    rowsHtml.push(`<div class="tilerow rv"><span class="lab">Your domain name${e.decoded !== e.label ? ` <small>(written ${esc(e.label)})</small>` : ""}</span><div class="tiles">${tiles(Array.from(e.decoded).map((ch, i) => ({ ch, changed: e.changed[i] })), (c) => c.ch, (c) => (c.changed ? "diff" : ""))}</div></div>`);
+  }
+  const near = n && n.distance <= 3;
+  if (!near) {
+    rowsHtml.push(`<div class="tstep rv">Closest of ${num(e.brandCount)} brands: <b>${esc(n?.brand ?? "none")}</b>${n ? `, ${n.distance} edits away. Too different to count as an imitation.` : "."}</div>`);
+  } else rowsHtml.push(
+    `<div class="tilerow rv"><span class="lab">${cleaned ? "After mapping look-alike letters" : "Your domain name"}</span><div class="tiles">${tiles(cols, (c) => c.a, (c) => (c.a === null ? "gap" : c.op === "match" ? "" : "diff"))}</div></div>`,
+    `<div class="tilerow rv"><span class="lab">Closest brand: <b>${esc(n.brand)}</b> <small>(${n.distance} ${n.distance === 1 ? "edit" : "edits"} apart)</small></span><div class="tiles">${tiles(cols, (c) => c.b, (c) => (c.b === null ? "gap" : c.op === "match" ? "" : "diff"))}</div></div>`,
+  );
+  let result;
+  if (e.hits.length) result = chip("warn", "bang", esc(e.hits[0].text));
+  else if (e.official || e.isBrand) result = chip("clear", "ok", e.official ? `${esc(e.domain)} belongs to ${esc(e.official)}: not an imitation` : `${esc(e.label)} is itself a known brand name: not an imitation`);
+  else result = chip("clear", "ok", `Not close enough to any of ${num(e.brandCount)} known brands`);
+  return {
+    html: head(4, "Look-alike rules", title, `Comparing <b>${esc(e.label)}</b> with ${num(e.brandCount)} known brands, after turning look-alike characters (such as 1 for l or Cyrillic a) back into plain letters.`) + rowsHtml.join("") + result + (e.hits.length > 1 ? `<p class="note rv">${e.hits.slice(1).map((h) => esc(h.text)).join(" ")}</p>` : ""),
+    play: async (el, w) => {
+      show(el.querySelector(".lead"));
+      await w(450);
+      for (const row of el.querySelectorAll(".tilerow, .tstep")) {
+        show(row);
+        await w(60);
+        row.querySelectorAll(".tile").forEach((t) => t.classList.add("show"));
+        await w(Math.min(900, 220 + row.querySelectorAll(".tile").length * 55));
+      }
+      // letters that were swapped for look-alikes turn into the plain letter they imitate
+      el.querySelectorAll(".tilerow .tile.diff").forEach((t) => (t.dataset.was = "1"));
+      await w(350);
+      show(el.querySelector(".result"), el.querySelector(".note"));
+      await w(1000);
+    },
+  };
+}
+
+function combineScene(r) {
+  const e = r.evidence.combine;
+  const names = ["Safe", "Suspicious", "Dangerous"];
+  const verdict = e.end;
+  return {
+    html:
+      head(5, "Combiner", "What do the layers add up to?", "The combiner starts from the strongest evidence and can only raise a verdict, never lower one.") +
+      `<div class="ladder rv">${names.map((n, i) => `<div class="rung r${i}"><i>${svg(i === 0 ? I.ok : i === 1 ? I.bang : I.x)}</i>${n}</div>`).join("")}<div class="token" style="--tp:${16.6 + e.steps[0].to * 33.4}%"></div></div>` +
+      e.steps.map((s) => `<div class="tstep rv">${esc(s.text)}</div>`).join("") +
+      chip(TONE[r.verdict], verdict === 0 ? "ok" : verdict === 1 ? "bang" : "x", `Result: ${names[verdict].toLowerCase()}`),
+    play: async (el, w) => {
+      show(el.querySelector(".lead"));
+      await w(450);
+      show(el.querySelector(".ladder"));
+      const token = el.querySelector(".token");
+      const rungs = [...el.querySelectorAll(".rung")];
+      await w(500);
+      for (const [i, row] of [...el.querySelectorAll(".tstep")].entries()) {
+        show(row);
+        token.style.setProperty("--tp", `${16.6 + e.steps[i].to * 33.4}%`);
+        rungs.forEach((x) => x.classList.remove("lit"));
+        await w(550);
+        rungs[e.steps[i].to].classList.add("lit");
+        await w(700);
+      }
+      show(el.querySelector(".result"));
+      await w(800);
+    },
+  };
+}
+
+function verdictScene(r) {
+  const short = r.layer === "shortener";
+  const cls = short ? "" : `v-${r.verdict}`;
+  const reasons = r.reasons.length ? r.reasons : r.layer === "allowlist" ? [`${r.domain} is a widely used site on the allowlist.`] : ["No layer raised a concern about this address."];
+  const model = r.evidence.model;
+  const compare = model && !model.used ? [`For comparison, the address model alone would score this ${model.prob.toFixed(3)}. The allowlist is what keeps it safe.`] : [];
+  return {
+    cls,
+    html:
+      `<p class="kicker">Result</p><div class="vgrid ${cls}"><svg class="shield rv" viewBox="0 0 64 64" aria-hidden="true"><path class="bodyfill" d="M32 5 11 13v16c0 14 9 24 21 28 12-4 21-14 21-28V13L32 5Z"/><path d="M32 5 11 13v16c0 14 9 24 21 28 12-4 21-14 21-28V13L32 5Z"/><path class="mark m-safe" d="m22 33 7 7 14-15"/><path class="mark m-warn" d="M32 22v13M32 42v.5"/><path class="mark m-bad" d="m24 24 16 16M40 24 24 40"/></svg>` +
+      `<div><p class="vword rv">${short ? "Short link" : WORD[r.verdict]}</p><p class="vsub rv">${short ? "The extension follows the link and judges the page it leads to." : SUB[r.verdict]}</p>` +
+      `<ul class="reasons">${[...reasons, ...compare, ...r.notes.filter((n) => !short || !n.includes("shortener"))].map((t) => `<li class="rv">${esc(t)}</li>`).join("")}</ul></div></div>`,
+    play: async (el, w) => {
+      show(el.querySelector(".shield"));
+      await w(500);
+      show(el.querySelector(".vword"));
+      await w(250);
+      show(el.querySelector(".vsub"));
+      await w(250);
+      for (const li of el.querySelectorAll(".reasons li")) {
+        show(li);
+        await w(220);
+      }
+    },
+  };
+}
+
+const BUILD = [allowScene, blockScene, modelScene, lookScene, combineScene, verdictScene];
+
+// --- stage ----------------------------------------------------------------------------------
+
+let current = null; // the result being shown
+let scenes = [];
+let stepEls = [];
+
+function buildSteps() {
+  const ol = $("steps");
+  for (const [i, [id, name]] of STEPS.entries()) {
+    const li = document.createElement("li");
+    li.innerHTML = `<button type="button" class="step" data-i="${i}" aria-label="${name}"><span class="dot">${svg(I[id])}</span><b>${name}</b><small></small></button>`;
+    ol.append(li);
+  }
+  // steps are direct grid children so the rail lines up with them
+  stepEls = [...ol.querySelectorAll(".step")];
+  for (const li of [...ol.querySelectorAll("li")]) {
+    li.style.display = "contents";
+  }
+  stepEls.forEach((b) => b.addEventListener("click", () => b.classList.contains("done") && jump(Number(b.dataset.i))));
+}
+
+function setStep(i, state) {
+  stepEls.forEach((b, k) => b.classList.toggle("on", state === "on" && k === i));
+  $("prog").style.width = `calc((100% - (100% / 6)) * ${Math.max(0, i) / 5})`;
+}
+
+function labelStep(i) {
+  const r = current;
+  const b = stepEls[i];
+  let tone;
+  let text;
+  if (i === 5) {
+    tone = r.layer === "shortener" ? "skip" : TONE[r.verdict];
+    text = r.layer === "shortener" ? "short link" : WORD[r.verdict].toLowerCase();
+  } else {
+    const t = r.trace.find((x) => x.id === TRACE_ID[STEPS[i][0]]);
+    tone = t.tone;
+    text = t.label;
+    if (i === 2 && r.evidence.model?.used) text = r.evidence.model.prob.toFixed(3);
+  }
+  b.className = `step done t-${tone}`;
+  b.querySelector(".dot").innerHTML = svg(tone === "clear" || tone === "safe" ? I.ok : tone === "warn" ? I.bang : tone === "bad" ? I.x : tone === "skip" || tone === "na" ? I.dash : I[STEPS[i][0]]);
+  b.querySelector("small").textContent = text;
+}
+
+function resetSteps() {
+  stepEls.forEach((b, i) => {
+    b.className = "step";
+    b.querySelector(".dot").innerHTML = svg(I[STEPS[i][0]]);
+    b.querySelector("small").textContent = "";
+  });
+  setStep(0, "idle");
+}
+
+function addressMarkup(url) {
+  try {
+    const u = new URL(url);
+    const i = url.indexOf(u.host);
+    if (i > 0) return `${esc(url.slice(0, i))}<span class="host">${esc(u.host)}</span>${esc(url.slice(i + u.host.length))}`;
+  } catch {
+    // plain text below
+  }
+  return esc(url);
+}
+
+function setVerdictClass(cls) {
+  const st = $("stage");
+  st.classList.remove("v-safe", "v-suspicious", "v-dangerous", "shake");
+  if (cls) {
+    st.classList.add(cls);
+    if (cls === "v-dangerous" && !reduce.matches && !fast) {
+      void st.offsetWidth;
+      st.classList.add("shake");
+    }
+  }
+}
+
+function showScene(i) {
+  scenes.forEach((s, k) => s.classList.toggle("cur", k === i));
+}
+
+async function playScene(i, w) {
+  const built = BUILD[i](current);
+  scenes[i].innerHTML = built.html;
+  showScene(i);
+  if (i < 5) setVerdictClass(null);
+  await built.play(scenes[i], w);
+  if (i === 5) setVerdictClass(built.cls);
+}
+
+async function run(r) {
+  const tok = ++token;
+  releaseAll();
+  fast = false;
+  $("stage").classList.remove("fast");
+  const w = waiter(tok);
+  current = r;
+  $("addr").innerHTML = addressMarkup(r.url);
+  resetSteps();
+  setVerdictClass(null);
+  $("skip").disabled = false;
+  $("replay").disabled = true;
+  scenes = [];
+  $("scenes").replaceChildren();
 
   if (r.verdict === "unscored") {
-    addr.textContent = r.url;
-    setVerdictIdle("Not a web address", r.notes[0]);
+    const s = document.createElement("section");
+    s.className = "scene cur";
+    s.innerHTML = `<p class="kicker">Not checked</p><h2>That is not a web address</h2><p class="lead">${esc(r.notes[0] ?? "")}</p>`;
+    $("scenes").append(s);
+    $("skip").disabled = true;
     return;
   }
-
-  // Text is in place (invisible) before the packet arrives, so rows never change height mid-run.
-  for (const t of r.trace) rows[t.id].detail.textContent = t.detail;
-  movePacket(STATIONS[0][0], false);
-  ensureVisible(addr);
-  await sleep(150);
-  for (const t of r.trace) {
-    if (!live()) return;
-    const row = rows[t.id];
-    const quick = (t.tone === "skip" && t.id !== "allowlist" && t.id !== "blocklist") || t.tone === "na";
-    movePacket(t.id);
-    ensureVisible(row.li);
-    await sleep(quick ? 230 : 400);
-    if (!live()) return;
-    row.li.classList.add("on");
-    await sleep(quick ? 50 : 180);
-    if (!live()) return;
-    row.li.classList.remove("on");
-    row.li.classList.add("done", `t-${t.tone}`);
-    row.badge.innerHTML = svg(BADGE[t.tone], "");
-    row.tag.textContent = t.label;
-    if (t.tone !== "skip" && t.tone !== "na") $("pipewrap").style.setProperty("--packet", TONE_COLOR[t.tone]);
-    await sleep(quick ? 30 : 260);
+  // every scene is built once up front so the stage keeps the height of the tallest one
+  for (let i = 0; i < BUILD.length; i++) {
+    const s = document.createElement("section");
+    s.className = "scene";
+    s.innerHTML = BUILD[i](r).html;
+    $("scenes").append(s);
+    scenes.push(s);
   }
-  if (!live()) return;
-  const tone = { safe: "var(--safe)", suspicious: "var(--warn)", dangerous: "var(--bad)" }[r.verdict];
-  $("pipewrap").style.setProperty("--packet", r.layer === "shortener" ? "var(--idle)" : tone);
-  $("packet").style.opacity = "0";
-  showVerdict(r, id);
-  ensureVisible($("verdict"));
+  $("stage").scrollIntoView({ behavior: reduce.matches ? "auto" : "smooth", block: "nearest" });
+  try {
+    await w(250);
+    for (let i = 0; i < BUILD.length; i++) {
+      setStep(i, "on");
+      await playScene(i, w);
+      labelStep(i);
+      setStep(i + 1 > 5 ? 5 : i + 1, "idle");
+      if (i < BUILD.length - 1) await w(350);
+    }
+    setStep(5, "idle");
+    stepEls[5].classList.remove("on");
+    $("stage").classList.remove("fast");
+    fast = false;
+    $("skip").disabled = true;
+    $("replay").disabled = false;
+  } catch (err) {
+    if (err !== CANCEL) throw err;
+  }
+}
+
+// Play one finished layer again (a step was clicked).
+async function jump(i) {
+  const tok = ++token;
+  releaseAll();
+  fast = false;
+  $("stage").classList.remove("fast");
+  $("skip").disabled = true;
+  setStep(i, "on");
+  try {
+    await playScene(i, waiter(tok));
+    stepEls[i].classList.remove("on");
+  } catch (err) {
+    if (err !== CANCEL) throw err;
+  }
+}
+
+function skipToVerdict() {
+  fast = true;
+  $("stage").classList.add("fast");
+  releaseAll();
 }
 
 async function main() {
-  buildPipeline();
+  buildSteps();
+  resetSteps();
   let checker;
   try {
     checker = await loadChecker({ base: new URL("../extension/src/", import.meta.url), read });
   } catch (err) {
-    $("info").replaceChildren(el("span", { class: "err" }, `Could not load the model: ${err.message}. Start the page with "python -m demo" from the repository folder.`));
+    $("info").replaceChildren(Object.assign(document.createElement("span"), { className: "err", textContent: `Could not load the model: ${err.message}. Start the page with "python -m demo" from the repository folder.` }));
     return;
   }
   const i = checker.info;
   $("info").textContent =
-    `Allowlist: ${i.allowlist ?? "none"} (${i.allowDomains.toLocaleString()} domains). ` +
-    (i.blocklist ? `Blocklist: ${i.blocklist} (${i.blockDomains.toLocaleString()} domains, ${i.blockUrls.toLocaleString()} URLs). ` : "Blocklist: none on this machine (build it with python -m backend build-lists). ") +
+    `Allowlist: ${i.allowlist ?? "none"} (${num(i.allowDomains)} domains). ` +
+    (i.blocklist ? `Blocklist: ${i.blocklist} (${num(i.blockDomains)} domains, ${num(i.blockUrls)} URLs). ` : "Blocklist: none on this machine (build it with python -m backend build-lists). ") +
     (i.modelCreated ? `Model exported ${i.modelCreated}.` : "");
 
-  const run = async (text) => {
+  const go = async (text) => {
     if (!text.trim()) return;
     try {
-      await play(await checkUrl(checker, text));
+      await run(await checkUrl(checker, text));
     } catch (err) {
-      $("addr").replaceChildren(el("span", { class: "err" }, `Check failed: ${err.message}`));
+      $("addr").textContent = `Check failed: ${err.message}`;
+      throw err;
     }
   };
   $("form").addEventListener("submit", (e) => {
     e.preventDefault();
-    run($("url").value);
+    go($("url").value);
   });
+  $("skip").addEventListener("click", skipToVerdict);
+  $("replay").addEventListener("click", () => go($("url").value));
   for (const [label, url] of EXAMPLES) {
-    const b = el("button", { type: "button", class: "chip", title: url }, label);
+    const b = Object.assign(document.createElement("button"), { type: "button", className: "chip", title: url, textContent: label });
     b.addEventListener("click", () => {
       $("url").value = url;
-      run(url);
+      go(url);
     });
     $("examples").append(b);
   }
   $("go").disabled = false;
-  addEventListener("resize", () => {
-    const done = STATIONS.map(([id]) => id).filter((id) => rows[id].li.classList.contains("done"));
-    if (done.length) movePacket(done[done.length - 1], false);
-  });
   const q = new URLSearchParams(location.search).get("url");
   const start = q ?? EXAMPLES[2][1];
   $("url").value = start;
-  $("url").focus();
-  run(start);
+  go(start);
 }
 
 async function read(path) {

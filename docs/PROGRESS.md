@@ -678,3 +678,15 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   transitions; `prefers-reduced-motion` turns animation off; light and dark themes. `demo/check.js` now returns a
   per-layer `trace` (same decisions as before; no scoring change). Test added in `extension/test/demo.test.js`.
 - The requested "UI UX Pro Max" skill is not available in this environment; the design follows general UI guidance.
+
+### 2026-10-20 — URL check page: one screen per layer, new palette (cloud)
+- Ritvik: the layer view was fixed cards with generic paragraphs. Reworked `demo/` so each layer is its own screen,
+  played one after another, showing what it checked for the typed address: allowlist (domain, SHA-256 fingerprint,
+  found or not), blocklist (the URL keys that were hashed and looked up), address model (score built from the real
+  clues, in log-odds, on a gauge with both thresholds), look-alike rules (letters compared with the closest brand,
+  after mapping look-alike characters), combiner (steps on a safe / suspicious / dangerous ladder), then the verdict.
+  Step bar at the top; click a finished step to replay it; "Skip to verdict". New violet palette, light and dark.
+- Changed: `demo/evidence.js` (new, reads the extension's own objects, changes no verdict), `demo/check.js`,
+  `demo/index.html`, `demo/app.js`, test in `extension/test/demo.test.js`. No backend or list code touched.
+- Checked in headless Chromium (desktop, 390 px dark) on the look-alike, normal, punycode and phishing examples;
+  not on Ritvik's PC.
