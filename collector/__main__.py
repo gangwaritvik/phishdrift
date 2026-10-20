@@ -204,6 +204,8 @@ def run_crawl(
         crawler_cfg["popular"] = cfg["popular"]
         crawler_cfg["popular_exclusions"] = popular.build_exclusions(cfg, now)
         crawler_cfg["popular_shorteners"] = load_lists().shorteners
+    if any(s["from"] == "commoncrawl" for s in wanted):
+        crawler_cfg["popular_client"] = popular.commoncrawl_client(cfg)
     client = crawler_client(client, cfg)
     return benign.crawl(
         client, crawler_cfg, resolve(paths["crawl_dir"]), resolve(paths["seed_dir"]), now, only
@@ -315,6 +317,7 @@ def main(argv: list[str] | None = None) -> int:
     rr.add_argument("--retry-failed", action="store_true", default=None, help="retry failed pages")
     rr.add_argument("--browser", help="path to chrome.exe / msedge.exe (else searched)")
     rr.add_argument("--resample", action="store_true", help="draw a new sample")
+    sub.add_parser("popular-summary", help="outcome counts of the popular-sites seed sets")
     for p in (r, c, o, rr):
         p.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
@@ -322,6 +325,9 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    if args.cmd == "popular-summary":
+        print(popular.summary_text(resolve(load_config("collector")["paths"]["crawl_dir"])))
+        return 0
     if args.cmd == "crawl":
         cfg = load_config("collector")
         client = HttpClient.from_config(cfg["http"], resolve(cfg["paths"]["http_cache_dir"]))

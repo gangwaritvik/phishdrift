@@ -749,3 +749,16 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   `ponytail@ponytail`, so Claude Code sessions in this repo offer it after the user trusts the folder.
   Default level is `full`. Its two Node.js hooks need `node` on PATH. Not tested in a live Claude Code session.
 - Next: open the repo in Claude Code on the PC, accept the plugin prompt, run `/ponytail-help`.
+### 2026-10-20 — Popular-sites test crawl on the PC: Common Crawl index failed for every site (cloud)
+- Ritvik's 20-site test (`run_popular_crawl.ps1 -DomainsPerRun 20`): Common Crawl seed set 20 of 20 sites `error`, 0 pages
+  (log: connect timeout after 8 s, connection reset by the server, "connection pool is full"); the summary step then
+  crashed because PowerShell 5.1 strips the double quotes of an inline `python -c` script.
+- Cause (from the log, not reproduced here: the sandbox cannot reach the index): the index client inherited the
+  crawler's fail-fast settings (8 s connect timeout, 1 retry) and the 48 crawler workers all used one connection
+  pool, so requests to `index.commoncrawl.org` timed out or were reset and none was retried.
+- Changed: `collector/popular.py` `commoncrawl_client` (own client: 30 s connect timeout, 4 retries with backoff 3,
+  one request a second), 3 workers for the index (`popular.commoncrawl.workers`), `retry_errors` on both seed sets
+  (sites that failed or timed out are tried again; the 20 failed sites are not marked done), `python -m collector
+  popular-summary` replaces the inline script in `scripts/run_popular_crawl.ps1`. Tests added.
+- Not measured: whether the index now answers (needs the PC). The crawler (`popular`) results of the same test run
+  were not seen by me.
