@@ -790,3 +790,10 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   use shuffled labels; char n-gram 0.506. Below 0.5 for every seed, so a LightGBM artefact of this cell, not chance and
   not a leak (a leak pushes above 0.5); the same model at R4 and in the other 24 cells was not flagged.
 - Next: write both into the study report as limitations; optionally rerun the control unweighted / larger leaves.
+
+### 2026-10-20 — PhishGuard study report with figures
+- Changed: `phishguard/report.py` (`python -m phishguard.report --run <run dir>`) builds 12 figures and the report text from
+  `reports/phishguard/tables/` and `verification.md` only; output in `reports/phishguard/report/` (Markdown, figures, PDF;
+  Word copy in the project folder). Structure follows the first study's report: summary, questions, data, results per
+  finding, reproduction, follow-up checks, Part B, limitations, claim register, figure inventory.
+- Not done: the PDF is a pandoc + LibreOffice conversion, plain styling; tables are wide and may need layout work for a paper.
