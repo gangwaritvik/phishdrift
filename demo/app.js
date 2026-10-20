@@ -47,6 +47,8 @@ const SUB = {
   dangerous: "Harmful. This address is very likely phishing.",
 };
 
+const ADDRESS_ONLY_SUB = "The address alone looks dangerous. In the extension this shows a banner, and becomes a full block only if the page asks for a password, card or code, or the page check agrees.";
+
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const num = (n) => Number(n).toLocaleString("en-US");
 const sign = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}`;
@@ -337,7 +339,7 @@ function verdictScene(r) {
     cls,
     html:
       `<p class="kicker">Result</p><div class="vgrid ${cls}"><svg class="shield rv" viewBox="0 0 64 64" aria-hidden="true"><path class="bodyfill" d="M32 5 11 13v16c0 14 9 24 21 28 12-4 21-14 21-28V13L32 5Z"/><path d="M32 5 11 13v16c0 14 9 24 21 28 12-4 21-14 21-28V13L32 5Z"/><path class="mark m-safe" d="m22 33 7 7 14-15"/><path class="mark m-warn" d="M32 22v13M32 42v.5"/><path class="mark m-bad" d="m24 24 16 16M40 24 24 40"/></svg>` +
-      `<div><p class="vword rv">${short ? "Short link" : WORD[r.verdict]}</p><p class="vsub rv">${short ? "The extension follows the link and judges the page it leads to." : SUB[r.verdict]}</p>` +
+      `<div><p class="vword rv">${short ? "Short link" : WORD[r.verdict]}</p><p class="vsub rv">${short ? "The extension follows the link and judges the page it leads to." : r.addressOnly ? ADDRESS_ONLY_SUB : SUB[r.verdict]}</p>` +
       `<ul class="reasons">${[...reasons, ...compare, ...r.notes.filter((n) => !short || !n.includes("shortener"))].map((t) => `<li class="rv">${esc(t)}</li>`).join("")}</ul></div></div>`,
     play: async (el, w) => {
       show(el.querySelector(".shield"));

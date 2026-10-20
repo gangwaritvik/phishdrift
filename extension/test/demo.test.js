@@ -90,3 +90,9 @@ test("evidence shows what each layer looked at for this address", async () => {
   assert.equal(ok.model.used, false);
   assert.equal(ok.combine.end, 0);
 });
+
+test("an address the model alone calls dangerous is flagged as address-only", async () => {
+  const r = await checkUrl(await checker, "https://www.mujtoppers.in/api/turnstile/verify");
+  assert.equal(r.verdict, "dangerous");
+  assert.equal(r.addressOnly, true);
+});

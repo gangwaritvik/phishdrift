@@ -200,6 +200,7 @@ export async function checkUrl(c, input) {
     verdict,
     label: VERDICT_WORD[verdict],
     layer: result.layer,
+    addressOnly: c.combine.addressOnly(result),
     prob: result.prob,
     reasons: result.reasons,
     notes,

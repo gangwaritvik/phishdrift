@@ -757,3 +757,7 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   popular-summary` replaces the inline script in `scripts/run_popular_crawl.ps1`. Tests added.
 - Not measured: whether the index now answers (needs the PC). The crawler (`popular`) results of the same test run
   were not seen by me.
+
+### 2026-10-20 — URL check page: address-only "dangerous" explained (cloud)
+- Changed: `demo/check.js` returns `addressOnly` (from the extension's `addressOnly()`), `demo/app.js` then says the extension shows
+  a banner and blocks only if the page asks for credentials or the page check agrees. Verdict and score unchanged. Test in `extension/test/demo.test.js`.
