@@ -10,7 +10,12 @@
 //   http://evil-blocked.com:8123/login           suspicious + password form to another site -> dangerous
 //                                                (page too short for the page model: form rule)
 //   http://evil-blocked.com:8123/signin          suspicious address, lure page -> page model: dangerous
-//   http://secure-paypal-login.xyz:8123/         dangerous -> warning page, "proceed anyway"
+//   http://secure-paypal-login.xyz:8123/verify-account  dangerous address, login form -> warning page,
+//                                                "proceed anyway"
+// 2026-10-20 (address model alone):
+//   http://acme-tools.in:8123/api/verify         dangerous address, page asks for nothing -> banner only
+//   http://acme-tools.in:8123/api/turnstile/verify  dangerous address that redirects (form post) to a
+//                                                safe page -> no warning
 //   http://quietgarden-recipes.com:8123/soup     safe by the model, on the stub blocklist -> warning page
 // 2026-10-15 fixes:
 //   http://bakery-hours.org:8123/frame-host      safe page framing a login form from a dangerous address -> warning
@@ -101,6 +106,7 @@ const LOGIN_FORM = '<form action="/p" method="post"><input name="u"><input type=
 const EXTRA = {
   "/frame-host": `<html><body><h1 id="ok">Bakery</h1><iframe src="http://secure-paypal-login.xyz:8123/frame-login"></iframe></body></html>`,
   "/frame-login": `<html><body>${LOGIN_FORM}</body></html>`,
+  "/verify-account": `<html><body><h1 id="ok">Verify</h1>${LOGIN_FORM}</body></html>`,
   "/hide": `<html><head><style>phishdrift-banner, body > *:last-child { display: none !important; }</style></head>
     <body><h1 id="ok">hide</h1><script>setInterval(() => document.querySelectorAll("phishdrift-banner").forEach((e) => e.remove()), 50);</script></body></html>`,
   "/spa": `<html><body><h1 id="ok">spa</h1><script>setTimeout(() => history.pushState({}, "", "/x"), 1500);</script></body></html>`,
@@ -117,7 +123,10 @@ EXTRA["/shadow"] = `<html><body><h1 id="ok">News</h1><div id="sh"></div><script>
 const pages = createServer((req, res) => {
   res.setHeader("Content-Type", "text/html");
   const path = req.url.split("?")[0];
-  if (EXTRA[path]) {
+  if (path === "/api/turnstile/verify") {
+    // a form post's verify-and-redirect hop; the server first checks the token with Cloudflare
+    setTimeout(() => res.writeHead(303, { Location: "/branch/second/subjects/CSE" }).end(), 800);
+  } else if (EXTRA[path]) {
     res.end(EXTRA[path]);
   } else if (req.url === "/signin") {
     res.end(SIGNIN_PAGE);
@@ -152,6 +161,12 @@ try {
     }
     throw new Error(`timed out: ${what} (now at ${page.url()})`);
   };
+  // the stored verdict of the tab showing `url` (no tabs permission: found by address)
+  const stateOf = (url) =>
+    worker.evaluate(async (u) => {
+      const all = await chrome.storage.session.get(null);
+      return Object.entries(all).find(([k, v]) => k.startsWith("tab:") && v?.url === u)?.[1] ?? null;
+    }, url);
   const open = async (url) => {
     const page = await context.newPage();
     await page.goto(url).catch(() => {}); // a redirect to the warning page aborts the navigation
@@ -194,7 +209,7 @@ try {
   console.log("ok  page model reads the page and raises it to the warning page");
 
   // 4. dangerous by the model: warning page, report, proceed anyway
-  page = await open("http://secure-paypal-login.xyz:8123/");
+  page = await open("http://secure-paypal-login.xyz:8123/verify-account");
   await settle(page, async () => page.url().startsWith(`chrome-extension://${extId}/warning.html`), "warning page");
   assert.ok((await reasonsOf(page)).length > 0);
   await page.click("#report");
@@ -210,6 +225,25 @@ try {
   await settle(page, async () => page.url().startsWith("http://secure-paypal-login.xyz:8123/"), "proceed anyway");
   await page.waitForSelector("#ok");
   console.log("ok  dangerous page: reasons shown, false-positive report sends domain only, proceed anyway works");
+
+  // 4b. dangerous by the address model alone, on a page that asks for nothing: banner, never blocked
+  page = await open("http://acme-tools.in:8123/api/verify");
+  await page.waitForSelector("#ok");
+  await settle(page, async () => (await page.locator("phishdrift-banner").count()) === 1, "address-only banner");
+  await sleep(6000); // past the hold for the page check
+  assert.ok(page.url().startsWith("http://acme-tools.in:8123/api/verify"), `blocked: ${page.url()}`);
+  const held = await stateOf(page.url());
+  assert.equal(held?.verdict, 1, JSON.stringify(held));
+  assert.match(held.notes.join(" "), /not blocked/);
+  console.log("ok  address model alone on a page without credential fields: banner, not the warning page");
+
+  // 4c. a dangerous-looking hop that redirects to an ordinary page (form post to a verify endpoint)
+  page = await open("http://acme-tools.in:8123/api/turnstile/verify");
+  await page.waitForSelector("#ok");
+  await sleep(1500);
+  assert.equal(page.url(), "http://acme-tools.in:8123/branch/second/subjects/CSE");
+  assert.equal((await stateOf(page.url()))?.verdict, 0);
+  console.log("ok  redirect hop with a dangerous-looking address is not blocked; the page it lands on is judged");
 
   // 5. blocklist hit on an address the model passes
   page = await open("http://quietgarden-recipes.com:8123/soup");
@@ -256,7 +290,7 @@ try {
   page = await open("http://bakery-hours.org:8123/back");
   await page.waitForSelector("#ok");
   await sleep(1000);
-  await page.goto("http://secure-paypal-login.xyz:8123/").catch(() => {});
+  await page.goto("http://secure-paypal-login.xyz:8123/verify-account").catch(() => {});
   await settle(page, async () => isWarning(page), "warning page before back");
   await page.click("#back");
   await settle(page, async () => page.url() === "http://bakery-hours.org:8123/back", "back to the safe page");

@@ -9,6 +9,10 @@
 //   for no credentials at all (no password, one-time code, card or PIN field, in the page or any of
 //   its frames): the page's HTML belongs to whoever runs it, so on a login page the attacker's own
 //   markup must not be able to clear an address warning.
+// - The address model alone never blocks a page that asks for nothing: a dangerous address on a
+//   page with no credential field, which the page model does not also call dangerous, gets the
+//   banner instead of the warning page (an API endpoint, a redirect hop, an ordinary article).
+//   Before the page has been read, such a verdict is held (`addressOnly`, see background.js).
 // - Domain evidence (backend, tier C rules checked in reports/domain_rules.md) can only raise
 //   suspicious to dangerous, never turn a safe verdict into a warning.
 // - The password-form rule is used only when the page model could not read the page fully.
@@ -22,6 +26,12 @@ export const DANGEROUS = 2;
 export const BLOCKLIST_REASON = "This address is on a list of known phishing sites.";
 export const NO_ADDRESS_REASON = "This page asks for a password or card details but has no web address of its own.";
 export const NO_ADDRESS_NOTE = "This page has no web address to check.";
+export const ADDRESS_ONLY_NOTE =
+  "The address looks like phishing, but this page does not ask for a password or payment details, so it was not blocked.";
+
+// A dangerous verdict that rests on the address model alone (no list, look-alike rule, domain
+// check or page agrees yet). The service worker shows it as suspicious until the page is read.
+export const addressOnly = (result) => result?.verdict === DANGEROUS && result.layer === "url-model";
 
 // layers: {
 //   trusted: bool,               user pressed "trust this site"
@@ -34,7 +44,7 @@ export const NO_ADDRESS_NOTE = "This page has no web address to check.";
 //   unscored: bool,              the document has no web address (address.js effectiveUrl)
 // }
 // page: {hasPassword, credFormCrossDomain, credFormInsecure, asksCredentials} | null (pagefacts.js)
-// pageModel: {hasHtml, blended, verdict, reasons:[{text}], allowedPageWarning?} | null
+// pageModel: {hasHtml, blended, verdict, pageDangerous, reasons:[{text}], allowedPageWarning?} | null
 //            (scorePage in page.js)
 // brand: {address: [{rule, brand, text}], page: {rule, brand, text} | null} from brand_rules.js.
 // The brand and look-alike rules only raise a verdict (see brandEscalate).
@@ -104,6 +114,16 @@ function combineLayers(layers, page = null, pageModel = null) {
       // address reasons first when the address alone is dangerous; page reasons otherwise
       out.reasons = model.verdict === DANGEROUS ? [...out.reasons, ...pageReasons] : [...pageReasons, ...out.reasons];
       out.reasons = [...new Set(out.reasons)];
+    }
+  }
+  // The address alone says dangerous, but the page asks for nothing and the page model does not
+  // agree: one step down, to the banner (never to safe; a login form added later is rechecked).
+  if (out.verdict === DANGEROUS && model.verdict === DANGEROUS && page !== null && !page.asksCredentials) {
+    // only the page model's own call counts (its verdict is dangerous whenever the address is), and
+    // a page it could not read gives no second opinion
+    if (!pageRead || !pageModel.pageDangerous) {
+      out.verdict = SUSPICIOUS;
+      out.notes.push(ADDRESS_ONLY_NOTE);
     }
   }
   if (out.verdict === SAFE) return { ...out, reasons: [] };
