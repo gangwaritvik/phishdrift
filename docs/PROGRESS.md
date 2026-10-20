@@ -678,3 +678,26 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   transitions; `prefers-reduced-motion` turns animation off; light and dark themes. `demo/check.js` now returns a
   per-layer `trace` (same decisions as before; no scoring change). Test added in `extension/test/demo.test.js`.
 - The requested "UI UX Pro Max" skill is not available in this environment; the design follows general UI guidance.
+
+### 2026-10-20 — Address model alone no longer blocks a page that asks for nothing (cloud)
+- Found by Ritvik: the warning page blocked `https://www.mujtoppers.in/api/turnstile/verify` on a college
+  study site. The address model scores it 0.989 against the 0.986 dangerous cutoff (the word "verify" on an
+  unlisted `.in` domain; `/branch/second/subjects/CSE` on the same site scores 0.598). Probably a form post to
+  a Cloudflare Turnstile verify endpoint that redirects back (inferred; the sandbox cannot reach the site):
+  the old worker opened the warning page at `onBeforeNavigate`, before the server's redirect.
+- Changed (`extension/src/background.js`, `combine.js`, `js/src/page.js`): before commit only a blocklist hit
+  opens the warning page; a dangerous verdict from the address model alone (`addressOnly`) is shown as the
+  banner at commit and becomes the warning page only if the page asks for a password, one-time code, card or
+  PIN field, the page model's own score is over its dangerous cutoff (`pageDangerous`; the page verdict echoes
+  the address), a second layer raises it (domain checks, look-alike rules), or no page check starts within
+  5 s. Never lowered below suspicious. Extension 0.1.2.
+- Results (`python -m experiments.address_only_blocks`, `reports/address_only_blocks.md`; warned shares
+  unchanged by construction): natural legitimate pages blocked 11 -> 6 of 2,373 with the allowlist (30 -> 23
+  without); time slice legitimate 85 -> 40 of 51,342, phishing 64.3% -> 62.5% blocked (72.3% warned either way);
+  split 0 test legitimate 21 -> 15 of 19,109, phishing 84.4% -> 83.6%. Page facts come from stored features,
+  not a live DOM; the PC's processed files were staged for this.
+- Tests: `npm test` extension 65, js 15; e2e smoke 18 steps (new: address-only page gets the banner; a slow
+  verify-and-redirect hop is not blocked; both fail on the old build); the tester's attack harness gives the
+  same per-case results as before (33 of 35; the 2 trust cases fail on its stub lists, as on main).
+- Cost: a phishing page whose address alone is dangerous now renders with the banner until the page check
+  (document_idle, at most 5 s) before the warning page replaces it.
