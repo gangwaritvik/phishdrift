@@ -8,6 +8,8 @@
 // `read(path)` returns parsed JSON for a path relative to the repository root, or null when the
 // file does not exist.
 
+import { buildEvidence } from "./evidence.js";
+
 const LABELS = ["safe", "suspicious", "dangerous"];
 
 // Lists built by `python -m backend build-lists` (data/lists, on the PC) are fresher than the
@@ -25,12 +27,17 @@ async function loadLists(read) {
 
 export async function loadChecker({ base, read }) {
   const mod = (path) => import(new URL(path, base).href);
-  const [combine, lists, address, hybrid, brand] = await Promise.all([
+  const [combine, lists, address, hybrid, brand, keys, pslMod, urlparts, explain, modelMod] = await Promise.all([
     mod("combine.js"),
     mod("lists.js"),
     mod("address.js"),
     mod("lib/hybrid.js"),
     mod("lib/brand_rules.js"),
+    mod("keys.js"),
+    mod("lib/psl.js"),
+    mod("lib/urlparts.js"),
+    mod("lib/explain.js"),
+    mod("lib/model.js"),
   ]);
   const [bundle, psl, rulesPayload] = await Promise.all([
     read("js/data/tier_a_hybrid.json"),
@@ -51,6 +58,7 @@ export async function loadChecker({ base, read }) {
     address,
     hybrid,
     brand,
+    x: { keys, psl: pslMod, urlparts, explain, model: modelMod, hybrid, lists },
     model,
     rules,
     lists: listSet,
@@ -198,6 +206,7 @@ export async function checkUrl(c, input) {
     lookalike: layers.lookalike.map((h) => h.text),
     modelAlone,
     thresholds: c.info.thresholds,
+    evidence: await buildEvidence(c, target, listed, layers, result),
     trace: buildTrace(c, listed, layers, result, VERDICT_WORD[verdict]),
   };
 }
