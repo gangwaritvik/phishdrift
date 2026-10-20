@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhishDrift URL check</title>
+<link rel="icon" href="data:,">
+<!-- extension/src imports ./lib/*.js, which the extension build copies from js/src -->
+<script type="importmap">
+{ "imports": { "../extension/src/lib/": "../js/src/" } }
+</script>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5b6474; --line: #dde1e8;
+    --accent: #2457c5; --safe: #1f7a3d; --safe-bg: #e6f4ea; --warn: #9a5b00; --warn-bg: #fff3dc;
+    --bad: #b3261e; --bad-bg: #fde7e6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --card: #1b2029; --text: #e7eaf0; --muted: #9aa3b2; --line: #2d3442;
+      --accent: #7aa2ff; --safe: #6fd08f; --safe-bg: #17301f; --warn: #f2b858; --warn-bg: #352812;
+      --bad: #ff8a80; --bad-bg: #3a1a19;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  form { display: flex; gap: 8px; }
+  input[type=text] { flex: 1; min-width: 0; padding: 12px 14px; font-size: 1rem; border: 1px solid var(--line);
+    border-radius: 8px; background: var(--card); color: var(--text); }
+  button { padding: 12px 18px; font-size: 1rem; border-radius: 8px; border: 1px solid var(--accent);
+    background: var(--accent); color: #fff; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: wait; }
+  .examples { margin: 12px 0 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font-size: .9rem; }
+  .examples button { padding: 6px 10px; font-size: .85rem; background: transparent; color: var(--accent); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .verdict { display: flex; align-items: center; gap: 12px; font-size: 1.4rem; font-weight: 650; text-transform: capitalize; }
+  .pill { display: inline-block; padding: 4px 14px; border-radius: 999px; }
+  .safe .pill { background: var(--safe-bg); color: var(--safe); }
+  .suspicious .pill { background: var(--warn-bg); color: var(--warn); }
+  .dangerous .pill { background: var(--bad-bg); color: var(--bad); }
+  .unscored .pill { background: var(--line); color: var(--muted); }
+  .url { font-family: ui-monospace, Consolas, monospace; font-size: .85rem; color: var(--muted); word-break: break-all; margin: 8px 0 0; }
+  h2 { font-size: 1rem; margin: 18px 0 6px; }
+  ul { margin: 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .meter { position: relative; height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--safe-bg), var(--warn-bg), var(--bad-bg));
+    border: 1px solid var(--line); margin: 10px 0 4px; }
+  .meter .dot { position: absolute; top: -4px; width: 4px; height: 18px; background: var(--text); border-radius: 2px; transform: translateX(-2px); }
+  .meter .tick { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px dashed var(--muted); }
+  .scale { display: flex; justify-content: space-between; color: var(--muted); font-size: .8rem; }
+  .muted { color: var(--muted); font-size: .9rem; }
+  .err { color: var(--bad); }
+  details { margin-top: 8px; }
+  @media (max-width: 520px) { form { flex-direction: column; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>PhishDrift URL check</h1>
+  <p class="sub">Paste a web address to see what the PhishDrift extension would say about it. Everything runs in this browser tab; nothing is sent anywhere.</p>
+
+  <form id="form">
+    <input id="url" type="text" placeholder="https://example.com/login" autocomplete="off" spellcheck="false" aria-label="Web address">
+    <button id="go" type="submit" disabled>Check</button>
+  </form>
+  <div class="examples" id="examples">Try:</div>
+
+  <div id="out"></div>
+
+  <div class="card muted" id="about">
+    <strong>What this checks.</strong> The same address checks as the extension, with the same code and model files:
+    the allowlist, the blocklist (when built on this machine), the on-device address model and the brand look-alike rules.
+    It does not open the page, so the page model, the login-form checks and the backend's domain checks are not applied here;
+    in the browser the extension also reads the page and can raise (or, on pages without login fields, lower) this verdict.
+    <div id="info" style="margin-top:8px">Loading the model...</div>
+  </div>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
