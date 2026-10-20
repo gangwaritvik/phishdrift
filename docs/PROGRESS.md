@@ -797,3 +797,12 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   Word copy in the project folder). Structure follows the first study's report: summary, questions, data, results per
   finding, reproduction, follow-up checks, Part B, limitations, claim register, figure inventory.
 - Not done: the PDF is a pandoc + LibreOffice conversion, plain styling; tables are wide and may need layout work for a paper.
+
+### 2026-10-20 — Final PBL report (PhishGuard study + PhishDrift)
+- Changed: `scripts/build_pbl.py` (assembles `reports/pbl/pbl_report.md` from the PhishGuard report, the PhishDrift chapters
+  and new intro/conclusion text; numbers in the new text read from `reports/phishguard/tables/`), `scripts/pbl_figures.py`
+  (8 PhishDrift figures from `reports/*.md` tables), `reports/pbl/` (Markdown, figures, PDF, 43 pages). Word copy and PDF in the
+  project folder `paper/`. PhishGuard report gained the host-share-by-cleaning-stage finding.
+- Not done / unverified: chapter 5 corpus counts are copied from the 2026-10-13 report draft (`reports/data_card.md` is not in
+  this checkout); no screenshots (marked for the author); the shipped address bundle still uses the old brand list; citation
+  details need checking; institution, guide and declaration pages are not included.

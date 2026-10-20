@@ -101,6 +101,9 @@ The study and the detector draw on public datasets (PhreshPhish, PhiUSIIL, URL-P
     ch4 = "\n".join(ch4_parts)
     ch4 = re.sub(r"\(Section 7\)", "(Section 4.12)", ch4)
     ch4 = re.sub(r"Section 6\b", "Section 4.11", ch4)
+    ch2 = re.sub(r"(Figure|Table) (\d+)\b", r"\1 4.\2", ch2)
+    ch3 = re.sub(r"(Figure|Table) (\d+)\b", r"\1 4.\2", ch3)
+    ch4 = re.sub(r"(Figure|Table) (\d+)\b", r"\1 4.\2", ch4)
 
     drift_txt = (
         drift.read_text(encoding="utf-8")
@@ -151,8 +154,15 @@ date: "October 2026"
 ---
 
 """
+    heads = [
+        ln[2:].strip()
+        for ln in (ch1 + ch2 + ch3 + ch4 + drift_txt + ch10).splitlines()
+        if ln.startswith("# ")
+    ]
+    contents = "# Contents\n\n" + "\n".join(f"- {h}" for h in heads) + "\n\n"
     text = (
         title
+        + contents
         + "# Abstract\n\n"
         + abstract
         + "\n\n"
