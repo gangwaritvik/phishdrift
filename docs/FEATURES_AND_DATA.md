@@ -19,6 +19,7 @@ Only URL, label, date and HTML are loaded from any source. Precomputed feature c
 | PhishStorm (Aalto) | 48,009 / 48,009 | no | no (2014) | Old; URLs often stored without a scheme. |
 | Live feeds (our collector) | grows daily | via sandbox | first-seen | Only source for tier C. |
 | Benign inner-page crawl | grows | optional | crawl date | 3–5 inner pages per seed domain from PhiUSIIL-legit and Tranco seeds. |
+| Popular-sites crawl + Common Crawl index (`popular`) | grows | crawl: yes; index: no | crawl date | Benign only. Deep URLs of Chrome's most visited sites (CrUX), `scripts/run_popular_crawl.ps1`. Rank only picks hosts. Evaluation pages and corpus domains are excluded. |
 | Naturally browsed legitimate pages | — | — | — | Evaluation only: out-of-distribution FPR. |
 
 Data card per source: URL and domain counts, dates, class balance, depth distribution, dedup and removal

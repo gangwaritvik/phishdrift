@@ -679,6 +679,18 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   per-layer `trace` (same decisions as before; no scoring change). Test added in `extension/test/demo.test.js`.
 - The requested "UI UX Pro Max" skill is not available in this environment; the design follows general UI guidance.
 
+### 2026-10-20 — URL check page: one screen per layer, new palette (cloud)
+- Ritvik: the layer view was fixed cards with generic paragraphs. Reworked `demo/` so each layer is its own screen,
+  played one after another, showing what it checked for the typed address: allowlist (domain, SHA-256 fingerprint,
+  found or not), blocklist (the URL keys that were hashed and looked up), address model (score built from the real
+  clues, in log-odds, on a gauge with both thresholds), look-alike rules (letters compared with the closest brand,
+  after mapping look-alike characters), combiner (steps on a safe / suspicious / dangerous ladder), then the verdict.
+  Step bar at the top; click a finished step to replay it; "Skip to verdict". New violet palette, light and dark.
+- Changed: `demo/evidence.js` (new, reads the extension's own objects, changes no verdict), `demo/check.js`,
+  `demo/index.html`, `demo/app.js`, test in `extension/test/demo.test.js`. No backend or list code touched.
+- Checked in headless Chromium (desktop, 390 px dark) on the look-alike, normal, punycode and phishing examples;
+  not on Ritvik's PC.
+
 ### 2026-10-20 — Stitch false alarm: popular tenant sites on platforms (cloud)
 - Found by Ritvik's URL check page: `stitch.withgoogle.com` was suspicious. Cause: `withgoogle.com` is on the
   hosting-platform list (public suffix list), so the allowlist was skipped; the address model scored 0.902.
@@ -690,4 +702,22 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   unchanged (2,740 of 3,000); natural legitimate pages unchanged (72 of 2,555); held-out phishing (OpenPhish 1,800,
   half of ACTIVE 394,527) on kept tenants 0. Tests: pytest, `npm test` extension 66.
 - Next on the PC: `python -m backend build-lists --tranco-file ...` downloads the CrUX list itself.
+
+### 2026-10-20 — Deep legitimate URLs of popular sites: crawl + Common Crawl seed sets (cloud, code only)
+- Why: the address model's false alarms (2.8% of natural legitimate pages; `stitch.withgoogle.com`) come from benign
+  training URLs that are mostly bare homepages. Ritvik chose "we crawl" and "use both" (crawler and Common Crawl index).
+- Changed: `collector/popular.py` (CrUX host list, host selection, Common Crawl CDX reader), seed sets `popular`
+  (crawler, HTML kept) and `commoncrawl` (index URLs, no HTML) in `configs/collector.yaml` (`scheduled: false`, run by
+  name; own lock so the 12 h collector is never blocked; heartbeat at every checkpoint), new benign-only source
+  `popular` in `configs/datasets.yaml` (`kind: crawl_only`, after `phiusiil` in the source priority; not in the time
+  slice), `data_pipeline/sources.py` (`crawl_seed_names`, `commoncrawl` origin), `scripts/run_popular_crawl.ps1`,
+  `python -m collector crawl --seeds ... --domains-per-run N`. Tests: `tests/test_collector_popular.py` (fixtures only).
+- Rules kept: popularity picks hosts and is never stored or a feature; hosts in the corpus, the OOD evaluation set,
+  the feed index, earlier crawls or with feed phishing are skipped (natural pages stay evaluation-only); robots.txt and
+  Crawl-delay obeyed; the corpus still caps a registrable domain at 20 URLs, so a hosting platform's tenants share 20.
+- Not measured: nothing was fetched (the sandbox cannot reach Common Crawl, CrUX hosts or the open web), so the real
+  yield, the Common Crawl request shapes against the live API, and the effect on false alarms are unknown. Next: run
+  `scripts\run_popular_crawl.ps1 -DomainsPerRun 20` on the PC as a test, then the full run, rebuild the pool
+  (`python -m data_pipeline build --reuse-interim --reload popular`), retrain, and re-measure false alarms on the
+  natural pages (`experiments.shipped_verdicts`, `reports/blend2_rules.md`).
 

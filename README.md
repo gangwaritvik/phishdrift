@@ -100,9 +100,10 @@ addresses and uses its bundled allowlist.
 python -m demo        # from the repository folder; opens http://127.0.0.1:8765/demo/
 ```
 
-Paste an address and watch it travel through each layer (allowlist, blocklist, address model,
-look-alike rules, combiner) with an animation, ending in the verdict (safe / suspicious / dangerous),
-the address model's score against the two thresholds and the reasons. It runs the extension's own address
+Paste an address and each layer (allowlist, blocklist, address model, look-alike rules, combiner)
+takes its own screen in turn and shows what it checked for that exact address: the domain and its hash
+looked up in the list, the clues that built the model's score, the letters compared with the closest
+brand, and the combiner's steps. It ends in the verdict (safe / suspicious / dangerous) with the reasons. It runs the extension's own address
 layers in the browser tab (allowlist, blocklist from `data/lists/` when built, tier A model,
 look-alike rules, combiner) and reads the model files from `js/data` on every load, so a
 re-exported model shows up after a reload. It does not open the page, so the page model, the
