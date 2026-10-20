@@ -436,6 +436,25 @@ def build(run: Path, out: Path) -> Path:
     m4 = d4.roc_auc
     u4 = d4[d4.cell.str.endswith("__urlphish")].roc_auc
     share_gt = (f4.sd_R4 > f4.sd_R1).mean()
+    rg = repro.groupby(["stage", "model", "rep"]).auc.median().unstack()
+    rg["share"] = (rg.R2 - rg.R4) / (rg.R1 - rg.R4)
+    sh = rg["share"].unstack("model").reset_index()
+    sh["stage"] = sh["stage"].str.replace(r" \(.*\)$", "", regex=True)
+    sh = sh.rename(
+        columns={
+            "stage": "PhiUSIIL cleaning stage",
+            "xgboost": "XGBoost host share",
+            "char_ngram": "Char n-gram host share",
+        }
+    )
+    sh_raw_x, sh_cell_x = (
+        rg["share"].xs("xgboost", level="model").iloc[0],
+        rg["share"].xs("xgboost", level="model").iloc[-1],
+    )
+    sh_raw_c, sh_cell_c = (
+        rg["share"].xs("char_ngram", level="model").iloc[0],
+        rg["share"].xs("char_ngram", level="model").iloc[-1],
+    )
     cs = ctrl1.groupby("model").auc.agg(["mean", "std"])
 
     # tables
@@ -472,9 +491,9 @@ def build(run: Path, out: Path) -> Path:
         (
             "F2 Where the drop sits",
             FIRST["F2"],
-            f"median host/subdomain share {host_share:.2f}; path and query removal carries the rest",
+            f"median host/subdomain share {host_share:.2f} on the study cells; on raw PhiUSIIL alone {sh_raw_x:.2f} (XGBoost), falling to {sh_cell_x:.2f} after cleaning",
             "Not replicated",
-            "Do not repeat the first study's host/subdomain claim; say the split depends on the feature engine and data.",
+            "Say the host/subdomain share depends on how the benchmark is prepared: it is high on the raw benchmark and low on cleaned pools.",
         ),
         (
             "F3 Source dependence",
@@ -589,7 +608,13 @@ AUC falls from R1 to R4 in all {int(verd.loc["F1", "settings"])} model-cell sett
 
 ## 4.2 F2: where the drop sits (not replicated)
 
-The first study put most of the R1 to R4 drop in the host and subdomain (share 0.870 in cell A, 0.563 in cell C). Here the host and subdomain step (R2 to R4) carries a median share of {host_share:.2f}; the larger part comes from removing path and query (R1 to R2). The statement "most of the fall sits in host structure" holds in {int(verd.loc["F2", "hold"])} of {int(verd.loc["F2", "settings"])} settings. This run uses 99 features rather than 38, balances depth, and caps URLs per domain, all of which can change where the information sits; the report does not choose among those explanations.
+The first study put most of the R1 to R4 drop in the host and subdomain (share 0.870 in cell A, 0.563 in cell C). Here the host and subdomain step (R2 to R4) carries a median share of {host_share:.2f}; the larger part comes from removing path and query (R1 to R2). The statement "most of the fall sits in host structure" holds in {int(verd.loc["F2", "hold"])} of {int(verd.loc["F2", "settings"])} settings. This run uses 99 features rather than 38, balances depth, and caps URLs per domain, all of which can change where the information sits; the main report does not choose among those explanations.
+
+**Exploratory follow-up (not part of the frozen verdict).** Re-running PhiUSIIL alone with one cleaning step added at a time (Section 6) shows the host share of the drop depends on how the data was prepared. On raw PhiUSIIL through our loader the host step carries {sh_raw_x:.2f} of the drop for XGBoost and {sh_raw_c:.2f} for the character model; on the study cell, after the shared-domain removal, depth balancing and caps, it carries {sh_cell_x:.2f} and {sh_cell_c:.2f}. The first study's pattern is therefore visible again on the raw benchmark for XGBoost, and it fades as the benchmark is cleaned. That is consistent with the F2 pattern being tied to how the raw benchmark was built, but it is one dataset and two models, so it is stated as a lead, not a conclusion.
+
+**Table 2b.** Host and subdomain share of the R1 to R4 drop, PhiUSIIL alone, by cleaning stage (5 splits).
+
+{tbl(sh)}
 
 ![Share of the R1 to R4 drop by step, LightGBM, per cell.]({figs["share"]})
 

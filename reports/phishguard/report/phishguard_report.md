@@ -125,7 +125,20 @@ AUC falls from R1 to R4 in all 100 model-cell settings. The median R1 AUC is 0.9
 
 ## 4.2 F2: where the drop sits (not replicated)
 
-The first study put most of the R1 to R4 drop in the host and subdomain (share 0.870 in cell A, 0.563 in cell C). Here the host and subdomain step (R2 to R4) carries a median share of 0.21; the larger part comes from removing path and query (R1 to R2). The statement "most of the fall sits in host structure" holds in 0 of 100 settings. This run uses 99 features rather than 38, balances depth, and caps URLs per domain, all of which can change where the information sits; the report does not choose among those explanations.
+The first study put most of the R1 to R4 drop in the host and subdomain (share 0.870 in cell A, 0.563 in cell C). Here the host and subdomain step (R2 to R4) carries a median share of 0.21; the larger part comes from removing path and query (R1 to R2). The statement "most of the fall sits in host structure" holds in 0 of 100 settings. This run uses 99 features rather than 38, balances depth, and caps URLs per domain, all of which can change where the information sits; the main report does not choose among those explanations.
+
+**Exploratory follow-up (not part of the frozen verdict).** Re-running PhiUSIIL alone with one cleaning step added at a time (Section 6) shows the host share of the drop depends on how the data was prepared. On raw PhiUSIIL through our loader the host step carries 0.76 of the drop for XGBoost and 0.42 for the character model; on the study cell, after the shared-domain removal, depth balancing and caps, it carries 0.36 and 0.21. The first study's pattern is therefore visible again on the raw benchmark for XGBoost, and it fades as the benchmark is cleaned. That is consistent with the F2 pattern being tied to how the raw benchmark was built, but it is one dataset and two models, so it is stated as a lead, not a conclusion.
+
+**Table 2b.** Host and subdomain share of the R1 to R4 drop, PhiUSIIL alone, by cleaning stage (5 splits).
+
+| PhiUSIIL cleaning stage | Char n-gram host share | XGBoost host share |
+|---|---|---|
+| S0 raw PhiUSIIL | 0.416 | 0.762 |
+| S0b raw, sampled to 10,000 per class | 0.300 | 0.722 |
+| S1 + domains shared with other sources removed | 0.305 | 0.514 |
+| S2 + pool URL rules | 0.271 | 0.446 |
+| S3 + study caps (5 per domain, 10,000 per class) = study cell | 0.212 | 0.359 |
+
 
 ![Figure 4. Share of the R1 to R4 drop by step, LightGBM, per cell.](fig04_share.png)
 
@@ -260,7 +273,7 @@ Four cells (Phishpedia or PhreshPhish phishing against PhreshPhish or crawled le
 | Finding | First study | This run | Verdict | How to word it |
 |--------------|------------------------|----------------------------------|-----------|------------------------------|
 | F1 Representation sensitivity | cell A raw 0.9988 to R4 0.7297; all cells R4 0.63-0.86 | R1 0.977 to R4 0.850 (median of cells and models); falls in every one of 100 model-cell settings | Replicated | A direct finding, across five phishing sets, five legitimate sets and four model families. |
-| F2 Where the drop sits | R1-R4 drop share in host/subdomain 0.870 (cell A), 0.563 (cell C) | median host/subdomain share 0.21; path and query removal carries the rest | Not replicated | Do not repeat the first study's host/subdomain claim; say the split depends on the feature engine and data. |
+| F2 Where the drop sits | R1-R4 drop share in host/subdomain 0.870 (cell A), 0.563 (cell C) | median host/subdomain share 0.21 on the study cells; on raw PhiUSIIL alone 0.76 (XGBoost), falling to 0.36 after cleaning | Not replicated | Say the host/subdomain share depends on how the benchmark is prepared: it is high on the raw benchmark and low on cleaned pools. |
 | F3 Source dependence | swapping the phishing source moves R4 by 0.13-0.16 | swapping one source moves R4 AUC by a median 0.058; CI excludes 0 in 76% of settings, 53% after depth reweighting | Partly replicated | Real in some pairs, absent in others; reweighting for depth halves it. |
 | F4 Split sensitivity | R4 SD across 10 splits up to 0.1164 against at most 0.0026 for raw | median SD 0.006 (R4) against 0.002 (R1); larger than 3x in 45% of settings, largest 0.019 | Not replicated | Split variability matters but the 3x margin is not general. |
 | HP Platform masking | masking raised held-out R4 AUC in 60 of 60 pairs | no hosting-platform domains remain after the 5-per-domain cap | Not testable | Leave to a design that keeps platform domains. |
