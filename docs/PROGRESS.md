@@ -804,6 +804,17 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   not a leak (a leak pushes above 0.5); the same model at R4 and in the other 24 cells was not flagged.
 - Next: write both into the study report as limitations; optionally rerun the control unweighted / larger leaves.
 
+### 2026-10-20 — Addresses-only seed set `popular_urls` for lakhs of legitimate inner pages (cloud, code only)
+- Ritvik asked for lakhs of legitimate inner pages. The sandbox cannot reach Common Crawl, Hugging Face, Tranco or Kaggle
+  (proxy 403), so everything runs on the PC. Chosen (decision card): addresses first, HTML at scale second.
+- Changed: `collector/benign.py` seed sets can override crawler settings with `crawl:`; new seed set `popular_urls` in
+  `configs/collector.yaml` (CrUX hosts, `store_html: false`, `inner_pages_max: 20`, pages belong to source `popular`),
+  included in `popular-summary`; test in `tests/test_collector_popular.py`.
+- Not measured: yield per site, time, effect on false alarms. Estimate only: 8-10 addresses per site, about 1 hour per lakh.
+- Known limit before a big HTML crawl: `store.write_crawl` rewrites the whole day file at each checkpoint and `load_crawl`
+  loads all HTML at once; the HTML round needs part files and a streaming load.
+- Next: Ritvik's 10k-page rebuild finishes first; then a 500-site test of `popular_urls`.
+
 ### 2026-10-21 — Popular-sites crawler, 5,000-site pass (cloud)
 - Ritvik's PC run (log excerpt, not the file): 5,000 sites, 10,818 deep pages; status ok 2,133, no_pages 1,295,
   robots_disallow_all 891, few_pages 364, robots_unreadable 303, crawl_delay_too_long 14. The end-of-run summary crashed
