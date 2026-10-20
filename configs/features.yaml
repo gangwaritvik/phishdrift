@@ -27,6 +27,10 @@ lists:
     }}
     LIMIT 4000
   brand_urls: []                    # extra plain-text brand lists (one per line), e.g. exported Phishpedia targets
+  brand_files:                      # reviewed lists kept in the repo (one per line, # comments)
+    - configs/lists/brand_additions.txt   # phishing-feed evidence, reviewed by Ritvik; see the file header
+  brand_exclude:                    # generic words removed after review (Ritvik, 2026-10-12); applied last
+    [archive, bank, chess, delta, global, group, holdings, home, meta, next, orange, people, shell, united]
   brand_seed:                       # starting set, used when no network source answers
     # global
     - paypal
