@@ -57,7 +57,9 @@ class _Handler(BaseHTTPRequestHandler):
 
 def _browser() -> Path | None:
     try:
-        return render.find_browser({"prefer": ["chromium", "chrome", "edge"]})
+        # Release Chrome first, as configs/render.yaml does. On the ubuntu-24.04 runner image
+        # 20261018 the test timed out on every page with Chromium first; Chrome 155 passes.
+        return render.find_browser({"prefer": ["chrome", "chromium", "edge"]})
     except FileNotFoundError:
         return None
 
