@@ -47,3 +47,17 @@ test("short links and non-web addresses are not scored by the model", async () =
   assert.equal((await checkUrl(c, "https://bit.ly/abc")).layer, "shortener");
   assert.equal((await checkUrl(c, "javascript:alert(1)")).verdict, "unscored");
 });
+
+test("trace lists every layer in order, with the deciding tone", async () => {
+  const c = await checker;
+  const ids = ["allowlist", "blocklist", "model", "lookalike", "combine", "page"];
+  const safe = await checkUrl(c, "web.whatsapp.com");
+  assert.deepEqual(safe.trace.map((t) => t.id), ids);
+  assert.equal(safe.trace[0].tone, "safe");
+  assert.equal(safe.trace[2].tone, "skip");
+  assert.equal(safe.trace[4].tone, "safe");
+  const bad = await checkUrl(c, "http://secure-login-verify-account.xyz/wp-admin/office365/index.php");
+  assert.equal(bad.trace[0].tone, "clear");
+  assert.equal(bad.trace[4].tone, "bad");
+  assert.equal(bad.trace[5].tone, "na");
+});
