@@ -658,3 +658,16 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Not done: the models still use the old list (shipped address bundle: the 67-name seed list) until
   `scripts\refresh_brands.ps1 -Model` runs on the PC; brand-to-domain map needs Wikidata (PC).
 - Open: Ritvik's review of the list (left-out candidates: halifax and huntington recommended).
+
+### 2026-10-20 — PhishGuard verification study run (research study, separate from the PhishDrift detector)
+- New `phishguard/` package, `configs/phishguard.yaml` (plan and replication rule frozen at commit 082b058 before
+  the run), `tests/test_phishguard.py`. One command: `python -m phishguard all` (resumable, one result file per job).
+  Proposal: Claude Doc "PhishGuard: Study Report and Verification Proposal".
+- Run: 291 jobs (25 URL cells x 10 splits, 4 page cells x 10 splits, 1 fingerprint check), 4 processes, no failures.
+  Output `reports/phishguard/verification.md` and `reports/phishguard/tables/`.
+- Part A verdicts (URLs): F1 replicated (100/100); H6 replicated (392/392); F3 partly (76%, 53% after depth
+  reweighting); OOD partly (76%); F2 not replicated (0/100; R2-to-R4 share median 0.21 vs 0.87 in the first study);
+  F4 not replicated (45%); H5 not replicated (26%, expected inconclusive); HP not testable (no platform domains
+  left after the 5-per-domain cap). E0: PhiUSIIL cell raw AUC 0.864 vs 0.999 published, R4 0.791 vs 0.730.
+  Shuffled-label controls 0.448-0.525, 1 of 100 flagged (urlphish__phiusiil, R1, LightGBM, 0.448; to investigate).
+- Not done: investigation of the flagged control and of the E0 gap; PhishTank cells (not in the pool).
