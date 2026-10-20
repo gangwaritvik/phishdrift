@@ -129,3 +129,19 @@ test("a shortener is never allowlisted, even when its domain is on the allowlist
   const site = await set.check("https://example.com/");
   assert.deepEqual([site.shortener, site.allow], [false, true]);
 });
+
+test("a popular tenant site on a platform is allowlisted by its exact host, a sibling is not", async () => {
+  const set = new ListSet(
+    {
+      blocklist: { prefix_bytes: BYTES, domains: [], urls: [await h(listUrlKey("https://stitch.withgoogle.com/login/x"))] },
+      allowlist: { prefix_bytes: BYTES, domains: [await h("stitch.withgoogle.com")] },
+    },
+    { platforms: new Set(["withgoogle.com"]), psl },
+  );
+  const ok = await set.check("https://stitch.withgoogle.com/projects/1?pli=1");
+  assert.deepEqual([ok.shared, ok.allow, ok.blocked], [true, true, null]);
+  assert.equal((await set.check("https://evil.withgoogle.com/")).allow, false);
+  assert.equal((await set.check("https://withgoogle.com/")).allow, false);
+  // an exact listed phishing URL on that host still wins over the allowlist
+  assert.equal((await set.check("https://stitch.withgoogle.com/login/x")).blocked, "url");
+});

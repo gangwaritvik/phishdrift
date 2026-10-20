@@ -27,6 +27,15 @@ allowlisted). The zones are listed in plain text in the allowlist document (``op
 they are public hosting names, not user data. Besides the feeds, a long phishing history
 (``lists.open_hosting.evidence_urls``) feeds the learner, because the corpus drops domains
 shared by several phishing sources and the live feeds cover only days.
+
+Tenant sites (learned from data, not hand-written): a hosting platform's registrable domain is
+never allowlisted, because its popularity is the sum of many unrelated tenants. Each tenant is
+its own site (that is what a PSL private suffix says), so a tenant site that real users visit a
+lot (``stitch.withgoogle.com``, ``tax.service.gov.uk``) is allowlisted by its exact host, the
+way an ordinary popular domain is. Popularity comes from a host-level list of the most visited
+origins in Chrome (CrUX, ``lists.tenant_sites``), rank only cuts the list. A host is left out
+when any phishing URL (feeds, corpus or zone evidence) sits on it or below it, when it is not
+itself a tenant site (``s3.amazonaws.com`` serves every bucket as a path) or is a shortener.
 """
 
 from __future__ import annotations
@@ -197,6 +206,32 @@ def tranco_from_package(cache_dir: Path, top_n: int) -> list[str]:
     return Tranco(cache_dir=str(cache_dir)).list().top(top_n)
 
 
+def parse_origin_ranks(text: str, top_rank: int) -> list[str]:
+    """Origins ranked at or above ``top_rank`` in a CrUX top list (``origin,rank`` per line, in
+    rank buckets; a line without a rank is kept). Order is kept."""
+    out: list[str] = []
+    for line in text.splitlines():
+        origin, _, rank = line.strip().rpartition(",")
+        if not origin:
+            origin, rank = rank, ""
+        if not origin.startswith(("http://", "https://")):
+            continue
+        if rank.strip().isdigit() and int(rank) > top_rank:
+            continue
+        out.append(origin)
+    return out
+
+
+def read_origins_file(path: Path, top_rank: int) -> list[str]:
+    """``parse_origin_ranks`` on a CrUX CSV, plain or gzipped."""
+    import gzip
+
+    data = Path(path).read_bytes()
+    if data[:2] == b"\x1f\x8b":
+        data = gzip.decompress(data)
+    return parse_origin_ranks(data.decode("utf-8", errors="replace"), top_rank)
+
+
 # --- build ------------------------------------------------------------------------------
 
 
@@ -356,6 +391,39 @@ def learn_zones(
     return model
 
 
+def tenant_sites(
+    origins: Iterable[str],
+    platforms: frozenset[str] | set[str],
+    zones: set[str] | frozenset[str],
+    phishing_urls: Iterable[str],
+    shorteners: frozenset[str] | set[str] = frozenset(),
+) -> list[str]:
+    """Popular tenant sites on hosting platforms to allowlist by exact host (module docstring).
+
+    ``origins`` are popular origins (most visited first). A host is kept when its registrable
+    domain is a platform, it is its own private-suffix site (``private_tenant``), it is not in or
+    below an open-hosting zone, its domain is not a shortener, and no phishing URL is on it or
+    below it."""
+    phished: set[str] = set()
+    for url in phishing_urls:
+        host = url_host(url)
+        while host:
+            phished.add(host)
+            host = host.partition(".")[2]
+    out: dict[str, None] = {}
+    for origin in origins:
+        domain = list_domain_key(origin)
+        host = url_host(origin)
+        if not domain or domain not in platforms or domain in shorteners:
+            continue
+        if host == domain or private_tenant(host) != host or host in phished:
+            continue
+        if in_zone(host, zones):
+            continue
+        out[host] = None
+    return list(out)
+
+
 def open_hosting_zones(
     phishing_urls: Iterable[str],
     candidates: set[str],
@@ -468,6 +536,7 @@ def build_lists(
     allow_prefix_bytes: int | None = None,
     sentinel_top_n: int = 1000,
     specific_segment_len: int = 16,
+    popular_origins: Iterable[str] = (),
 ) -> dict[str, dict]:
     """Return ``{"manifest", "blocklist", "allowlist"}`` documents (all sorted, deterministic
     except ``built_at``). ``extra_phishing_urls`` (for example the corpus's phishing URLs) only
@@ -478,9 +547,11 @@ def build_lists(
     the allowlist hashes: a short allowlist prefix lets an attacker register a domain whose hash
     collides with a trusted one. ``allow_candidates`` are in rank order; the hashes of the first
     ``sentinel_top_n`` allowlisted ones are listed in ``allowlist.top`` so the extension can
-    refuse a synced list that would block or drop the most visited sites."""
+    refuse a synced list that would block or drop the most visited sites. ``popular_origins``
+    (most visited first) supply the tenant sites allowlisted by exact host (``tenant_sites``)."""
     allow_bytes = allow_prefix_bytes or prefix_bytes
     blocklist_urls = list(blocklist_urls)
+    extra_phishing_urls = list(extra_phishing_urls)
     ranked = list(dict.fromkeys(d for d in map(list_domain_key, allow_candidates) if d))
     ranked = [d for d in ranked if d not in shorteners]
     cand_domains = set(ranked)
@@ -514,7 +585,10 @@ def build_lists(
     allowed_ranked = [
         d for d in ranked if d not in platforms and d not in zones and d not in plain_block_domains
     ]
-    allow = {list_hash(d, allow_bytes) for d in allowed_ranked}
+    tenants = tenant_sites(
+        popular_origins, platforms, zones, [*blocklist_urls, *extra_phishing_urls], shorteners
+    )
+    allow = {list_hash(d, allow_bytes) for d in [*allowed_ranked, *tenants]}
     top = [list_hash(d, allow_bytes) for d in allowed_ranked[:sentinel_top_n]]
     doms, urls, allowed = sorted(block_domains), sorted(block_urls), sorted(allow)
     opened = sorted(zones)
@@ -542,6 +616,7 @@ def build_lists(
             "blocklist_domains": len(doms),
             "blocklist_urls": len(urls),
             "allowlist_domains": len(allowed),
+            "allowlist_tenant_sites": len(tenants),
             "open_hosting_domains": len(opened),
             "allowlist_top": len(top),
         },

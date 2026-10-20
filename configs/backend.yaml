@@ -87,6 +87,16 @@ lists:
       - https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-ACTIVE.txt
     evidence_cache_ttl_s: 86400
     evidence_timeout_s: 300
+  # Popular tenant sites on hosting platforms, allowlisted by exact host (backend/lists.py
+  # `tenant_sites`): a platform's domain is never allowlisted, but stitch.withgoogle.com is a site
+  # of its own. Host-level popularity from the CrUX top origins (Chrome users; rank only cuts the
+  # list, never a model feature). The newest of the last `months_back` monthly files is used.
+  tenant_sites:
+    origins_url: https://raw.githubusercontent.com/zakird/crux-top-lists/main/data/global/{month}.csv.gz
+    months_back: 3
+    top_rank: 50000              # CrUX rank bucket, same depth as allowlist_top_n
+    cache_ttl_s: 604800
+    timeout_s: 300
 
 rules:                           # heuristics, see backend/checks.py and reports/domain_rules.md
   very_young_domain_days: 7
