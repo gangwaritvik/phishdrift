@@ -668,3 +668,13 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   look-alike rules, combiner. The model's own score is also shown for allowlisted addresses. Model files are read
   from `js/data` at run time. Not applied: page model, password-form rule, backend, user trust, shortener expansion.
   Tests: `extension/test/demo.test.js` (5), `tests/test_demo.py`; checked in headless Chromium (desktop and phone width).
+
+### 2026-10-20 — URL check page: animated layer-by-layer view (cloud)
+- Ritvik found the first page vague and choppy. Redesigned `demo/index.html` and `demo/app.js`: the address is shown
+  entering a vertical pipeline; a marker moves from layer to layer (allowlist, blocklist, address model, look-alike
+  rules, combiner, and a greyed "page and domain checks" step that only the extension runs), each lighting up with what it
+  found; the verdict panel then draws a shield (check, warning or cross) with the reasons and the model score on a
+  meter against both thresholds. Row heights are fixed before the run so nothing jumps; only transform and opacity
+  transitions; `prefers-reduced-motion` turns animation off; light and dark themes. `demo/check.js` now returns a
+  per-layer `trace` (same decisions as before; no scoring change). Test added in `extension/test/demo.test.js`.
+- The requested "UI UX Pro Max" skill is not available in this environment; the design follows general UI guidance.

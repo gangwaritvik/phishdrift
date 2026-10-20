@@ -73,14 +73,90 @@ export function normaliseInput(text) {
   return /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(s) && !/^[^/:]+:\d/.test(s) ? s : `https://${s}`;
 }
 
+const TONE = ["safe", "warn", "bad"]; // verdict index -> tone
+const VERDICT_WORD = { safe: "Looks safe", suspicious: "Suspicious", dangerous: "Dangerous" };
+const LAYER_WORD = {
+  allowlist: "The allowlist decided.",
+  blocklist: "The blocklist decided.",
+  "url-model": "The address model decided.",
+  lookalike: "The look-alike rules raised the verdict.",
+  shortener: "A short link has nothing to judge until it is followed.",
+  none: "Nothing to check.",
+};
+
+// One entry per layer, in the order the extension runs them: what it found, for the page to
+// animate. tone: safe | clear | warn | bad | skip | na.
+function buildTrace(c, listed, layers, result, label) {
+  const { info } = c;
+  const decidedEarly = layers.allow || layers.shortener || layers.blocked;
+  const earlyWhy = layers.blocked
+    ? "The blocklist already decided, so this step isn't needed."
+    : layers.shortener
+      ? "Short links are judged by where they lead, not by their own address."
+      : "The allowlist already decided, so this step isn't needed.";
+  const d = listed.domain;
+  const trace = [];
+
+  if (listed.shortener) {
+    trace.push({ id: "allowlist", tone: "skip", label: "Link shortener", detail: "Link shorteners are never trusted on their own. The extension judges the page the link leads to." });
+  } else if (listed.shared) {
+    trace.push({ id: "allowlist", tone: "skip", label: "Not applicable", detail: `${d} is a shared hosting platform, so being a popular site proves nothing here. The allowlist is skipped.` });
+  } else if (layers.allow) {
+    trace.push({ id: "allowlist", tone: "safe", label: "On the list", detail: `${d} is one of the ${info.allowDomains.toLocaleString()} widely used sites on the allowlist.` });
+  } else {
+    trace.push({ id: "allowlist", tone: "clear", label: "Not listed", detail: `${d} is not on the allowlist, so the check goes on.` });
+  }
+
+  if (!info.blocklist) {
+    trace.push({ id: "blocklist", tone: "skip", label: "No list here", detail: "No blocklist is built on this machine yet. Run python -m backend build-lists to add one." });
+  } else if (layers.blocked) {
+    trace.push({
+      id: "blocklist",
+      tone: "bad",
+      label: "Listed",
+      detail: layers.blocked === "url" ? "This exact address is on the list of known phishing URLs." : `${d} is on the list of known phishing domains.`,
+    });
+  } else {
+    trace.push({ id: "blocklist", tone: "clear", label: "Not listed", detail: `Not found among ${info.blockDomains.toLocaleString()} blocked domains and ${info.blockUrls.toLocaleString()} blocked URLs.` });
+  }
+
+  const m = layers.model;
+  if (!m) {
+    trace.push({ id: "model", tone: "skip", label: "Skipped", detail: earlyWhy });
+  } else if (m.prob === null) {
+    trace.push({ id: "model", tone: "warn", label: "Suspicious", detail: m.reasons[0]?.text ?? "The address could not be scored." });
+  } else {
+    trace.push({
+      id: "model",
+      tone: TONE[m.verdict],
+      label: VERDICT_WORD[LABELS[m.verdict]],
+      detail: `Score ${m.prob.toFixed(3)}. It warns from ${info.thresholds.suspicious.toFixed(3)} and calls an address dangerous from ${info.thresholds.dangerous.toFixed(3)}.`,
+    });
+  }
+
+  if (!m && decidedEarly) {
+    trace.push({ id: "lookalike", tone: "skip", label: "Skipped", detail: earlyWhy });
+  } else if (layers.lookalike.length) {
+    const n = layers.lookalike.length;
+    trace.push({ id: "lookalike", tone: "warn", label: n === 1 ? "1 match" : `${n} matches`, detail: layers.lookalike.map((h) => h.text).join(" ") });
+  } else {
+    trace.push({ id: "lookalike", tone: "clear", label: "None found", detail: "The domain doesn't imitate a known brand." });
+  }
+
+  const short = result.layer === "shortener";
+  trace.push({ id: "combine", tone: short ? "skip" : TONE[result.verdict], label: short ? "Short link" : label, detail: LAYER_WORD[result.layer] ?? "Combined the layers." });
+  trace.push({ id: "page", tone: "na", label: "Extension only", detail: "Reading login forms on the page and the backend's domain checks need the page itself. A web page can't fetch another site, so only the extension runs them." });
+  return trace;
+}
+
 // The extension's verdict for one address, plus the model's own score for display (the model is
 // skipped for allowlisted, blocklisted and short-link addresses, as in the extension; its score is
-// still shown so the page can say what it would have said).
+// still shown so the page can say what it would have said), and the per-layer trace.
 export async function checkUrl(c, input) {
   const url = normaliseInput(input);
   const target = c.address.effectiveUrl(url);
   if (target === null) {
-    return { url, verdict: "unscored", label: "not a web address", reasons: [], notes: ["Type a web address such as https://example.com/login."] };
+    return { url, verdict: "unscored", label: "Not a web address", reasons: [], notes: ["Type a web address such as https://example.com/login."], trace: [] };
   }
   const listed = await c.lists.check(target);
   const layers = {
@@ -107,10 +183,12 @@ export async function checkUrl(c, input) {
   const notes = [...(result.notes ?? [])];
   if (layers.shortener) notes.push("This is a link shortener. The extension judges the page it redirects to; this page does not follow the link.");
   if (layers.shared) notes.push("This domain is a shared hosting platform: the allowlist does not apply and only the full address is matched against the blocklist.");
+  const verdict = LABELS[result.verdict];
   return {
     url: target,
     domain: listed.domain,
-    verdict: LABELS[result.verdict],
+    verdict,
+    label: VERDICT_WORD[verdict],
     layer: result.layer,
     prob: result.prob,
     reasons: result.reasons,
@@ -119,5 +197,7 @@ export async function checkUrl(c, input) {
     blocked: listed.blocked,
     lookalike: layers.lookalike.map((h) => h.text),
     modelAlone,
+    thresholds: c.info.thresholds,
+    trace: buildTrace(c, listed, layers, result, VERDICT_WORD[verdict]),
   };
 }
