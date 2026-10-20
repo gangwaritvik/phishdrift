@@ -107,8 +107,10 @@ function buildTrace(c, listed, layers, result, label) {
 
   if (listed.shortener) {
     trace.push({ id: "allowlist", tone: "skip", label: "Link shortener", detail: "Link shorteners are never trusted on their own. The extension judges the page the link leads to." });
+  } else if (listed.shared && layers.allow) {
+    trace.push({ id: "allowlist", tone: "safe", label: "On the list", detail: `${d} hosts many separate sites, and ${listed.trustKey} is one of them that people visit a lot, with no phishing ever reported on it. It is on the allowlist by its exact name.` });
   } else if (listed.shared) {
-    trace.push({ id: "allowlist", tone: "skip", label: "Not applicable", detail: `${d} is a shared hosting platform, so being a popular site proves nothing here. The allowlist is skipped.` });
+    trace.push({ id: "allowlist", tone: "skip", label: "Not applicable", detail: `${d} hosts many separate sites, so its popularity proves nothing about ${listed.trustKey}, which is not a widely used site of its own. The allowlist is skipped.` });
   } else if (layers.allow) {
     trace.push({ id: "allowlist", tone: "safe", label: "On the list", detail: `${d} is one of the ${info.allowDomains.toLocaleString()} widely used sites on the allowlist.` });
   } else {
@@ -190,7 +192,7 @@ export async function checkUrl(c, input) {
   }
   const notes = [...(result.notes ?? [])];
   if (layers.shortener) notes.push("This is a link shortener. The extension judges the page it redirects to; this page does not follow the link.");
-  if (layers.shared) notes.push("This domain is a shared hosting platform: the allowlist does not apply and only the full address is matched against the blocklist.");
+  if (layers.shared) notes.push("This domain hosts many separate sites: the allowlist applies only to an exact site name that is widely used, and only the full address is matched against the blocklist.");
   const verdict = LABELS[result.verdict];
   return {
     url: target,

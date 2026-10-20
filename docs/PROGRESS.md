@@ -691,6 +691,36 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Checked in headless Chromium (desktop, 390 px dark) on the look-alike, normal, punycode and phishing examples;
   not on Ritvik's PC.
 
+### 2026-10-20 — Stitch false alarm: popular tenant sites on platforms (cloud)
+- Found by Ritvik's URL check page: `stitch.withgoogle.com` was suspicious. Cause: `withgoogle.com` is on the
+  hosting-platform list (public suffix list), so the allowlist was skipped; the address model scored 0.902.
+- Changed: `backend/lists.py` `tenant_sites` + `popular_origins` (CrUX top origins, `lists.tenant_sites` in
+  `configs/backend.yaml`, `--origins-file`, `--no-tenant-sites`): a popular tenant that is its own site is allowlisted
+  by exact host unless phishing was seen on it, it is a zone or a shortener. `extension/src/lists.js` looks the host up
+  on shared addresses; demo wording. Bundled `extension/data/allowlist.json` gained 137 tenant hosts.
+- Results (`reports/tenant_sites.md`): popular tenant homepages flagged 60 of 137 -> 0; phishing on platform hosts
+  unchanged (2,740 of 3,000); natural legitimate pages unchanged (72 of 2,555); held-out phishing (OpenPhish 1,800,
+  half of ACTIVE 394,527) on kept tenants 0. Tests: pytest, `npm test` extension 66.
+- Next on the PC: `python -m backend build-lists --tranco-file ...` downloads the CrUX list itself.
+
+### 2026-10-20 — Deep legitimate URLs of popular sites: crawl + Common Crawl seed sets (cloud, code only)
+- Why: the address model's false alarms (2.8% of natural legitimate pages; `stitch.withgoogle.com`) come from benign
+  training URLs that are mostly bare homepages. Ritvik chose "we crawl" and "use both" (crawler and Common Crawl index).
+- Changed: `collector/popular.py` (CrUX host list, host selection, Common Crawl CDX reader), seed sets `popular`
+  (crawler, HTML kept) and `commoncrawl` (index URLs, no HTML) in `configs/collector.yaml` (`scheduled: false`, run by
+  name; own lock so the 12 h collector is never blocked; heartbeat at every checkpoint), new benign-only source
+  `popular` in `configs/datasets.yaml` (`kind: crawl_only`, after `phiusiil` in the source priority; not in the time
+  slice), `data_pipeline/sources.py` (`crawl_seed_names`, `commoncrawl` origin), `scripts/run_popular_crawl.ps1`,
+  `python -m collector crawl --seeds ... --domains-per-run N`. Tests: `tests/test_collector_popular.py` (fixtures only).
+- Rules kept: popularity picks hosts and is never stored or a feature; hosts in the corpus, the OOD evaluation set,
+  the feed index, earlier crawls or with feed phishing are skipped (natural pages stay evaluation-only); robots.txt and
+  Crawl-delay obeyed; the corpus still caps a registrable domain at 20 URLs, so a hosting platform's tenants share 20.
+- Not measured: nothing was fetched (the sandbox cannot reach Common Crawl, CrUX hosts or the open web), so the real
+  yield, the Common Crawl request shapes against the live API, and the effect on false alarms are unknown. Next: run
+  `scripts\run_popular_crawl.ps1 -DomainsPerRun 20` on the PC as a test, then the full run, rebuild the pool
+  (`python -m data_pipeline build --reuse-interim --reload popular`), retrain, and re-measure false alarms on the
+  natural pages (`experiments.shipped_verdicts`, `reports/blend2_rules.md`).
+
 ### 2026-10-20 — Address model alone no longer blocks a page that asks for nothing (cloud)
 - Found by Ritvik: the warning page blocked `https://www.mujtoppers.in/api/turnstile/verify` on a college
   study site. The address model scores it 0.989 against the 0.986 dangerous cutoff (the word "verify" on an

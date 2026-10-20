@@ -58,6 +58,9 @@ sources:
     kind: live
     training_feeds: [openphish, phishing_database, phishtank]
     license: per-feed terms (OpenPhish non-commercial, Phishing.Database MIT)
+  popular:
+    kind: crawl_only                   # benign only: deep URLs of popular sites (collector/popular.py)
+    license: public web pages, robots.txt respected (crawler); Common Crawl index terms (URL list)
   natural_legit:
     kind: table
     path: data/raw/natural_legit/*.csv
@@ -68,7 +71,7 @@ sources:
 corpus:
   seed: 42
   # Ties in "keep the earliest copy" and domain ownership go to the source listed first.
-  source_priority: [live, phreshphish, phish360, phishblitz, phishpedia, urlphish, phiusiil, phishstorm, natural_legit]
+  source_priority: [live, phreshphish, phish360, phishblitz, phishpedia, urlphish, phiusiil, popular, phishstorm, natural_legit]
   max_urls_per_domain: 20              # prior report §9: crawler pools averaged ~21-23 URLs per domain
   max_source_share: 0.35               # no source carries more than 35% of the training weight
   depth:

@@ -1,6 +1,7 @@
 """Backend CLI.
 
-    python -m backend build-lists [--tranco-file PATH] [--phishing-file PATH ...] [--out DIR]
+    python -m backend build-lists [--tranco-file PATH] [--phishing-file PATH ...]
+                                  [--origins-file PATH] [--no-tenant-sites] [--out DIR]
     python -m backend make-signing-key [--private PATH] [--public PATH]
 
 Serve the API with: ``uvicorn backend.app:create_app --factory``.
@@ -9,8 +10,10 @@ Serve the API with: ``uvicorn backend.app:create_app --factory``.
 from __future__ import annotations
 
 import argparse
+import gzip
 import logging
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from backend import lists
@@ -43,6 +46,31 @@ def fetch_zone_evidence(settings: Settings) -> list[str]:
     return out
 
 
+def fetch_popular_origins(settings: Settings, now: datetime | None = None) -> list[str]:
+    """CrUX top origins (``lists.tenant_sites``): the newest monthly file that downloads, cached on
+    disk; none at all is logged and gives no tenant sites."""
+    tcfg = settings.cfg["lists"]["tenant_sites"]
+    paths = settings.collector["paths"]
+    client = HttpClient.from_config(settings.collector["http"], resolve(paths["http_cache_dir"]))
+    now = now or datetime.now(UTC)
+    year, month = now.year, now.month
+    for _ in range(tcfg["months_back"]):
+        year, month = (year, month - 1) if month > 1 else (year - 1, 12)
+        url = tcfg["origins_url"].format(month=f"{year}{month:02d}")
+        try:
+            body = client.get(url, cache_ttl_s=tcfg["cache_ttl_s"], timeout_s=tcfg["timeout_s"])
+        except Exception as exc:  # noqa: BLE001 - try the month before
+            log.warning("popular origins %s not fetched (%s: %s)", url, type(exc).__name__, exc)
+            continue
+        if body[:2] == b"\x1f\x8b":
+            body = gzip.decompress(body)
+        got = lists.parse_origin_ranks(body.decode("utf-8", errors="replace"), tcfg["top_rank"])
+        log.info("%d popular origins from %s", len(got), url)
+        return got
+    log.warning("no popular-origin list: no tenant sites are allowlisted")
+    return []
+
+
 def cmd_build_lists(args: argparse.Namespace) -> int:
     settings = Settings.load()
     lcfg = settings.cfg["lists"]
@@ -64,6 +92,11 @@ def cmd_build_lists(args: argparse.Namespace) -> int:
     extra = [u for path in args.phishing_file or [] for u in lists.read_phishing_file(Path(path))]
     if not args.no_evidence:
         extra += fetch_zone_evidence(settings)
+    origins: list[str] = []
+    if args.origins_file:
+        origins = lists.read_origins_file(Path(args.origins_file), lcfg["tenant_sites"]["top_rank"])
+    elif not args.no_tenant_sites:
+        origins = fetch_popular_origins(settings)
     docs = lists.build_lists(
         urls,
         candidates,
@@ -77,6 +110,7 @@ def cmd_build_lists(args: argparse.Namespace) -> int:
         min_children_per_url=lcfg["open_hosting"]["min_children_per_url"],
         min_children_whole=lcfg["open_hosting"].get("min_children_whole"),
         shorteners=load_lists().shorteners,
+        popular_origins=origins,
     )
     out_dir = Path(args.out) if args.out else settings.lists_dir
     key = settings.signing_key()
@@ -112,6 +146,15 @@ def main(argv: list[str] | None = None) -> int:
         "--no-evidence",
         action="store_true",
         help="skip downloading lists.open_hosting.evidence_urls",
+    )
+    build.add_argument(
+        "--origins-file",
+        help="CrUX top-origins CSV (origin,rank; may be .gz) instead of downloading it",
+    )
+    build.add_argument(
+        "--no-tenant-sites",
+        action="store_true",
+        help="allowlist no tenant sites on hosting platforms (skip the CrUX download)",
     )
     build.add_argument("--out", help="output directory (default: lists.out_dir in backend.yaml)")
     build.set_defaults(func=cmd_build_lists)
