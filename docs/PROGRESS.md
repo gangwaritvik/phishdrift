@@ -763,3 +763,16 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   popular-summary` replaces the inline script in `scripts/run_popular_crawl.ps1`. Tests added.
 - Not measured: whether the index now answers (needs the PC). The crawler (`popular`) results of the same test run
   were not seen by me.
+
+### 2026-10-20 — Popular-sites crawl, second PC test: crawler works, Common Crawl index still unreachable (cloud)
+- Read Ritvik's log (`data/logs/popular_crawl_2026-10-20.log`, staged from the PC). The new code was running (retries
+  with a 30 s connect timeout). Crawler seed set `popular`, 20 sites per test: 34 to 58 pages from 7 to 12 sites with
+  pages (about 2 pages per site; 4 runs at 22:45, 23:08, 23:25, 23:28). Common Crawl seed set: 20 of 20 `error` in
+  every run; the last run took 17 minutes and the log has 73 connect timeouts (30 s) and 3 connection resets from
+  `index.commoncrawl.org`, so the PC's connection to the index server mostly never opens (the collection list loads,
+  the index queries do not). Cause on the server or the network side; not fixed by retries.
+- Changed: the summary command crashed (`args.verbose` missing on its parser: my bug in PR #34); the index seed set now
+  stops after `max_consecutive_errors` (6) sites in a row fail and leaves the rest untried; `run_popular_crawl.ps1`
+  runs the crawler only by default (`-Seeds popular,commoncrawl` adds the index). Tests added.
+- Next: Ritvik runs the crawler at full size (about 2 pages per site, so 1,500 sites is roughly 3,000 pages;
+  estimate); the index can be tried again later.

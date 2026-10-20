@@ -344,3 +344,35 @@ def test_commoncrawl_client_and_summary_text(tmp_path):
     c = popular.commoncrawl_client(cfg)
     assert (c.retries, c.connect_timeout_s, c.timeout_s, c.backoff_factor) == (4, 30, 60, 3.0)
     assert popular.summary_text(tmp_path / "empty") == "No popular-site attempts recorded yet."
+
+
+def test_index_run_stops_after_consecutive_failures_and_leaves_the_rest_untried(tmp_path):
+    hosts = "".join(f"https://h{i}.com,5000\n" for i in range(12))
+    crux = gzip.compress(("origin,rank\n" + hosts).encode())
+    index = json.dumps([{"cdx-api": ENDPOINT}]).encode()
+    pages = {"https://index.test/collinfo.json": index, f"{ENDPOINT}?url=h": 503}
+    cfg = _crawl_cfg(tmp_path)
+    cfg["seeds"]["commoncrawl"]["domains_per_run"] = 12
+    cfg["popular"]["commoncrawl"].update(workers=1, max_consecutive_errors=3)
+    cfg["popular_client"] = CCClient(pages)
+    crawl_dir, seed_dir = tmp_path / "crawl", tmp_path / "seeds"
+    seed_dir.mkdir()
+    out = benign.crawl(
+        CCClient({"https://crux.test/202609.csv.gz": crux}),
+        cfg,
+        crawl_dir,
+        seed_dir,
+        NOW,
+        ["commoncrawl"],
+    )
+    assert out["commoncrawl"]["status"] == {"error": 3}
+    assert len(store.load_attempts(crawl_dir)) == 3
+
+
+def test_popular_summary_command_runs_without_the_verbose_flag(tmp_path, monkeypatch, capsys):
+    from collector import __main__ as cm
+
+    cfg = {"paths": {"crawl_dir": str(tmp_path / "crawl")}}
+    monkeypatch.setattr(cm, "load_config", lambda name: cfg)
+    assert cm.main(["popular-summary"]) == 0
+    assert "No popular-site attempts" in capsys.readouterr().out
