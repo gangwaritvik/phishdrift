@@ -61,3 +61,23 @@ test("trace lists every layer in order, with the deciding tone", async () => {
   assert.equal(bad.trace[4].tone, "bad");
   assert.equal(bad.trace[5].tone, "na");
 });
+
+test("evidence shows what each layer looked at for this address", async () => {
+  const c = await checker;
+  const bad = (await checkUrl(c, "https://paypa1.com/signin")).evidence;
+  assert.equal(bad.allowlist.domain, "paypa1.com");
+  assert.equal(bad.allowlist.found, false);
+  assert.equal(bad.allowlist.hash.length, bad.allowlist.bytes * 2);
+  assert.ok(bad.blocklist.keys.length > 0 && bad.blocklist.keys.every((k) => k.hash));
+  const m = bad.model;
+  const sum = m.base + m.items.reduce((s, r) => s + r.delta, 0) + m.other;
+  assert.ok(Math.abs(sum - m.raw) < 1e-6);
+  assert.equal(bad.lookalike.skeleton, "paypal");
+  assert.equal(bad.lookalike.nearest.distance, 0);
+  assert.equal(bad.combine.start, 1);
+  assert.equal(bad.combine.end, 2);
+  const ok = (await checkUrl(c, "web.whatsapp.com")).evidence;
+  assert.equal(ok.allowlist.found, true);
+  assert.equal(ok.model.used, false);
+  assert.equal(ok.combine.end, 0);
+});
