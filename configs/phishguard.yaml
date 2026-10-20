@@ -32,6 +32,9 @@ page_representations:                       # tier B feature groups kept
   P4: [forms]                               # form structure only
 models_b: [lightgbm, xgboost]
 
+# Platform-masking test (Q5): exploratory deviation from the frozen design, python -m phishguard.masking
+platform_test: {cap_per_tenant: 5, cap_per_class: 5000, min_platform_urls: 500, min_tenant_hosts: 100}
+
 # Replication rule (proposal section 5)
 testable: {min_urls_per_class: 500, min_domains_per_class: 100}
 holds: {min_splits_same_sign: 9, ci: 0.95}

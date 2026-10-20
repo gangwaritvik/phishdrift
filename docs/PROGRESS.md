@@ -817,3 +817,14 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Results: `reports/pbl/pbl_report.{md,pdf,docx}` (38 pages). No numbers changed; the F2/F4 results are kept, worded as
   findings of this study.
 - Not done: page numbers in the contents list, institution/guide/declaration pages, screenshots, citation check.
+
+### 2026-10-20 — Platform-masking test (Q5), exploratory, script for the PC (cloud)
+- Why: Q5 was "not testable" because the study populations cap URLs per registrable domain and the corpus drops domains shared by
+  several phishing sources, so hosting-platform URLs were almost absent. Ritvik asked for it to run on the PC; Remote Control
+  could not start Claude Code in the PBL folder (3 attempts), so a script is delivered instead.
+- Changed: `phishguard/masking.py` (`python -m phishguard.masking count|run`), `platform_test` block in `configs/phishguard.yaml`,
+  `tests/test_phishguard_masking.py`. Platform rows from `data/interim/<source>.parquet`, at most 5 URLs per tenant host, no
+  cross-source domain removal, splits grouped by registrable domain, masked R4 against unmasked R4u (LightGBM, char n-gram), the
+  study's holds rule. Output `reports/phishguard/HP_platform.md` and `tables/HP_platform*.csv`. Labelled a deviation, outside the seven
+  frozen verdicts.
+- Results: none on real data yet (the cloud has no interim files). Tested on synthetic sources only.
