@@ -790,3 +790,12 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   use shuffled labels; char n-gram 0.506. Below 0.5 for every seed, so a LightGBM artefact of this cell, not chance and
   not a leak (a leak pushes above 0.5); the same model at R4 and in the other 24 cells was not flagged.
 - Next: write both into the study report as limitations; optionally rerun the control unweighted / larger leaves.
+
+### 2026-10-20 — Google Stitch skills enabled for the project (cloud)
+- Changed: `.claude/settings.json` declares an inline marketplace `stitch-skills` with the three plugins of
+  `google-labs-code/stitch-skills` (Apache-2.0; `stitch-design`, `stitch-build`, `stitch-utilities`, 16 skills),
+  pinned to commit 0337446, and enables them. Skills only: no hooks, no MCP server config, no install scripts.
+  Several skills call the Stitch MCP server and some pass a Stitch API key to scripts; the key stays on the PC.
+- Checked in a scratch folder with Claude Code 2.1.304: after the folder is trusted, `claude plugin install
+  <name>@stitch-skills --scope project` installs all three and the 16 skills load.
+- Next: on the PC, run the three install commands once from the repo folder and add the Stitch MCP server locally.

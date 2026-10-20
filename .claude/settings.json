@@ -1,10 +1,51 @@
 {
   "extraKnownMarketplaces": {
     "ponytail": {
-      "source": { "source": "github", "repo": "DietrichGebert/ponytail" }
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail"
+      }
+    },
+    "stitch-skills": {
+      "source": {
+        "source": "settings",
+        "name": "stitch-skills",
+        "plugins": [
+          {
+            "name": "stitch-design",
+            "source": {
+              "source": "git-subdir",
+              "url": "google-labs-code/stitch-skills",
+              "path": "plugins/stitch-design",
+              "sha": "0337446dadde6f8c94210444e2aa9d546126480f"
+            }
+          },
+          {
+            "name": "stitch-build",
+            "source": {
+              "source": "git-subdir",
+              "url": "google-labs-code/stitch-skills",
+              "path": "plugins/stitch-build",
+              "sha": "0337446dadde6f8c94210444e2aa9d546126480f"
+            }
+          },
+          {
+            "name": "stitch-utilities",
+            "source": {
+              "source": "git-subdir",
+              "url": "google-labs-code/stitch-skills",
+              "path": "plugins/stitch-utilities",
+              "sha": "0337446dadde6f8c94210444e2aa9d546126480f"
+            }
+          }
+        ]
+      }
     }
   },
   "enabledPlugins": {
-    "ponytail@ponytail": true
+    "ponytail@ponytail": true,
+    "stitch-design@stitch-skills": true,
+    "stitch-build@stitch-skills": true,
+    "stitch-utilities@stitch-skills": true
   }
 }
