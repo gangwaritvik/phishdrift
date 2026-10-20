@@ -110,6 +110,7 @@ popular:
     connect_timeout_s: 30              # its connections are slow to open (8 s timed out for every site)
     retries: 4                         # resets and timeouts are retried with a growing wait
     backoff_factor: 3.0
+    max_consecutive_errors: 6          # that many sites in a row failing: the index is down, stop this run
     fetch_limit: 300                   # CDX lines read at the chosen index page
     per_host: 10                       # deep URLs kept per host
     min_pages: 3                       # fewer is logged as few_pages

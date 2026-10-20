@@ -438,6 +438,9 @@ def crawl(
         items = list(enumerate(picked))
         hard_limit_s = cfg.get("domain_deadline_s", 240) + 180  # deadline + a slow last request
         chunk_rows, chunk_log = [], []
+        failures = 0  # sites in a row the Common Crawl index could not answer
+        index_cfg = cfg.get("popular", {}).get("commoncrawl", {})
+        max_failures = int(index_cfg.get("max_consecutive_errors", 0))
         # Different sites run in parallel; each host keeps its own politeness delay.
         for n_done, ((_, domain), res) in enumerate(
             run_parallel(items, one, workers, hard_limit_s), 1
@@ -454,7 +457,9 @@ def crawl(
                 }
             )
             chunk_rows += [{**p, "seed_source": name, "seed_domain": res.domain} for p in res.pages]
-            if len(chunk_log) >= chunk or n_done == len(items):
+            failures = failures + 1 if endpoint is not None and res.status == ERROR else 0
+            give_up = endpoint is not None and 0 < max_failures <= failures
+            if len(chunk_log) >= chunk or n_done == len(items) or give_up:
                 if chunk_rows:  # checkpoint: a stopped run keeps everything finished so far
                     pages = pd.DataFrame(chunk_rows).assign(crawled_at=now)
                     store.write_crawl(pages, crawl_dir, now.date(), name)
@@ -469,6 +474,14 @@ def crawl(
                 log.info(
                     "crawl %s: %d/%d domains, %d pages so far", name, n_done, len(items), len(rows)
                 )
+            if give_up:  # the sites not reached stay untried for the next run
+                log.error(
+                    "crawl %s: %d sites in a row failed, the index is not answering; stopping "
+                    "this seed set (run it again later)",
+                    name,
+                    failures,
+                )
+                break
         statuses = pd.Series([r["status"] for r in log_rows], dtype=object).value_counts()
         summary[name] = {
             "domains": len(picked),

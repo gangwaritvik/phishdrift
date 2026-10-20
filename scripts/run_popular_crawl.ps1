@@ -20,6 +20,8 @@
   next time. Every request has a time limit and a site that hangs is abandoned. It uses its own lock,
   so the scheduled collector keeps running. Output is also appended to data\logs\popular_crawl_*.log.
 
+  Default is the crawler only (popular). Add the index with -Seeds popular,commoncrawl; it stops by itself
+  after 6 sites in a row fail (the index server is often down) and can be run again later.
   Options: -DomainsPerRun N (sites per seed set this run; try 20 first as a test), -Seeds NAMES,
   -MinFreeGB N (stop if the drive has less free space).
 
@@ -30,7 +32,7 @@
 [CmdletBinding()]
 param(
     [int]$DomainsPerRun = 0,
-    [string[]]$Seeds = @("popular", "commoncrawl"),
+    [string[]]$Seeds = @("popular"),
     [int]$MinFreeGB = 5
 )
 
