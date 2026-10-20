@@ -52,7 +52,7 @@ plt.rcParams.update(
         "axes.grid": True,
         "grid.alpha": 0.25,
         "axes.axisbelow": True,
-        "font.family": "DejaVu Sans",
+        "font.family": "Carlito",
     }
 )
 

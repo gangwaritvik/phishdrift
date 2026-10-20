@@ -806,3 +806,14 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Not done / unverified: chapter 5 corpus counts are copied from the 2026-10-13 report draft (`reports/data_card.md` is not in
   this checkout); no screenshots (marked for the author); the shipped address bundle still uses the old brand list; citation
   details need checking; institution, guide and declaration pages are not included.
+
+### 2026-10-20 — PBL report merged into one study + detector report, v1.1.1 look
+- Ritvik: forget the earlier report, do not mention it, combine both parts as one, match the fonts, theme and layout of v1.1.1.
+- Changed: `scripts/build_pbl.py` now rewrites the study text as stand-alone questions Q1-Q7 (results "holds / holds in part /
+  does not hold"; no earlier-report column, no reproduction section) and the PhishDrift chapters; title "PhishDrift", Part I
+  (study, ch. 3-4) and Part II (detector, ch. 5-9). `scripts/pbl_style/` (CSS, `render.py`, `reference.docx`): Segoe-style headings
+  (Carlito), Cambria-style body (Caladea), Consolas code, navy headings with a rule, light-blue table headers, A4, page numbers;
+  figures use Carlito. `phishguard/report.py` follow-up figure no longer draws published reference lines.
+- Results: `reports/pbl/pbl_report.{md,pdf,docx}` (38 pages). No numbers changed; the F2/F4 results are kept, worded as
+  findings of this study.
+- Not done: page numbers in the contents list, institution/guide/declaration pages, screenshots, citation check.

@@ -1,74 +1,73 @@
 ---
-title: "PhishGuard and PhishDrift: Verifying Representation Sensitivity in Phishing-URL Detection and Building an Explainable Chrome-Extension Detector"
-subtitle: "Project-Based Learning (PBL) final report, 6th semester"
+title: "PhishDrift"
+subtitle: "Evaluating Phishing-URL Detection Across Sources, Representations and Splits, and an Explainable Chrome-Extension Detector"
 author: "Ritvik Gangwar"
-date: "October 2026"
+date: "Project-Based Learning final report, 6th semester, October 2026"
 ---
 
 # Contents
 
 - 1. Introduction
 - 2. Background and questions
-- 3. PhishGuard: design and method
-- 5 Data and corpus
-- 6 Feature engine and models
-- 7 System: extension and backend
-- 8 Evaluation of the detector
-- 9 Limitations and what is not done
+- 3. Part I: design and method
+- 6. Feature engine and models
+- 7. System: extension and backend
+- 8. Evaluation of the detector
+- 9. Limitations and what is not done
 - 10. Conclusion and future work
 - References
 
 # Abstract
 
-Phishing detectors are usually judged by one score on one benchmark. This project asks how far such scores can be trusted, and then builds a detector that is evaluated under the stricter rules the answer calls for. It has two parts. **PhishGuard** is a research study that re-implements and extends the author's earlier report on representation sensitivity in phishing-URL detection: seven findings are re-tested across five phishing sources, five legitimate sources, four model families and ten domain-grouped splits, with the rule for calling a finding replicated fixed before the run. **PhishDrift** is the software: a pooled, tiered phishing detector (URL model, page model, domain checks) shipped as a Chrome extension with a FastAPI backend, with allowlist and blocklist layers and plain-English reasons for every warning.
+Phishing detectors are usually judged by one score on one benchmark. This project asks how far such scores can be trusted, and then builds a detector that is evaluated under the stricter rules the answer calls for. It has two parts. **Part I** is an evaluation study: seven questions about how a detector's score depends on URL form, source composition, the split and the legitimate pages it meets, tested across five phishing sources, five legitimate sources, four model families and ten domain-grouped splits, with the rule for calling a result consistent fixed before the run. **Part II** is the detector itself: a pooled, tiered phishing detector (URL model, page model, domain checks) shipped as a Chrome extension with a FastAPI backend, with allowlist and blocklist layers and plain-English reasons for every warning.
 
-In the study, the drop in score when a URL is reduced to its domain is replicated in 100% of settings, and transfer to datasets that share no source stays above chance (replicated). Source dependence is partly replicated (76% of settings) and the false-alarm gap on naturally browsed legitimate pages is partly replicated (76%). The first study's claims about where the drop sits and about split variability are not replicated and not replicated; an extra check shows the first of these depends on how the benchmark was prepared. Platform masking could not be tested. The report states each result as a study of behaviour under one frozen design, not as a general claim.
+In Part I, the median score falls from 0.977 on raw URLs to 0.850 when a URL is reduced to its domain, and the fall appears in 100% of settings; transfer to datasets that share no source stays above chance. Source dependence holds in part (76% of settings) and the gap in false alarms on naturally browsed legitimate pages holds in part (76%): at the 1% threshold 15.2% of those pages are flagged against 1.0% on the model's own test side. The share of the fall that sits in the host name does not hold across cells and depends on how the benchmark is prepared, and the larger split-to-split spread of the normalised score does not hold. The effect of masking hosting platforms could not be tested. Each result is stated as behaviour under one frozen design, not as a general claim.
 
 # 1. Introduction
 
 ## 1.1 Motivation
 
-Phishing sites steal passwords and payment details, and new ones appear every hour. Machine-learning detectors are an obvious defence, and many published ones report accuracy above 99% on a public dataset. A detector that reaches 99% on one dataset can still fail on the pages a person actually browses. The author's earlier report showed this: a model that scored an AUC of 0.9988 on a benchmark fell to 0.7297 when URLs were rewritten into one fixed form, and flagged every one of 11,895 ordinary legitimate pages it was shown.
+Phishing sites steal passwords and payment details, and new ones appear every hour. Machine-learning detectors are an obvious defence, and many published ones report accuracy above 99% on a public dataset. A detector that reaches that on one dataset can still fail on the pages a person actually browses. In this project the median AUC falls from 0.977 on raw URLs to 0.850 once URLs are reduced to their domain, and at the 1% threshold set on a benchmark, 15.2% of ordinary legitimate pages are flagged against 1.0% on the benchmark itself.
 
 ## 1.2 Objectives
 
-1. **Verify** whether the findings of the earlier report hold when they are re-implemented from scratch and repeated across many datasets and several model families (the PhishGuard study).
-2. **Build** a practical detector, evaluated only under protocols that guard against those failures, and ship it as a working Chrome extension with a backend (PhishDrift).
+1. **Measure** how far a detector's score depends on URL form, source composition, the split and the legitimate pages it meets, across many datasets and several model families (Part I).
+2. **Build** a practical detector, evaluated only under protocols that guard against those failures, and ship it as a working Chrome extension with a backend (Part II).
 3. **Report** every number from a script that writes to `reports/`, with fixed seeds, and say plainly where a result is measured, inferred or not tested.
 
 ## 1.3 What is new
 
-A plain "classifier on a static phishing dataset" was done in earlier semesters. Novelty here is in the protocol: domain-grouped splits repeated ten times, leave-one-source-out and out-of-distribution false-alarm reporting, negative controls with shuffled labels, URL-depth checks, and tiered models whose missing inputs never reveal the data source; then a deployed, explainable system built on that protocol.
+A plain "classifier on a static phishing dataset" is common. Novelty here is in the protocol: domain-grouped splits repeated ten times, leave-one-source-out and out-of-distribution false-alarm reporting, negative controls with shuffled labels, URL-depth checks, and tiered models whose missing inputs never reveal the data source; then a deployed, explainable system built on that protocol.
 
 ## 1.4 Scope and structure
 
-Chapter 2 gives the background and the questions. Chapters 3 and 4 are the PhishGuard study. Chapters 5 to 9 describe PhishDrift: data, features and models, the extension and backend, the evaluation, and the limitations. Chapter 10 concludes. The study is the priority part of the project; PhishDrift is the software deliverable. Results from one are never used as evidence for the other.
+Chapter 2 gives the background and the questions. Chapters 3 and 4 are Part I, the evaluation study. Chapters 5 to 9 are Part II: data, features and models, the extension and backend, the evaluation of the detector, and the limitations. Chapter 10 concludes. Results from Part I are not used as evidence for Part II, or the reverse.
 
 # 2. Background and questions
 
-## 2.1 The earlier report
+## 2.1 Why one benchmark score misleads
 
-The author's earlier report (v1.1.1, 2026-09-10, "Representation Sensitivity and Cross-Source Generalization in Phishing URL Detection") studied one benchmark family with mostly one model and one split per setting. Its code and result files were later lost, so this project re-implements the study on the PhishDrift tooling. The findings carried forward are in Section 2.2.
+A phishing-URL detector is normally scored once, on one dataset, with one split. Three things can make that number unrepresentative: the *form* of the URL (a raw URL carries path, query and host quirks that differ between sources), the *composition* of the data (which sources supply each class, and how deep their URLs are), and the *split* (which domains happen to land in the test side). A fourth gap opens at deployment: the legitimate pages a person browses are not the legitimate pages of the benchmark. This study measures each of these directly.
 
 ## 2.2 Questions asked
 
-The supervisor asked how the first study's results can be verified beyond one model and one dataset, and whether the behaviour appears across all available datasets. The report therefore answers seven questions, one per finding:
+The study answers seven questions, one for each way a single score can mislead:
 
-- **F1** Does the AUC fall from raw URLs (R1) to the normalised `https://www.<registrable domain>` form (R4)?
-- **F2** Does most of that fall sit in host and subdomain structure rather than in path and query?
-- **F3** Does swapping one source (phishing or legitimate) move R4 AUC?
-- **F4** Is R4 AUC much less stable across splits than raw AUC?
-- **HP** Does masking hosting-platform identity raise R4 AUC?
-- **H6** Does a model still beat chance on cells that share no source with its training data?
-- **OOD** Does a model flag far more naturally browsed legitimate pages than its own test side?
+- **Q1** Does the AUC fall from raw URLs (R1) to the normalised `https://www.<registrable domain>` form (R4)?
+- **Q2** Does most of that fall sit in host and subdomain structure rather than in path and query?
+- **Q3** Does swapping one source (phishing or legitimate) move R4 AUC?
+- **Q4** Is R4 AUC much less stable across splits than raw AUC?
+- **Q5** Does masking hosting-platform identity raise R4 AUC?
+- **Q6** Does a model still beat chance on cells that share no source with its training data?
+- **Q7** Does a model flag far more naturally browsed legitimate pages than its own test side?
 
-A second, exploratory part repeats the representation idea on page HTML (Section 7). It gives no verdicts.
+A second, exploratory part repeats the representation idea on page HTML (Section 4.11). It gives no verdicts.
 
 ## 2.3 Related datasets and tools
 
 The study and the detector draw on public datasets (PhreshPhish, PhiUSIIL, URL-Phish, PhishStorm, Phishpedia, Phish-Blitz) and live feeds (OpenPhish, Phishing.Database). Only the URL, label, date and page HTML are read from any of them; no dataset's precomputed feature columns are used, because one such column (a similarity index) alone identifies PhiUSIIL's legitimate class. Features follow the published definitions of Hannousse and Yahiouche and of PhiUSIIL, re-implemented in one engine. Models are LightGBM, XGBoost, logistic regression and a character n-gram TF-IDF linear model.
 
-# 3. PhishGuard: design and method
+# 3. Part I: design and method
 
 ## 3.1 Sources
 
@@ -102,16 +101,16 @@ R1 is the raw URL. R2 keeps the host only (path, query and fragment removed). R3
 
 LightGBM, XGBoost, logistic regression on the 99 URL features, and character n-gram TF-IDF with logistic regression. Ten splits per cell are grouped by registrable domain (train 70%, calibration 10%, test 20%; a deterministic hash of seed, split and domain). Fitted features (TLD risk, bigram likelihood) are refitted on each split's training side. Uncertainty comes from a domain-cluster bootstrap with 200 draws per split. Transfer is tested only on cells sharing no source with the training cell.
 
-![Figure 4.1. Study design. Seven findings are tested across 25 source cells, four models, four URL forms and ten splits.](fig01_design.png)
+![Figure 4.1. Study design. Seven questions are tested across 25 source cells, four models, four URL forms and ten splits.](fig01_design.png)
 
-## 3.4 The rule for calling a finding replicated
+## 3.4 The rule for calling a result consistent
 
-A setting (one cell and model, or one pair of cells) *holds* when the direction is the same in at least 9 of 10 splits and the pooled bootstrap 95% interval excludes the null. A finding is **replicated** if it holds in at least 80% of its testable settings, **partly replicated** at 50 to 80%, and **not replicated** below 50%; with fewer than 3 testable settings it is **not testable**. A setting is testable with at least 500 URLs and 100 domains per class. The rule and `configs/phishguard.yaml` were frozen at commit `082b058` before any result was seen.
-# 4. PhishGuard: results
+A setting (one cell and model, or one pair of cells) *holds* when the direction is the same in at least 9 of 10 splits and the pooled bootstrap 95% interval excludes the null. A question's answer **holds** if it holds in at least 80% of its testable settings, **holds in part** at 50 to 80%, and **does not hold** below 50%; with fewer than 3 testable settings it is **not testable**. A setting is testable with at least 500 URLs and 100 domains per class. The rule and `configs/phishguard.yaml` were frozen at commit `082b058` before any result was seen. "Does not hold" describes this design's data; it is not a claim that the effect is absent elsewhere.
+# 4. Part I: results
 
-## 4.1 F1: representation sensitivity (replicated)
+## 4.1 Q1: representation sensitivity (holds)
 
-AUC falls from R1 to R4 in all 100 model-cell settings. The median R1 AUC is 0.977, R2/R3 0.877 and R4 0.850; the smallest drop in any setting is 0.024. All four model families show it (Figure 4.3), including the character n-gram model that held up best in the first study.
+AUC falls from R1 to R4 in all 100 model-cell settings. The median R1 AUC is 0.977, R2/R3 0.877 and R4 0.850; the smallest drop in any setting is 0.024. All four model families show it (Figure 4.3).
 
 ![Figure 4.2. Representation ladder, 25 cells. Thin lines are cells; the thick line is the median.](fig02_ladder.png)
 
@@ -148,11 +147,11 @@ AUC falls from R1 to R4 in all 100 model-cell settings. The median R1 AUC is 0.9
 | urlphish vs urlphish | 0.980 | 0.946 | 0.939 |
 
 
-## 4.2 F2: where the drop sits (not replicated)
+## 4.2 Q2: where the drop sits (does not hold)
 
-The first study put most of the R1 to R4 drop in the host and subdomain (share 0.870 in cell A, 0.563 in cell C). Here the host and subdomain step (R2 to R4) carries a median share of 0.21; the larger part comes from removing path and query (R1 to R2). The statement "most of the fall sits in host structure" holds in 0 of 100 settings. This run uses 99 features rather than 38, balances depth, and caps URLs per domain, all of which can change where the information sits; the main report does not choose among those explanations.
+The host and subdomain step (R2 to R4) carries a median share of 0.21; the larger part comes from removing path and query (R1 to R2). The statement "most of the fall sits in host structure" holds in 0 of 100 settings. The feature set, depth balancing and the per-domain cap can all change where the information sits; the main study does not choose among those explanations.
 
-**Exploratory follow-up (not part of the frozen verdict).** Re-running PhiUSIIL alone with one cleaning step added at a time (Section 4.11) shows the host share of the drop depends on how the data was prepared. On raw PhiUSIIL through our loader the host step carries 0.76 of the drop for XGBoost and 0.42 for the character model; on the study cell, after the shared-domain removal, depth balancing and caps, it carries 0.36 and 0.21. The first study's pattern is therefore visible again on the raw benchmark for XGBoost, and it fades as the benchmark is cleaned. That is consistent with the F2 pattern being tied to how the raw benchmark was built, but it is one dataset and two models, so it is stated as a lead, not a conclusion.
+**Exploratory follow-up (not part of the frozen verdict).** Re-running PhiUSIIL alone with one cleaning step added at a time (Section 4.10) shows the host share of the drop depends on how the data was prepared. On raw PhiUSIIL through our loader the host step carries 0.76 of the drop for XGBoost and 0.42 for the character model; on the study cell, after the shared-domain removal, depth balancing and caps, it carries 0.36 and 0.21. A host-dominated drop is therefore visible on the raw benchmark for XGBoost and fades as the benchmark is cleaned. That is consistent with the pattern being tied to how the raw benchmark was built, but it is one dataset and two models, so it is stated as a lead, not a conclusion.
 
 **Table 2b.** Host and subdomain share of the R1 to R4 drop, PhiUSIIL alone, by cleaning stage (5 splits).
 
@@ -167,39 +166,39 @@ The first study put most of the R1 to R4 drop in the host and subdomain (share 0
 
 ![Figure 4.4. Share of the R1 to R4 drop by step, LightGBM, per cell.](fig04_share.png)
 
-## 4.3 F3: source dependence (partly replicated)
+## 4.3 Q3: source dependence (holds in part)
 
 Swapping one source while holding the other fixed moves R4 AUC by a median 0.058 (phishing source swapped 0.050, legitimate source swapped 0.067). The interval excludes zero in 76% of 400 swaps. After reweighting the test side to equalise URL depth across classes it falls to 53%, so part of the source effect is URL depth. The heatmap shows the pattern: R4 AUC ranges from 0.71 to 0.94; against URL-Phish legitimate URLs every phishing source scores highest (0.85 to 0.94), and the lowest cells pair PhishStorm, PhiUSIIL or Phishpedia phishing with PhiUSIIL or crawled legitimate URLs.
 
 ![Figure 4.5. R4 AUC for every phishing-by-legitimate cell (left) and the distribution of swap effects (right).](fig05_source.png)
 
-H5, an interaction between phishing and legitimate source, holds in 26% of settings; the first study also called it inconclusive, so a "not replicated" verdict here is the expected outcome.
+the interaction check, an interaction between phishing and legitimate source, holds in 26% of settings; an interaction is hard to establish with this many settings, so it is treated as inconclusive.
 
-## 4.4 F4: split sensitivity (not replicated)
+## 4.4 Q4: split sensitivity (does not hold)
 
-The first study saw R4 AUC vary far more across splits than raw AUC (SD up to 0.1164 against at most 0.0026). Here the median SD is 0.006 for R4 and 0.002 for R1, and the largest R4 SD is 0.019. R4 is the more variable in 100% of settings, but exceeds three times the raw SD in only 45% of them. With 5 to 10 thousand URLs per cell and domain-grouped splits the variability is smaller than in a single 10-split study on one benchmark.
+The median SD is 0.006 for R4 and 0.002 for R1, and the largest R4 SD is 0.019. R4 is the more variable in 100% of settings, but exceeds three times the raw SD in only 45% of them. With 5 to 10 thousand URLs per cell and domain-grouped splits the variability is small.
 
 ![Figure 4.6. SD of AUC across ten splits, raw against R4, one point per cell and model.](fig06_split.png)
 
-## 4.5 HP: platform masking (not testable)
+## 4.5 Q5: platform masking (not testable)
 
 Masking replaces hosting-platform domains with a neutral token. The caps used here leave no registrable domain on a hosting platform in any cell, so there is nothing to mask and the finding cannot be tested. A design that keeps platform domains is future work.
 
-## 4.6 H6: independent-benign transfer (replicated)
+## 4.6 Q6: independent-benign transfer (holds)
 
-Models trained on one cell and evaluated on cells that share no source with it keep an R4 AUC above 0.5 in every setting (median 0.699, lowest 0.554; 392 train-test pairs across the two transfer models). The first study's 0.694 and 0.706 rested on 119 benign domains; the pairs here each use thousands.
+Models trained on one cell and evaluated on cells that share no source with it keep an R4 AUC above 0.5 in every setting (median 0.699, lowest 0.554; 392 train-test pairs across the two transfer models). Each pair uses thousands of legitimate domains.
 
 ![Figure 4.7. Transfer AUC on fully independent cells.](fig07_transfer.png)
 
-## 4.7 OOD: naturally browsed legitimate pages (partly replicated)
+## 4.7 Q7: naturally browsed legitimate pages (holds in part)
 
-A model's false-alarm rate on 2,555 natural legitimate pages from 562 sites, none in any training source, is compared with its own test side at the same 1% threshold. The median is 15.2% on natural pages against 1.0% in-cell; at the 0.1% threshold 4.5%; at the default 0.5 threshold 33%. The natural rate exceeds five times the in-cell rate in 76% of settings. The first study's reversal (1.0 on natural pages for the raw model) is not reproduced in this setting, but a benchmark threshold still understates real-world false alarms.
+A model's false-alarm rate on 2,555 natural legitimate pages from 562 sites, none in any training source, is compared with its own test side at the same 1% threshold. The median is 15.2% on natural pages against 1.0% in-cell; at the 0.1% threshold 4.5%; at the default 0.5 threshold 33%. The natural rate exceeds five times the in-cell rate in 76% of settings. No model flags every natural page, but a benchmark threshold still understates real-world false alarms.
 
 ![Figure 4.8. False alarms on natural pages against the cell's own test side, log scale.](fig08_ood.png)
 
 ## 4.8 Negative controls
 
-With shuffled training labels, mean AUC stays between 0.448 and 0.525 over 100 conditions (cell, representation, model); 1 is flagged under the |mean - 0.5| > 0.05 rule. The flagged condition is examined in Section 4.11.
+With shuffled training labels, mean AUC stays between 0.448 and 0.525 over 100 conditions (cell, representation, model); 1 is flagged under the |mean - 0.5| > 0.05 rule. The flagged condition is examined in Section 4.10.
 
 ![Figure 4.9. Shuffled-label controls, 100 conditions.](fig09_controls.png)
 
@@ -218,32 +217,15 @@ A model can tell which source a URL came from even within one class, which is th
 | B | benign | P1 | 0.820 | 0.500 | 14826 |
 | B | phishing | P1 | 0.935 | 0.500 | 13937 |
 
-## 4.10 Reproduction of the first study
+## 4.10 Follow-up checks
 
-The first study's raw PhiUSIIL cell scored AUC 0.999 (XGBoost); this run scores 0.864 on the study cell (Table 4.4).
-
-**Table 4.4.** Published against reproduced AUC (XGBoost, median over splits).
-
-| cell | rep | published | now | gap |
-|---|---|---|---|---|
-| phiusiil vs phiusiil | R1 | 0.999 | 0.864 | -0.135 |
-| phiusiil vs phiusiil | R2 | 0.992 | 0.820 | -0.173 |
-| phiusiil vs phiusiil | R3 | 0.964 | 0.820 | -0.144 |
-| phiusiil vs phiusiil | R4 | 0.730 | 0.791 | 0.061 |
-| phiusiil vs crawl | R1 | 0.999 | 0.986 | -0.012 |
-| phiusiil vs crawl | R2 | 0.987 | 0.810 | -0.177 |
-| phiusiil vs crawl | R3 | 0.972 | 0.810 | -0.161 |
-| phiusiil vs crawl | R4 | 0.679 | 0.775 | 0.096 |
-
-## 4.11 Follow-up checks
-
-**Why the PhiUSIIL cell scores lower than published.** PhiUSIIL was re-run alone, adding one cleaning step at a time (5 splits). Raw PhiUSIIL through our loader already scores about 0.94 (XGBoost); sampling to 10,000 per class, removing domains shared with other phishing sources, the pool rules and the study caps take it to 0.867. The cleaning explains about 0.07 of the gap; about 0.06 is gone before any cleaning, most likely because URLs are standardised on loading (inferred, not tested, as the original strings were lost). R4 stays between 0.79 and 0.85 at every stage against 0.730 published.
+**How data preparation changes the PhiUSIIL result.** PhiUSIIL was re-run alone, adding one cleaning step at a time (5 splits). Raw PhiUSIIL through our loader scores about 0.94 (XGBoost); sampling to 10,000 per class, removing domains shared with other phishing sources, the pool rules and the study caps take it to 0.867, so data preparation alone moves the raw score by about 0.07. R4 stays between 0.79 and 0.85 at every stage.
 
 **The flagged shuffled-label control.** In the URL-Phish phishing against PhiUSIIL legitimate cell, LightGBM trained on shuffled labels scores below chance at every seed: mean 0.449 (SD 0.031, 50 runs); the character n-gram model scores 0.506. A leak raises a control above 0.5, so this is read as a model artefact in one cell and listed as a limitation.
 
 ![Figure 4.10. Left: XGBoost AUC from raw PhiUSIIL to the study cell. Right: the flagged control.](fig12_followup.png)
 
-## 4.12 Part B: page HTML (exploratory)
+## 4.11 Page HTML (exploratory)
 
 Four cells (Phishpedia or PhreshPhish phishing against PhreshPhish or crawled legitimate pages) use the 84 page features, grouped into P1 (all), P2 (scripts and structure removed), P3 (forms and text) and P4 (forms only). **Part B gives no verdicts.**
 
@@ -278,44 +260,40 @@ Four cells (Phishpedia or PhreshPhish phishing against PhreshPhish or crawled le
 | phreshphish vs phreshphish | P1 | 2226 | 0.201 | 0.061 | 0.010 |
 | phreshphish vs phreshphish | P1+R1 | 2226 | 0.193 | 0.102 | 0.043 |
 
-## 4.13 Limitations of the study
+## 4.12 Limitations of the study
 
 - **Sources.** Two sources (PhiUSIIL, PhishStorm) are homepage-heavy or old; PhishTank is not in the pool. Results describe these public datasets.
-- **Not testable.** HP, and per-source temporal effects: PhiUSIIL carries no per-row dates.
+- **Not testable.** Q5, and per-source temporal effects: PhiUSIIL carries no per-row dates.
 - **Sample size.** Cells use up to 10,000 URLs per class with 5 per domain; this lowers cross-split variability compared with a larger pool.
-- **Feature engine.** 99 hand-built features replace the first study's 38; R3 equals R2 by construction.
+- **Feature engine.** R3 equals R2 by construction, because the engine drops a leading `www`.
 - **Control.** One of 100 shuffled-label controls is flagged (below chance, one cell).
 - **Part B.** Four cells, two sources with saved HTML, uneven coverage by class.
 - **No hand-typed results.** Every number is read from `reports/phishguard/tables/` by `python -m phishguard.report`; seeds are fixed.
 
-## 4.14 What can and cannot be claimed
+## 4.13 What can and cannot be claimed
 
 **Table 4.7.** Claim register: each finding with the wording this run supports.
 
-| Finding | First study | This run | Verdict | How to word it |
-|--------------|------------------------|----------------------------------|-----------|------------------------------|
-| F1 Representation sensitivity | cell A raw 0.9988 to R4 0.7297; all cells R4 0.63-0.86 | R1 0.977 to R4 0.850 (median of cells and models); falls in every one of 100 model-cell settings | Replicated | A direct finding, across five phishing sets, five legitimate sets and four model families. |
-| F2 Where the drop sits | R1-R4 drop share in host/subdomain 0.870 (cell A), 0.563 (cell C) | median host/subdomain share 0.21 on the study cells; on raw PhiUSIIL alone 0.76 (XGBoost), falling to 0.36 after cleaning | Not replicated | Say the host/subdomain share depends on how the benchmark is prepared: it is high on the raw benchmark and low on cleaned pools. |
-| F3 Source dependence | swapping the phishing source moves R4 by 0.13-0.16 | swapping one source moves R4 AUC by a median 0.058; CI excludes 0 in 76% of settings, 53% after depth reweighting | Partly replicated | Real in some pairs, absent in others; reweighting for depth halves it. |
-| F4 Split sensitivity | R4 SD across 10 splits up to 0.1164 against at most 0.0026 for raw | median SD 0.006 (R4) against 0.002 (R1); larger than 3x in 45% of settings, largest 0.019 | Not replicated | Split variability matters but the 3x margin is not general. |
-| HP Platform masking | masking raised held-out R4 AUC in 60 of 60 pairs | no hosting-platform domains remain after the 5-per-domain cap | Not testable | Leave to a design that keeps platform domains. |
-| H6 Independent transfer | R4 0.694 and 0.706, on 119 benign domains | R4 AUC 0.699 median, lowest 0.554, above 0.5 in every setting | Replicated | Transfer stays above chance; the size varies. |
-| OOD Natural pages | raw model 1.0 on natural legitimate pages against 0.00026 on the benchmark; normalised 0.090 | 15.2% flagged on natural pages at the cell's 1% threshold against 1.0% in-cell; 33% at the 0.5 threshold | Partly replicated | Benchmark thresholds understate false alarms on natural pages. |
-# PhishDrift chapters (5 to 9)
+| Finding | This run | Verdict | How to word it |
+|--------------|----------------------------------|-----------|------------------------------|
+| Q1 Representation sensitivity | R1 0.977 to R4 0.850 (median of cells and models); falls in every one of 100 model-cell settings | Holds | A direct finding, across five phishing sets, five legitimate sets and four model families. |
+| Q2 Where the drop sits | median host/subdomain share 0.21 on the study cells; on raw PhiUSIIL alone 0.76 (XGBoost), falling to 0.36 after cleaning | Does not hold | Say the host/subdomain share depends on how the benchmark is prepared: it is high on the raw benchmark and low on cleaned pools. |
+| Q3 Source dependence | swapping one source moves R4 AUC by a median 0.058; CI excludes 0 in 76% of settings, 53% after depth reweighting | Holds in part | Real in some pairs, absent in others; reweighting for depth halves it. |
+| Q4 Split sensitivity | median SD 0.006 (R4) against 0.002 (R1); larger than 3x in 45% of settings, largest 0.019 | Does not hold | Split variability matters but the 3x margin is not general. |
+| Q5 Platform masking | no hosting-platform domains remain after the 5-per-domain cap | Not testable | Leave to a design that keeps platform domains. |
+| Q6 Independent transfer | R4 AUC 0.699 median, lowest 0.554, above 0.5 in every setting | Holds | Transfer stays above chance; the size varies. |
+| Q7 Natural pages | 15.2% flagged on natural pages at the cell's 1% threshold against 1.0% in-cell; 33% at the 0.5 threshold | Holds in part | Benchmark thresholds understate false alarms on natural pages. |
+# 5. Data and corpus
 
-Scope. These chapters describe PhishDrift, the software: a layered phishing detector shipped as a Chrome extension (Manifest V3) with a FastAPI backend. A separate research study that re-tests the prior report's findings (PhishGuard) is covered in its own chapter and is not repeated here.
+Scope. These chapters describe PhishDrift, the software: a layered phishing detector shipped as a Chrome extension (Manifest V3) with a FastAPI backend. The evaluation study (Chapters 3 and 4) is not repeated here.
 
 How to read the numbers. Every number is copied from a generated file under `reports/` or from `docs/PROGRESS.md`, and the source is named in brackets. Unless stated otherwise, a result is the median over 10 domain-grouped splits, with [min, max] in square brackets, measured with the allowlist and blocklist layers switched off. "Recall at FPR 1%" and "recall at FPR 0.1%" are the headline metrics. "Operating point" (op) means the largest recall whose false-positive rate on that same set is at or below the target. "Cal" means the threshold was chosen on the calibration side and then applied unchanged, which is what a deployed model does. Accuracy is never reported as a headline. Items I could not verify are marked "not measured".
 
 Corpus counts in chapter 5 come from the corpus data card as quoted in the 2026-10-13 report draft. The data card file itself is not in this checkout, so those counts are carried over and were not re-checked against it.
 
----
-
-# 5 Data and corpus
-
 ## 5.1 Why the corpus is built this way
 
-The prior study (`docs/prior_work/representation_sensitivity_report.pdf`) found that a benchmark score depends on how URLs are written, which sources make up each class, and which split is used. Its raw-URL ROC-AUC on PhiUSIIL was 0.9988 and fell to 0.7297 when URLs were rewritten to `https://www.<registrable domain>`, and a model trained that way flagged all 11,895 naturally collected legitimate URLs (`docs/PROJECT_SPEC.md`, lessons L1 and L3). PhishDrift therefore treats the data pipeline as part of the product. The rules that follow are fixed in `CLAUDE.md`: only URL, label, date and HTML are read from any dataset, never a precomputed feature column; one registrable-domain definition is used everywhere (public-suffix-only); and no model is trained until the corpus passes a depth check.
+The evaluation study (Chapter 4) shows that a benchmark score depends on how URLs are written, which sources make up each class and which split is used, and that a threshold set on a benchmark understates false alarms on ordinary pages (`docs/PROJECT_SPEC.md`). PhishDrift therefore treats the data pipeline as part of the product. The rules that follow are fixed in `CLAUDE.md`: only URL, label, date and HTML are read from any dataset, never a precomputed feature column; one registrable-domain definition is used everywhere (public-suffix-only); and no model is trained until the corpus passes a depth check.
 
 ## 5.2 Sources
 
@@ -340,7 +318,7 @@ Three points need care. First, PhiUSIIL and URL-Phish carry no per-row dates (th
 
 The corpus is built before any split, in this order (`docs/PROJECT_SPEC.md`, "Corpus build"): load each source into the schema; canonicalise every URL the same way and deduplicate across all sources, dropping any URL with conflicting labels; remove near-duplicate HTML within each label; remove every registrable domain that appears in more than one phishing source from all sources; keep each domain in one source with a cap on URLs per domain; mix homepage-only benign sources with deep benign URLs; check per-class depth; carve out the held-out source and the newest time slice.
 
-The data card reports 1,151,098 rows loaded and 1,200 registrable domains that appeared in more than one phishing source. The shared-domain rule removed the most rows in several sources (111,203 from PhreshPhish, 40,451 from PhiUSIIL), which matches the prior report's finding that hosting platforms and shorteners dominate the overlap between phishing corpora. PhreshPhish also lost 162,433 rows to near-duplicate HTML removal, which explains why more rows were loaded from it than its published size (data card, "Rows removed per step and source").
+The data card reports 1,151,098 rows loaded and 1,200 registrable domains that appeared in more than one phishing source. The shared-domain rule removed the most rows in several sources (111,203 from PhreshPhish, 40,451 from PhiUSIIL), consistent with hosting platforms and shorteners dominating the overlap between phishing corpora. PhreshPhish also lost 162,433 rows to near-duplicate HTML removal, which explains why more rows were loaded from it than its published size (data card, "Rows removed per step and source").
 
 | part | URLs | domains | phishing | benign | phishing % | with HTML |
 |---|---|---|---|---|---|---|
@@ -366,9 +344,8 @@ A larger "popular sites" crawl (Chrome's most visited hosts, plus Common Crawl i
 
 Two legitimate sets are never trained on. The first is a set of 2,555 ordinary legitimate inner pages from 562 sites that are in no training, calibration or held-out set (the "natural pages"); a second crawl pass kept HTML for 2,226 pages from 512 sites (`reports/blend_ood.md`). It is used only to measure false alarms. The second is a set of 104 to 114 regional brand sites (Indian, European and Asian banks, payment apps and login pages) used for the look-alike rules and the URL-layer test (`reports/brand_rules.md`, `docs/PROGRESS.md`). The natural pages were sampled from Tranco-listed sites, which makes them easier than a long-tail browsing history; this is a limitation of every false-alarm number below.
 
----
 
-# 6 Feature engine and models
+# 6. Feature engine and models
 
 ## 6.1 One engine, three tiers
 
@@ -382,7 +359,7 @@ All features come from one engine, `extract(url, html, domain_info)`, with missi
 
 Table 6.1. Feature tiers (`reports/hybrid2.md`, `reports/tier_b.md`, `reports/tier_c.md`).
 
-Two rules protect the models from leakage. Popularity signals (Tranco rank, traffic, search indexing) and blocklist membership are never model inputs; rank is used only to cut the allowlist. Registrable domains of hosting platforms (from the public suffix list's private section, `configs/platforms.yaml`) are replaced by a neutral token before URL features are computed, and only `is_hosting_platform` is exposed, following the prior report's result that masking raised held-out AUC in 60 of 60 comparisons. Tier A features are ported to JavaScript and checked against Python on 272 fixed URLs in both test suites (`docs/PROGRESS.md`).
+Two rules protect the models from leakage. Popularity signals (Tranco rank, traffic, search indexing) and blocklist membership are never model inputs; rank is used only to cut the allowlist. Registrable domains of hosting platforms (from the public suffix list's private section, `configs/platforms.yaml`) are replaced by a neutral token before URL features are computed, and only `is_hosting_platform` is exposed, so that platform identity cannot stand in for phishing (the effect of masking was not testable in Chapter 4: no platform domains remain in the study cells). Tier A features are ported to JavaScript and checked against Python on 272 fixed URLs in both test suites (`docs/PROGRESS.md`).
 
 A source-leakage check compared, for each tier A feature, how strongly it separates sources within a class against how strongly it separates the classes. 17 of 99 features were flagged, mostly path and length features (`n_slash`, `path_depth`, `entropy_url`, `url_len`). Dropping the 17 lowered held-out LightGBM ROC-AUC from 0.9168 to 0.8943 and recall at 1% FPR from 59.1 to 55.3 (`reports/tier_a.md`), so they were kept and the question is reported rather than hidden. None of the 84 tier B features was flagged (draft, from `reports/tables/feature_source_check_b.csv`).
 
@@ -406,9 +383,8 @@ Tier C features (registration age and expiry from RDAP, DNS records, certificate
 
 Thresholds are never 0.5. "Suspicious" is the threshold at FPR 1% and "dangerous" the threshold at FPR 0.1%, both chosen on each split's calibration side, and isotonic calibration maps scores to probabilities. Fixed-FPR points use the largest attainable recall with achieved FPR at or below the target, and a 0.1% point resting on fewer than 10 negatives is marked granularity-limited. Calibration is good where the data match: ECE 0.0039 on test, but 0.0369 on the held-out source (`reports/stack_a.md`). Chapter 8 shows that the thresholds themselves do not transfer well to a new source.
 
----
 
-# 7 System: extension and backend
+# 7. System: extension and backend
 
 ## 7.1 Runtime layers
 
@@ -478,9 +454,8 @@ Start-up, once per browser session, takes 166 ms to parse the 11.7 MB model bund
 
 Screenshots are not available in this environment, so the interface is described in words. A suspicious verdict shows a small banner, in a closed shadow root at the top of the page, with the reasons and buttons to dismiss, trust the site or report a false alarm. A dangerous verdict replaces the page with a warning page that lists the reasons, offers "Take me back to safety", "Proceed anyway" and "Report false positive" (which sends only the domain). The toolbar popup shows the current verdict and its reasons. Screenshots of each state should be taken on the author's own browser for the final report.
 
----
 
-# 8 Evaluation of the detector
+# 8. Evaluation of the detector
 
 ## 8.1 Protocol
 
@@ -596,7 +571,7 @@ Table 8.6. Representation check on 71,063 normalised test URLs from 71,044 domai
 
 ![Figure 8.4. Raw against normalised URLs: recall at FPR 1% and 0.1%.](figures/fig07_representation.png)
 
-The gap is smaller than the prior report's (0.9988 to 0.7297 on PhiUSIIL), but it is large. For the blend, on rows with HTML the ROC-AUC falls only from 0.9958 to 0.9830, so where a page exists it carries most of the signal; on rows without HTML it falls from 0.9335 to 0.8687. One split gives 0% recall at 0.1% FPR on the normalised HTML rows (median 65.7%) (`reports/blend_checks.md`).
+The gap is large. For the blend, on rows with HTML the ROC-AUC falls only from 0.9958 to 0.9830, so where a page exists it carries most of the signal; on rows without HTML it falls from 0.9335 to 0.8687. One split gives 0% recall at 0.1% FPR on the normalised HTML rows (median 65.7%) (`reports/blend_checks.md`).
 
 ![Figure 8.5. Shipped address model (hybrid2), ROC-AUC by URL depth bucket on three sets.](figures/fig08_depth_buckets.png)
 
@@ -621,7 +596,7 @@ Table 8.7. Share of natural legitimate pages flagged, % (`reports/ood_fpr.md`, `
 
 ![Figure 8.6. Natural-page false alarms by model and by layer set (`reports/ood_fpr.md`, `reports/blend2_rules.md`, `reports/shipped_verdicts.md`, `reports/page_fixes_fpr.md`).](figures/fig04_false_alarms_natural_pages.png)
 
-No model collapsed the way the prior report's raw benchmark model did (all 11,895 natural URLs flagged), so the homepage shortcut has not returned. Even so, at the 1% target between 3.4% and 5.3% of natural pages are flagged, well above the target. Taking thresholds from the PhreshPhish part of the calibration side (real browsing telemetry) lowers the rate for every model, which suggests that part of the excess comes from the threshold rather than the model.
+No model flags every natural page, so the homepage shortcut has not returned. Even so, at the 1% target between 3.4% and 5.3% of natural pages are flagged, well above the target. Taking thresholds from the PhreshPhish part of the calibration side (real browsing telemetry) lowers the rate for every model, which suggests that part of the excess comes from the threshold rather than the model.
 
 The shipped pipeline does better because of the allowlist and the page model. Offline, with the allowlist and the address model at both thresholds, 71 of the 2,555 natural pages are flagged (2.8%; 64 suspicious, 7 dangerous; 38 domains), and 71 of the 1,483 pages on sites outside the top 50,000 (4.8%) (`reports/shipped_verdicts.md`). With the page model, the password-field rules and the allowlist, 29 of 2,226 readable pages with HTML are warned (1.30%) and 11 are dangerous (0.49%); with the allowlist off the figures are 2.61% and 1.17% (`reports/page_fixes_fpr.md`). The rule that stops an address-only "dangerous" from opening the warning page cut the number of pages that would have been blocked from 11 to 6 of 2,373 with the allowlist on (30 to 23 with it off), without changing the warned share (`reports/address_only_blocks.md`). All of these are measured on stored HTML, not on a live page, and the natural set is Tranco-seeded.
 
@@ -678,9 +653,8 @@ The environment that built the system cannot browse, so these are measurements o
 
 Blocklist coverage on the corpus is not measurable, because the test URLs come from datasets collected in other periods than the live feeds. It can only be measured forward, as the share of newly listed feed URLs whose domain was already on an earlier list, once the collector has run for several days. This is not measured.
 
----
 
-# 9 Limitations and what is not done
+# 9. Limitations and what is not done
 
 **What the results do and do not support.**
 
@@ -708,32 +682,31 @@ Blocklist coverage on the corpus is not measurable, because the test URLs come f
 
 ## 10.1 What was achieved
 
-- **A verification study.** The earlier report's central finding, that a URL model's score depends heavily on URL form, is replicated across 25 source cells, four model families and ten splits. Transfer to independent datasets stays above chance (replicated). Source dependence is partly replicated and the natural-page false-alarm gap is partly replicated. The claims about where the drop sits and about split variability did not repeat in this design, and an extra check traced the first to the way the raw benchmark was prepared.
+- **An evaluation study.** A URL model's score depends heavily on URL form: it holds across 25 source cells, four model families and ten splits. Transfer to independent datasets stays above chance (holds). Source dependence holds in part and the natural-page false-alarm gap holds in part. The share of the fall that sits in the host name and the size of the split-to-split spread did not hold across the cells, and an extra check ties the first to how the raw benchmark is prepared.
 - **A working detector.** PhishDrift runs as a Chrome extension with a FastAPI backend and layered checks (allowlist, blocklist, URL model, page model, domain checks), evaluated with recall at fixed false-alarm rates, a held-out source, a newest time slice and natural-page false alarms (Chapter 8).
-- **A reproducible record.** Every reported number comes from a script in the repository that writes to `reports/`; seeds are fixed; the study's plan and replication rule were frozen before the run.
+- **A reproducible record.** Every reported number comes from a script in the repository that writes to `reports/`; seeds are fixed; the study's plan and consistency rule were frozen before the run.
 
 ## 10.2 Limitations
 
-See Sections 4.13 and Chapter 9. In short: public benchmarks only, two of them old or homepage-heavy; the HTML part rests on two sources with uneven coverage; one shuffled-label control is flagged; platform masking is untested; PhishDrift's tier C rests on a small live capture; and the extension has been checked in test harnesses and on stored pages, not in a long field trial.
+See Sections 4.12 and Chapter 9. In short: public benchmarks only, two of them old or homepage-heavy; the HTML part rests on two sources with uneven coverage; one shuffled-label control is flagged; platform masking is untested; tier C of the detector rests on a small live capture; and the extension has been checked in test harnesses and on stored pages, not in a long field trial.
 
 ## 10.3 Future work
 
 1. Add PhishTank and further live-feed sources to the study, and re-run it with hosting-platform domains kept so platform masking can be tested.
-2. Test the benchmark-construction explanation for the host-share finding on more datasets.
+2. Test the benchmark-preparation explanation for the host-share result on more datasets.
 3. Add a held-out source that has page HTML, so the page model's gain can be measured out of source.
 4. Grow the tier C capture over more days, and measure blocklist coverage forward in time.
 5. Optional second-opinion layer for the grey zone (planned, not built).
 
 # References
 
-1. R. Gangwar, *Representation Sensitivity and Cross-Source Generalization in Phishing URL Detection*, technical report v1.1.1, 2026-09-10.
-2. A. Hannousse and S. Yahiouche, "Towards benchmark datasets for machine learning based website phishing detection", *Engineering Applications of Artificial Intelligence*, 2021.
-3. A. Prasad and S. Chandra, "PhiUSIIL: a diverse security profile empowered phishing URL detection framework based on similarity index and incremental learning", *Computers & Security*, 2024.
-4. PhreshPhish dataset, Hugging Face `phreshphish/phreshphish`.
-5. URL-Phish dataset (Mendeley Data); PhishStorm dataset (Aalto University); Phish-Blitz and Phishpedia datasets as released by their authors.
-6. G. Ke et al., "LightGBM: a highly efficient gradient boosting decision tree", *NeurIPS*, 2017.
-7. T. Chen and C. Guestrin, "XGBoost: a scalable tree boosting system", *KDD*, 2016.
-8. V. Le Pochat et al., "Tranco: a research-oriented top sites ranking hardened against manipulation", *NDSS*, 2019.
-9. OpenPhish community feed; Phishing.Database (MIT licence); Google Safe Browsing Update API.
+1. A. Hannousse and S. Yahiouche, "Towards benchmark datasets for machine learning based website phishing detection", *Engineering Applications of Artificial Intelligence*, 2021.
+2. A. Prasad and S. Chandra, "PhiUSIIL: a diverse security profile empowered phishing URL detection framework based on similarity index and incremental learning", *Computers & Security*, 2024.
+3. PhreshPhish dataset, Hugging Face `phreshphish/phreshphish`.
+4. URL-Phish dataset (Mendeley Data); PhishStorm dataset (Aalto University); Phish-Blitz and Phishpedia datasets as released by their authors.
+5. G. Ke et al., "LightGBM: a highly efficient gradient boosting decision tree", *NeurIPS*, 2017.
+6. T. Chen and C. Guestrin, "XGBoost: a scalable tree boosting system", *KDD*, 2016.
+7. V. Le Pochat et al., "Tranco: a research-oriented top sites ranking hardened against manipulation", *NDSS*, 2019.
+8. OpenPhish community feed; Phishing.Database (MIT licence); Google Safe Browsing Update API.
 
 *Citation details should be checked against the originals before submission.*

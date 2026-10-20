@@ -34,7 +34,7 @@ MODEL_LABEL = {
     "logreg": "Logistic regression",
     "char_ngram": "Char n-gram LR",
 }
-COL = {"lightgbm": "#1f6f8b", "xgboost": "#c8553d", "logreg": "#6a994e", "char_ngram": "#7b5ea7"}
+COL = {"lightgbm": "#1b6ca8", "xgboost": "#d9822b", "logreg": "#4aa3df", "char_ngram": "#e0a800"}
 FIRST = {  # prior study (report v1.1.1), numbers quoted from the PDF
     "F1": "cell A raw 0.9988 to R4 0.7297; all cells R4 0.63-0.86",
     "F2": "R1-R4 drop share in host/subdomain 0.870 (cell A), 0.563 (cell C)",
@@ -72,6 +72,7 @@ def md_table(text: str, heading: str, nth: int = 0) -> pd.DataFrame:
 def style() -> None:
     plt.rcParams.update(
         {
+            "font.family": "Carlito",
             "figure.dpi": 150,
             "savefig.dpi": 200,
             "font.size": 9,
@@ -321,26 +322,6 @@ def fig_followup(repro: pd.DataFrame, ctrl: pd.DataFrame, out: Path) -> str:
             for s in stages
         ]
         ax.plot(range(len(stages)), v, marker="o", color=c, label=f"{rep} (this run)")
-    ax.axhline(0.999, color="#1f6f8b", ls=":", lw=1)
-    ax.axhline(0.7297, color="#c8553d", ls=":", lw=1)
-    ax.text(
-        len(stages) - 1,
-        0.9995,
-        "published R1",
-        ha="right",
-        va="bottom",
-        fontsize=7,
-        color="#1f6f8b",
-    )
-    ax.text(
-        len(stages) - 1,
-        0.7297,
-        "published R4",
-        ha="right",
-        va="bottom",
-        fontsize=7,
-        color="#c8553d",
-    )
     ax.set_xticks(range(len(stages)), [s.split(" ")[0] for s in stages])
     ax.set_ylabel("XGBoost ROC-AUC, PhiUSIIL alone")
     ax.legend(fontsize=7, loc="center left")

@@ -1,0 +1,30 @@
+@page { size: A4; margin: 20mm 18mm 20mm 18mm; }
+:root { --navy:#14304f; --blue:#1f5f99; --rule:#d9dee5; --th:#eaf1fa; }
+html { font-size: 10pt; }
+body { font-family: "Cambria","Caladea",serif; color:#1b1b1b; line-height:1.5; text-align:justify; hyphens:auto; margin:0; }
+h1,h2,h3,h4,.title,.subtitle,.meta,table,figcaption,.caption { font-family:"Carlito","Segoe UI",sans-serif; text-align:left; }
+header#title-block-header { margin-bottom:10mm; }
+.title { font-size:23pt; line-height:1.2; font-weight:700; color:var(--navy); margin:0 0 4mm; }
+.subtitle { font-size:13pt; color:var(--blue); margin:0 0 3mm; }
+.author,.date { font-family:"Cambria","Caladea",serif; font-size:10pt; color:#333; margin:0; text-align:left; }
+h1 { font-size:15pt; color:var(--navy); font-weight:700; border-bottom:1px solid var(--rule); padding-bottom:2mm; margin:9mm 0 4mm; break-after:avoid; }
+h1:not(#contents):not(#abstract) { break-before:page; }
+h2 { font-size:12pt; color:var(--navy); font-weight:700; margin:6mm 0 2mm; break-after:avoid; }
+h3 { font-size:10.5pt; color:var(--navy); font-weight:600; margin:4mm 0 1mm; }
+p { margin:0 0 2.6mm; }
+strong { font-family:"Cambria","Caladea",serif; }
+em { font-style:italic; }
+code { font-family:"Consolas","DejaVu Sans Mono",monospace; font-size:8.4pt; background:#f3f5f8; padding:0 1px; }
+ul,ol { margin:0 0 3mm; padding-left:6mm; }
+li { margin-bottom:1mm; }
+table { border-collapse:collapse; width:100%; font-size:8pt; margin:3mm 0 4mm; text-align:left; break-inside:avoid; }
+th { background:var(--th); color:var(--navy); font-weight:600; text-align:left; padding:1.6mm 2mm; border-bottom:1px solid #bcc7d6; }
+td { padding:1.4mm 2mm; border-bottom:1px solid var(--rule); vertical-align:top; }
+table code { font-size:7.4pt; }
+figure { margin:4mm 0; text-align:center; break-inside:avoid; }
+figure img,p>img { max-width:100%; max-height:105mm; }
+figcaption { font-size:8pt; color:#333; text-align:justify; margin-top:1.5mm; line-height:1.4; }
+figcaption::first-line { }
+#contents + ul { list-style:none; padding:0; columns:1; font-family:"Carlito","Segoe UI",sans-serif; font-size:10pt; line-height:1.8; }
+#contents + ul a { color:var(--navy); text-decoration:none; }
+a { color:var(--blue); }
