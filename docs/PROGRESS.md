@@ -743,3 +743,17 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   same per-case results as before (33 of 35; the 2 trust cases fail on its stub lists, as on main).
 - Cost: a phishing page whose address alone is dangerous now renders with the banner until the page check
   (document_idle, at most 5 s) before the warning page replaces it.
+
+### 2026-10-20 — Popular-sites test crawl on the PC: Common Crawl index failed for every site (cloud)
+- Ritvik's 20-site test (`run_popular_crawl.ps1 -DomainsPerRun 20`): Common Crawl seed set 20 of 20 sites `error`, 0 pages
+  (log: connect timeout after 8 s, connection reset by the server, "connection pool is full"); the summary step then
+  crashed because PowerShell 5.1 strips the double quotes of an inline `python -c` script.
+- Cause (from the log, not reproduced here: the sandbox cannot reach the index): the index client inherited the
+  crawler's fail-fast settings (8 s connect timeout, 1 retry) and the 48 crawler workers all used one connection
+  pool, so requests to `index.commoncrawl.org` timed out or were reset and none was retried.
+- Changed: `collector/popular.py` `commoncrawl_client` (own client: 30 s connect timeout, 4 retries with backoff 3,
+  one request a second), 3 workers for the index (`popular.commoncrawl.workers`), `retry_errors` on both seed sets
+  (sites that failed or timed out are tried again; the 20 failed sites are not marked done), `python -m collector
+  popular-summary` replaces the inline script in `scripts/run_popular_crawl.ps1`. Tests added.
+- Not measured: whether the index now answers (needs the PC). The crawler (`popular`) results of the same test run
+  were not seen by me.

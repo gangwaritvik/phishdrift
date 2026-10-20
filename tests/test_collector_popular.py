@@ -285,3 +285,62 @@ def test_crawl_command_takes_its_own_lock_for_popular_seeds(tmp_path, monkeypatc
     assert cfg["crawler"]["seeds"]["popular"]["domains_per_run"] == 7
     assert cm.main(["crawl", "--seeds", "live"]) == 0
     assert seen["locks"] == ["run.lock"] and seen["heartbeat"] is None
+
+
+def test_failed_index_sites_are_retried_and_use_the_index_client(tmp_path):
+    class Calls(CCClient):
+        def __init__(self, pages, name):
+            super().__init__(pages)
+            self.name = name
+
+    index = json.dumps([{"cdx-api": ENDPOINT}]).encode()
+    crux = gzip.compress(b"origin,rank\nhttps://cc.example.com,5000\n")
+    cfg = _crawl_cfg(tmp_path)
+    cfg["seeds"]["commoncrawl"]["retry_errors"] = True
+    cfg["popular"]["commoncrawl"]["workers"] = 1
+    crawl_dir, seed_dir = tmp_path / "crawl", tmp_path / "seeds"
+    seed_dir.mkdir()
+    shared = Calls({"https://crux.test/202609.csv.gz": crux}, "shared")
+    down = Calls(
+        {"https://index.test/collinfo.json": index, f"{ENDPOINT}?url=cc.example.com": 503}, "cc"
+    )
+    cfg["popular_client"] = down
+    first = benign.crawl(shared, cfg, crawl_dir, seed_dir, NOW, only=["commoncrawl"])
+    assert first["commoncrawl"]["status"] == {"error": 1}
+    assert down.calls and not any("index.test" in c for c in shared.calls)
+
+    up = Calls(
+        {
+            "https://index.test/collinfo.json": index,
+            f"{ENDPOINT}?url=cc.example.com": _cdx("cc.example.com", 5),
+        },
+        "cc",
+    )
+    cfg["popular_client"] = up
+    again = benign.crawl(shared, cfg, crawl_dir, seed_dir, NOW, only=["commoncrawl"])
+    assert again["commoncrawl"]["domains"] == 1 and again["commoncrawl"]["pages"] == 4
+
+
+def test_commoncrawl_client_and_summary_text(tmp_path):
+    cfg = {
+        "http": {
+            "timeout_s": 20,
+            "retries": 3,
+            "backoff_factor": 2.0,
+            "user_agent": "t",
+            "default_min_interval_s": 1.0,
+        },
+        "paths": {"http_cache_dir": str(tmp_path / "cache")},
+        "popular": {
+            "commoncrawl": {
+                "timeout_s": 60,
+                "retries": 4,
+                "backoff_factor": 3.0,
+                "connect_timeout_s": 30,
+                "min_interval_s": 1.0,
+            }
+        },
+    }
+    c = popular.commoncrawl_client(cfg)
+    assert (c.retries, c.connect_timeout_s, c.timeout_s, c.backoff_factor) == (4, 30, 60, 3.0)
+    assert popular.summary_text(tmp_path / "empty") == "No popular-site attempts recorded yet."
