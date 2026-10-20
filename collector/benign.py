@@ -439,7 +439,8 @@ def crawl(
         hard_limit_s = cfg.get("domain_deadline_s", 240) + 180  # deadline + a slow last request
         chunk_rows, chunk_log = [], []
         failures = 0  # sites in a row the Common Crawl index could not answer
-        max_failures = int(cfg["popular"]["commoncrawl"].get("max_consecutive_errors", 0))
+        index_cfg = cfg.get("popular", {}).get("commoncrawl", {})
+        max_failures = int(index_cfg.get("max_consecutive_errors", 0))
         # Different sites run in parallel; each host keeps its own politeness delay.
         for n_done, ((_, domain), res) in enumerate(
             run_parallel(items, one, workers, hard_limit_s), 1
