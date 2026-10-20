@@ -12,8 +12,11 @@ python -m features build --tier C [--info-dir DIR] [--out FILE]
                                          # captures -> data/processed/features_c.parquet
 python -m features export-js            # js/data/ (public-suffix rules, lists, fitted numbers) and
                                          # js/src/pydata.js (entity tables, Python Unicode sets)
-python -m features parity               # tests/fixtures/url_parity.json and html_parity.json
-                                         # (Python-JS parity cases, tier A and tier B)
+python -m features parity               # tests/fixtures/url_parity.json, html_parity.json and
+                                         # brand_rules_parity.json (Python-JS parity cases)
+python -m features export-rules         # js/data/brand_rules.json (brand and look-alike rules)
+python -m features brand-domains [--wikidata] [--misp] [--confusables PATH]
+                                         # configs/lists/brand_domains.json and confusables.json
 """
 
 from __future__ import annotations
@@ -88,7 +91,17 @@ def fit_command(split_index: int = 0) -> Path:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="features")
     parser.add_argument(
-        "command", choices=["dictionary", "lists", "fit", "build", "export-js", "parity"]
+        "command",
+        choices=[
+            "dictionary",
+            "lists",
+            "fit",
+            "build",
+            "export-js",
+            "parity",
+            "export-rules",
+            "brand-domains",
+        ],
     )
     parser.add_argument("names", nargs="*")
     parser.add_argument("--split", default="pool", help="part to build features for (build only)")
@@ -110,7 +123,9 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="worker processes for tier B (default: CPUs - 1, at most 4)",
     )
-    args = parser.parse_args(argv)
+    args, rest = parser.parse_known_args(argv)
+    if rest and args.command != "brand-domains":
+        parser.error(f"unrecognized arguments: {' '.join(rest)}")
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
@@ -125,9 +140,22 @@ def main(argv: list[str] | None = None) -> int:
 
         print(*js_export.export_js(), html_parity.export_pydata(), sep="\n")
     elif args.command == "parity":
-        from features import html_parity, js_export
+        from features import brand_parity, html_parity, js_export
 
-        print(js_export.write_parity(), html_parity.write_parity_b(), sep="\n")
+        print(
+            js_export.write_parity(),
+            html_parity.write_parity_b(),
+            brand_parity.write_parity(),
+            sep="\n",
+        )
+    elif args.command == "export-rules":
+        from features import brand_parity
+
+        print(brand_parity.export_rules())
+    elif args.command == "brand-domains":
+        from features import brand_domains
+
+        return brand_domains.main(rest)
     elif args.command == "fit":
         print(fit_command())
     elif args.tier == "C":

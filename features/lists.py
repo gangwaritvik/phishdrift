@@ -7,6 +7,8 @@ lines naming its source and fetch date. One entry per line, lowercase.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
@@ -42,6 +44,22 @@ def _deletes(word: str, max_dist: int) -> set[str]:
         frontier = {w[:i] + w[i + 1 :] for w in frontier for i in range(len(w))}
         out |= frontier
     return out
+
+
+def lists_digest(lists: Lists) -> str:
+    """Short hash of every word list, so files built with other lists can be told apart."""
+    payload = {
+        name: sorted(getattr(lists, name))
+        for name in (
+            "platforms",
+            "brands",
+            "keywords",
+            "shorteners",
+            "suspicious_tlds",
+            "redirect_params",
+        )
+    }
+    return hashlib.sha256(json.dumps(payload).encode("utf-8")).hexdigest()[:16]
 
 
 @dataclass(frozen=True)

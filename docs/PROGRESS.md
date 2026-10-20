@@ -635,3 +635,62 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   external scripts did not run. The live-rendering number needs the PC (sandboxed browser).
 - Still open (need Ritvik's PC): `python -m backend make-signing-key` + rebuild, and the Tranco `build-lists`
   run; live rendering for gap 5. Brand list additions (Slack, Revolut, Swiggy) are with the brand thread.
+
+### 2026-10-19 — Brand and look-alike rules; threshold-transfer and render-gap tools (cloud)
+- Changed: `features/brand_rules.py` + `js/src/brand_rules.js` (escalate-only rules: Unicode skeleton from the
+  confusables table with punycode decoding, "1" read as l or i; embedded real domain; one letter away from a brand;
+  brand + lure word; brand-page rule = brand in title / og:site_name / copyright + password, OTP, card or PIN field +
+  domain not the brand's; phishing_catcher-style host score as a baseline), `features/brand_domains.py`
+  (`python -m features brand-domains [--wikidata] [--misp] --confusables FILE`: brand -> official domains from
+  Wikidata P856 and MISP vendor lists, platforms excluded), `configs/brand_rules.yaml`, page facts collected in the
+  same parse as tier B (`features/html_features.py`, `js/src/html_features.js`; model features unchanged),
+  `extension/src/combine.js` `brandEscalate` (one step per address hit and one for a brand page; never lowers,
+  never touches trusted or blocklisted addresses; on allowlisted pages and short links only the page rule, up to
+  suspicious), `experiments/brand_rules_eval.py`, parity fixture `tests/fixtures/brand_rules_parity.json`
+  (175 URLs, 18 pages), `tests/test_brand_rules.py`. `configs/lists/brands.txt` replaced by the reviewed 772-brand list.
+- Results (`reports/brand_rules.md`, allowlist off): address rules fire on 0 of 2,373 natural legitimate URLs
+  (572 domains) and 0 of 114 regional brand sites; the brand-page rule on 1 of 2,373 natural pages
+  (`cashinexch.com/redirect/facebook`). Caveat: the rules were tuned after seeing the natural set (vivacom.bg,
+  pcloud, deutsche-bank, generic brand words), so these are not independent numbers. On the test thread's
+  generated look-alikes (shipped address path + bundled allowlist, measured in Node): ASCII homoglyphs warned
+  5 -> 42 of 45, edit distance 1 21 -> 53 of 92, punycode 84 -> 89 of 91, brand + word 36 -> 40 of 46; 0 of 120
+  genuine brand hosts flagged before and after.
+- Not fixed: TLD swaps (`icicibank.net`, `sbi.app`): a brand's name on another suffix is treated as its own site,
+  because brands own many suffixes (`paypal.de`, `google.in`) and the map is too thin to tell. The URL model's false
+  alarms on `paypal-community.com`, `coinbase.cloud`, `amazonaws.com` remain (the rules do not cause or fix them).
+- Found: the shipped hybrid bundle carries the 67-word seed brand list, while training used the reviewed list
+  (`models/export_hybrid.py` used `load_lists()` without the PC's lists). Re-export on the PC fixes it.
+- Added but not run (needs the PC's data / the open web): `experiments/threshold_transfer.py` (five threshold
+  rules incl. source-balanced and domain-bootstrap upper bounds, main and leave-one-source-out settings) and
+  `collector/render.py` + `experiments/render_gap.py` + `scripts/render_ood.ps1` (render natural legitimate pages
+  headless and compare page-model false alarms on raw vs rendered HTML). Tests pass with fixtures.
+- Not done: Wikidata brand map (sandbox cannot reach Wikidata; MISP only, 17 brands), favicon hash.
+
+### 2026-10-20 — Brand list additions, proposed for review (cloud)
+- Changed: `configs/lists/brand_additions.txt` (127 brands: payments, crypto, marketplaces, social, gaming,
+  work accounts, banks in the US, Canada, Europe, Asia-Pacific, Latin America and Africa, post and parcels,
+  telecoms), merged into `configs/lists/brands.txt` (772 -> 899) in the cloud (Wikidata unreachable here).
+  `features/scrape.py` now merges `brand_files` and drops `brand_exclude` (the 2026-10-12 generic words,
+  which a rescrape would otherwise bring back). `experiments/brand_evidence.py` (phishing-feed counts per
+  name, with the longer words that contain it). Tier B shard plans carry a word-list hash, so shards built
+  with other lists are no longer reused silently (`features/build_b.py`, `lists_digest`).
+  `scripts/refresh_brands.ps1` (brand-domain map, rules, extension; `-Model` rebuilds features and re-exports).
+  `js/data/brand_rules.json` and `js/data/lists.json` regenerated.
+- Selection (no popularity): at least 10 phishing registrable domains in 789,354 feed URLs
+  (Phishing.Database ACTIVE + OpenPhish, 2026-10-20), not an everyday word or part of one, name = label of the
+  brand's own site; Slack, Revolut, Swiggy and Monzo kept as asked despite almost no feed evidence. The
+  left-out candidates and reasons are in `reports/brand_additions_review.md` (`reports/tables/brand_evidence.csv`).
+- Results (`reports/brand_rules.md`): address rules 0 of 2,373 natural legitimate URLs and 0 of 114 regional
+  brand sites (unchanged); brand-page rule 1 of 2,373 natural pages (same page); phishing `openphish_gh.txt`
+  10 -> 13 of 300 (not independent of the selection). `commbank` was dropped after it flagged `combank.lk`.
+- Not done: the models still use the old list (shipped address bundle: the 67-name seed list) until
+  `scripts\refresh_brands.ps1 -Model` runs on the PC; brand-to-domain map needs Wikidata (PC).
+- Open: Ritvik's review of the list (left-out candidates: halifax and huntington recommended).
+
+### 2026-10-20 — Merge conflict resolution with main (cloud)
+- Merged `origin/main` into this branch and resolved conflicts in `docs/PROGRESS.md`,
+  `experiments/render_gap.py`, `extension/src/background.js` and `extension/test/combine.test.js`.
+- Kept both local-address behavior and brand-rule logic in the extension background/combine test paths.
+- Kept the render-gap workflow from main and restored helper functions used by existing tests
+  (`sample_pages`, `compare`, `rates`, `transitions`, `top_changes`).
+- Next: run targeted tests for these conflict areas and push the merge commit.

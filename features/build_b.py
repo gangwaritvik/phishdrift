@@ -29,7 +29,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from features.html_features import analyze
-from features.lists import load_lists
+from features.lists import lists_digest, load_lists
 from features.registry import NAMES_B
 from phishdrift.config import load_config, resolve
 
@@ -82,6 +82,7 @@ def fingerprint(path: Path, pf: pq.ParquetFile, shard_rows: int) -> dict:
         "num_row_groups": meta.num_row_groups,
         "shard_rows": shard_rows,
         "names_b": list(NAMES_B),
+        "lists": lists_digest(load_lists()),  # brand and keyword features depend on the lists
     }
 
 
@@ -197,8 +198,8 @@ def build_b(
     if plan_file.exists():
         if json.loads(plan_file.read_text(encoding="utf-8")) != finger:
             raise RuntimeError(
-                f"{src.name} or the feature list changed since the shards in {folder} were "
-                f"written: delete that folder to start over"
+                f"{src.name}, the feature list or the word lists changed since the shards in "
+                f"{folder} were written: delete that folder to start over"
             )
     else:
         plan_file.write_text(json.dumps(finger), encoding="utf-8")

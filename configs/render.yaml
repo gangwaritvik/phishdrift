@@ -1,0 +1,29 @@
+# `python -m collector render-ood` (scripts/render_ood.ps1): render a sample of the natural legitimate
+# pages that already have raw HTML (the `crawl-ood --html-pass` output) with the locally installed
+# Chrome or Edge in headless mode, so `python -m experiments.render_gap` can compare the page model on
+# raw server HTML (what it was trained on) with the rendered DOM (what the extension scores).
+# Legitimate pages only: the input is the OOD folder, which holds no phishing URL.
+
+paths:
+  ood_html_dir: data/raw/ood_html      # input: pages/*.parquet from `python -m collector crawl-ood --html-pass`
+  out_dir: data/raw/ood_render         # output: sample.csv, raw/, rendered/, status/, render_index.csv
+
+sample:
+  seed: 20261015                       # fixed: the same input gives the same sample
+  size: 300                            # pages
+  max_per_site: 2                      # at most this many pages from one registrable domain
+  min_html_chars: 200                  # raw HTML shorter than this is treated as missing and not sampled
+
+browser:
+  executable: null                     # full path to chrome.exe / msedge.exe; null = search the usual install folders
+  prefer: [chrome, edge, chromium]     # search order when executable is null
+  virtual_time_budget_ms: 8000         # --virtual-time-budget: how long scripts and timers may run before the DOM is dumped
+  timeout_s: 45                        # hard wall-clock limit per page; the browser process tree is killed after it
+  window_size: "1366,768"
+  user_agent: null                     # null = the browser's own headless user agent
+  extra_args: []                       # appended to the command line (e.g. ["--no-proxy-server"])
+  max_html_chars: 5000000              # same cap as the content script (extension/src/content.js MAX_HTML_CHARS)
+
+run:
+  workers: 4                           # parallel browser processes; each writes only its own page files
+  retry_failed: false                  # true: pages that timed out or failed are tried again on a rerun
