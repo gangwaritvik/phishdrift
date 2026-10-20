@@ -12,6 +12,7 @@ Loader kinds (``kind`` in configs/datasets.yaml):
   openphish_blitz  Phish-Blitz PhishingSamples (URL lists + page folders)
   phishblitz   Phish-Blitz output: <root>/info.csv + downloaded page folders
   live         collector feeds (first-seen index)
+  crawl_only   no files of its own: only pages the collector's seed sets assign to it (``popular``)
 
 Pages from the benign inner-page crawler are appended to the source whose domains seeded
 them (``origin = "crawl"``): PhiUSIIL-seeded pages belong to ``phiusiil``, Tranco-seeded
@@ -545,16 +546,26 @@ def live_frame(index: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     return to_schema(idx["url"], idx["label"], "live", dates=idx["first_seen"], origin=origin)
 
 
-def crawl_frame(crawl: pd.DataFrame, name: str) -> pd.DataFrame:
-    """Benign inner pages crawled from ``name``'s seed domains."""
-    part = crawl.loc[crawl["seed_source"] == name]
+def crawl_seed_names(name: str, seeds: dict) -> list[str]:
+    """Seed sets whose pages belong to source ``name``: the seed set of that name and every seed
+    set whose config says ``source: <name>``."""
+    return [n for n, s in seeds.items() if s.get("source", n) == name] or [name]
+
+
+def crawl_frame(
+    crawl: pd.DataFrame, name: str, seed_names: list[str] | None = None
+) -> pd.DataFrame:
+    """Benign pages the collector fetched or listed for ``name``'s seed domains. Pages from
+    the Common Crawl index carry no HTML and the origin ``commoncrawl``."""
+    part = crawl.loc[crawl["seed_source"].isin(seed_names or [name])]
+    origin = part["seed_source"].map(lambda s: "commoncrawl" if s == "commoncrawl" else "crawl")
     return to_schema(
         part["url"],
         pd.Series([0] * len(part)),
         name,
         dates=part["crawled_at"],
         html=part["html"],
-        origin="crawl",
+        origin=origin,
     )
 
 
@@ -565,7 +576,13 @@ def iter_live(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]:
     yield from _chunked(live_frame(load_index(index_path), cfg), chunk_rows)
 
 
+def iter_crawl_only(name: str, cfg: dict, chunk_rows: int) -> Iterator[pd.DataFrame]:
+    """A source made only of crawler pages (``popular``): nothing to load besides them."""
+    return iter(())
+
+
 LOADERS = {
+    "crawl_only": iter_crawl_only,
     "huggingface": iter_huggingface,
     "uci": iter_uci,
     "table": iter_table,
@@ -578,10 +595,10 @@ LOADERS = {
 
 def _crawl_chunks(name: str, chunk_rows: int) -> Iterator[pd.DataFrame]:
     """Benign inner pages the crawler fetched from this source's seed domains (if any)."""
-    crawl_dir = resolve(load_config("collector")["paths"]["crawl_dir"])
-    crawl = load_crawl(crawl_dir)
+    ccfg = load_config("collector")
+    crawl = load_crawl(resolve(ccfg["paths"]["crawl_dir"]))
     if len(crawl):
-        part = crawl_frame(crawl, name)
+        part = crawl_frame(crawl, name, crawl_seed_names(name, ccfg["crawler"]["seeds"]))
         if len(part):
             log.info("%s: +%d crawled inner pages", name, len(part))
             yield from _chunked(part, chunk_rows)

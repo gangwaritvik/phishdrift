@@ -64,6 +64,17 @@ crawler:                               # benign inner pages; robots.txt and Craw
   workers: 48                          # sites crawled in parallel (each host still waits its own delay)
   checkpoint_every: 25                 # results are saved after every this many domains
   seeds:
+    popular:                           # CrUX hosts, inner pages with HTML; pages belong to the "popular" source
+      from: crux
+      scheduled: false
+      domains_per_run: 1500
+      include_homepage: false
+    commoncrawl:                       # CrUX hosts, URLs from the Common Crawl index (no HTML)
+      from: commoncrawl
+      source: popular                  # pages belong to the "popular" source with the crawled ones
+      scheduled: false
+      domains_per_run: 3000
+      include_homepage: false
     live:                              # Tranco-seeded pages belong to the "live" source
       from: tranco                     # via the `tranco` package; rank never becomes a feature
       top_n: 100000
@@ -78,6 +89,24 @@ crawler:                               # benign inner pages; robots.txt and Craw
       domains_per_run: 30
       include_homepage: false
   tranco_cache_dir: .cache/tranco
+
+# Deep legitimate URLs of popular sites (collector/popular.py); run by name, not in the 12 h run:
+#   python -m collector crawl --seeds popular commoncrawl      (rerun to continue; done hosts are skipped)
+popular:
+  origins_url: https://raw.githubusercontent.com/zakird/crux-top-lists/main/data/global/{month}.csv.gz
+  months_back: 3                       # newest monthly file that downloads
+  cache_ttl_s: 604800
+  timeout_s: 300
+  skip_rank: 1000                      # the head is allowlist territory; CrUX ranks are bucket upper bounds
+  max_rank: 100000
+  seed: 20261020                       # fixed: same list and exclusions give the same host order
+  commoncrawl:
+    collections_url: https://index.commoncrawl.org/collinfo.json
+    timeout_s: 60
+    min_interval_s: 1.0                # the index asks clients to be gentle: one request a second
+    fetch_limit: 300                   # CDX lines read at the chosen index page
+    per_host: 10                       # deep URLs kept per host
+    min_pages: 3                       # fewer is logged as few_pages
 
 domain_capture:                        # tier C raw facts, captured once per new live domain
   enabled: true
