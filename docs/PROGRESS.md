@@ -637,3 +637,24 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   `collector/render.py` + `experiments/render_gap.py` + `scripts/render_ood.ps1` (render natural legitimate pages
   headless and compare page-model false alarms on raw vs rendered HTML). Tests pass with fixtures.
 - Not done: Wikidata brand map (sandbox cannot reach Wikidata; MISP only, 17 brands), favicon hash.
+
+### 2026-10-20 — Brand list additions, proposed for review (cloud)
+- Changed: `configs/lists/brand_additions.txt` (127 brands: payments, crypto, marketplaces, social, gaming,
+  work accounts, banks in the US, Canada, Europe, Asia-Pacific, Latin America and Africa, post and parcels,
+  telecoms), merged into `configs/lists/brands.txt` (772 -> 899) in the cloud (Wikidata unreachable here).
+  `features/scrape.py` now merges `brand_files` and drops `brand_exclude` (the 2026-10-12 generic words,
+  which a rescrape would otherwise bring back). `experiments/brand_evidence.py` (phishing-feed counts per
+  name, with the longer words that contain it). Tier B shard plans carry a word-list hash, so shards built
+  with other lists are no longer reused silently (`features/build_b.py`, `lists_digest`).
+  `scripts/refresh_brands.ps1` (brand-domain map, rules, extension; `-Model` rebuilds features and re-exports).
+  `js/data/brand_rules.json` and `js/data/lists.json` regenerated.
+- Selection (no popularity): at least 10 phishing registrable domains in 789,354 feed URLs
+  (Phishing.Database ACTIVE + OpenPhish, 2026-10-20), not an everyday word or part of one, name = label of the
+  brand's own site; Slack, Revolut, Swiggy and Monzo kept as asked despite almost no feed evidence. The
+  left-out candidates and reasons are in `reports/brand_additions_review.md` (`reports/tables/brand_evidence.csv`).
+- Results (`reports/brand_rules.md`): address rules 0 of 2,373 natural legitimate URLs and 0 of 114 regional
+  brand sites (unchanged); brand-page rule 1 of 2,373 natural pages (same page); phishing `openphish_gh.txt`
+  10 -> 13 of 300 (not independent of the selection). `commbank` was dropped after it flagged `combank.lk`.
+- Not done: the models still use the old list (shipped address bundle: the 67-name seed list) until
+  `scripts\refresh_brands.ps1 -Model` runs on the PC; brand-to-domain map needs Wikidata (PC).
+- Open: Ritvik's review of the list (left-out candidates: halifax and huntington recommended).

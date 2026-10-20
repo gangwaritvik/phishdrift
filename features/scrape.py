@@ -124,6 +124,24 @@ def brands_from_wikidata(client: HttpClient, cfg: dict) -> list[str]:
     return sorted(brands)
 
 
+def read_brand_file(path: Path) -> list[str]:
+    """Brands from a reviewed file in the repo: one per line, ``#`` starts a comment."""
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        token = line.split("#", 1)[0].strip()
+        if token and (cleaned := _clean_brand(token)):
+            out.append(cleaned)
+    return out
+
+
+def apply_brand_files(brands: set[str], files: list[Path], exclude: list[str]) -> set[str]:
+    """Add the reviewed brand files, then drop the reviewed generic words (``brand_exclude``).
+    Exclusions win, so a removed word cannot come back from Wikidata on the next run."""
+    for path in files:
+        brands = brands | set(read_brand_file(path))
+    return brands - {_clean_brand(w) or w for w in exclude}
+
+
 def lines_from_url(client: HttpClient, url: str) -> list[str]:
     text = client.get(url, cache_ttl_s=7 * 86400).decode("utf-8", errors="replace")
     return [ln.strip().lower() for ln in text.splitlines() if ln.strip() and not ln.startswith("#")]
@@ -170,10 +188,16 @@ def run(only: list[str] | None = None) -> dict[str, int]:
             except Exception as exc:  # noqa: BLE001
                 log.warning("skipped %s: %s", url, exc)
         brands.discard("")
+        brands = apply_brand_files(
+            brands,
+            [resolve(f) for f in cfg.get("brand_files", [])],
+            cfg.get("brand_exclude", []),
+        )
         _write_list(
             "brands.txt",
             sorted(brands),
-            "brand_seed + Wikidata + brand_urls (configs/features.yaml)",
+            "brand_seed + Wikidata + brand_urls + brand_files - brand_exclude"
+            " (configs/features.yaml)",
         )
         done["brands"] = len(brands)
 

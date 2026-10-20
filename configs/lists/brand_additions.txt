@@ -1,0 +1,171 @@
+# Brand additions merged into brands.txt by `python -m features lists` (configs/features.yaml
+# `brand_files`). Proposed 2026-10-20 for Ritvik's one-time review; delete a line to drop a brand.
+#
+# How the entries were chosen (no popularity rank used):
+# - The name appears in at least 10 distinct registrable domains among the 789,354 URLs of
+#   Phishing.Database phishing-links-ACTIVE.txt plus the OpenPhish public feed (both 2026-10-20),
+#   so phishers are using it now. The count is the number after each name.
+# - Not an everyday word, and not part of one (brand features match substrings: "wise" is in
+#   "otherwise", "interac" in "interactive", "epos" in "deposit"). Those are listed in
+#   reports/brand_additions_review.md, not here.
+# - The name is the label of the brand's own website (revolut.com, cibc.com), like the Wikidata
+#   entries, so the brand-page rule recognises the real site. Brands that log in on a site
+#   with another name (Royal Bank on rbc.com, Swiss Post on post.ch) wait for the
+#   brand-to-domain map; see the review note.
+# - At least 4 letters (shorter names are dropped by MIN_BRAND_LEN).
+# - Exception: names asked for in the project thread are kept even with little feed evidence
+#   (slack, revolut, swiggy, monzo).
+# - Hits inside a longer unrelated word do not count ("revolution" is not Revolut).
+#
+# Rebuild the candidate counts: reports/brand_additions_review.md says how.
+
+# asked for in the project thread
+slack            # 5
+revolut          # 1 (the other 243 hits were "revolution")
+swiggy           # 0
+tiktok           # 648
+capitalone       # 62
+roblox           # 119
+monzo            # 1
+
+# payments and fintech
+transferwise     # 11
+squareup         # 22
+robinhood        # 28
+nubank           # 13
+mercadopago      # 44
+paypay           # 110
+vipps            # 19
+twint            # 34
+
+# crypto exchanges and wallets
+kucoin           # 30
+trustwallet      # 276
+trezor           # 61
+uniswap          # 183
+opensea          # 259
+pancakeswap      # 383
+walletconnect    # 273
+imtoken          # 282
+tokenpocket      # 116
+paxful           # 160
+
+# shopping, marketplaces and food delivery
+mercari          # 239
+mercadolibre     # 75
+leboncoin        # 87
+kleinanzeigen    # 41
+carousell        # 33
+craigslist       # 47
+shopee           # 86
+americanas       # 199
+shopify          # 167
+foodpanda        # 13
+
+# social and messaging
+snapchat         # 104
+discord          # 462
+hypesquad        # 607 (Discord's badge programme, a common Discord lure)
+naver            # 48
+wechat           # 16
+onlyfans         # 54
+
+# gaming
+playstation      # 12
+xbox             # 29
+pubg             # 739
+krafton          # 99
+garena           # 291
+freefire         # 388
+steamcommunity   # 356
+steampowered     # 69
+runescape        # 98
+codashop         # 156
+midasbuy         # 127
+mobilelegends    # 44
+
+# work, mail and hosting accounts
+sharepoint       # 561
+wetransfer       # 357
+zendesk          # 20
+godaddy          # 95
+hotmail          # 116
+zoho             # 15
+ionos            # 255
+
+# banks: United States and Canada
+usaa             # 156
+navyfederal      # 71
+usbank           # 19
+citizensbank     # 26
+keybank          # 45
+tdbank           # 13
+schwab           # 252
+scotiabank       # 182
+cibc             # 1081
+desjardins       # 577
+simplii          # 779
+
+# banks: UK and Europe
+lloyds           # 777
+lloydsbank       # 208
+natwest          # 87
+rabobank         # 24
+abnamro          # 17
+bbva             # 116
+caixabank        # 31
+labanquepostale  # 103
+boursorama       # 10
+postbank         # 72
+unicredit        # 46
+intesasanpaolo   # 67
+raiffeisen       # 74
+postfinance      # 51
+nordea           # 61
+swedbank         # 11
+
+# banks and cards: Asia-Pacific, Latin America, Africa
+posb             # 38
+landbank         # 54
+smbc             # 1416
+mufg             # 271
+mizuho           # 23
+mizuhobank       # 17
+rakuten          # 483
+aeon             # 177
+jaccs            # 56
+micard           # 117
+icscards         # 60
+auone            # 63
+docomo           # 30
+westpac          # 68
+itau             # 305
+caixa            # 373
+banorte          # 12
+bancolombia      # 197
+bancoestado      # 15
+nedbank          # 95
+standardbank     # 18
+
+# post, parcels, road tolls and government
+royalmail        # 359
+postnl           # 68
+bpost            # 56
+laposte          # 41
+colissimo        # 60
+chronopost       # 68
+correos          # 160
+deutschepost     # 17
+auspost          # 13
+japanpost        # 33
+aramex           # 46
+inpost           # 85
+postnord         # 15
+ezdrivema        # 73
+impots           # 105
+
+# telecoms
+xfinity          # 72
+telstra          # 83
+optus            # 90
+singtel          # 22
