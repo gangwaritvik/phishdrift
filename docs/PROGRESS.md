@@ -763,3 +763,30 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   popular-summary` replaces the inline script in `scripts/run_popular_crawl.ps1`. Tests added.
 - Not measured: whether the index now answers (needs the PC). The crawler (`popular`) results of the same test run
   were not seen by me.
+
+### 2026-10-20 — PhishGuard verification study run (research study, separate from the PhishDrift detector)
+- New `phishguard/` package, `configs/phishguard.yaml` (plan and replication rule frozen at commit 082b058 before
+  the run), `tests/test_phishguard.py`. One command: `python -m phishguard all` (resumable, one result file per job).
+  Proposal: Claude Doc "PhishGuard: Study Report and Verification Proposal".
+- Run: 291 jobs (25 URL cells x 10 splits, 4 page cells x 10 splits, 1 fingerprint check), 4 processes, no failures.
+  Output `reports/phishguard/verification.md` and `reports/phishguard/tables/`.
+- Part A verdicts (URLs): F1 replicated (100/100); H6 replicated (392/392); F3 partly (76%, 53% after depth
+  reweighting); OOD partly (76%); F2 not replicated (0/100; R2-to-R4 share median 0.21 vs 0.87 in the first study);
+  F4 not replicated (45%); H5 not replicated (26%, expected inconclusive); HP not testable (no platform domains
+  left after the 5-per-domain cap). E0: PhiUSIIL cell raw AUC 0.864 vs 0.999 published, R4 0.791 vs 0.730.
+  Shuffled-label controls 0.448-0.525, 1 of 100 flagged (urlphish__phiusiil, R1, LightGBM, 0.448; to investigate).
+- Not done: investigation of the flagged control and of the E0 gap; PhishTank cells (not in the pool).
+
+### 2026-10-20 — PhishGuard follow-up checks: PhiUSIIL gap and the flagged control
+- Changed: `phishguard/checks.py` (`python -m phishguard.checks reproduce|control`); outputs
+  `reports/phishguard/tables/reproduce.csv` (5 splits, XGBoost and char n-gram) and
+  `reports/phishguard/tables/control_urlphish__phiusiil.csv` (10 splits x 5 shuffle seeds).
+- Gap to the published PhiUSIIL numbers (median raw ROC-AUC, XGBoost / char n-gram): raw PhiUSIIL through our loader
+  0.941 / 0.940 (published 0.999); sampled to 10,000 per class 0.934 / 0.923; shared domains removed 0.878 / 0.883;
+  pool URL rules 0.873 / 0.882; study cell 0.867 / 0.853. Cleaning explains about 0.07; about 0.06 is already gone
+  at the raw stage, most likely because our loader canonicalises the URL strings (inferred, not tested; the original
+  CSV strings are not kept). R4 stays 0.79-0.85 at every stage (published 0.730). Benign depth 0 is 100% at every stage.
+- Control: LightGBM on shuffled labels mean ROC-AUC 0.449 (SD 0.031, 50 runs), also 0.441 when the fitted features
+  use shuffled labels; char n-gram 0.506. Below 0.5 for every seed, so a LightGBM artefact of this cell, not chance and
+  not a leak (a leak pushes above 0.5); the same model at R4 and in the other 24 cells was not flagged.
+- Next: write both into the study report as limitations; optionally rerun the control unweighted / larger leaves.

@@ -1,0 +1,10 @@
+finding,statement,settings,hold,share,verdict
+F1,Representation sensitivity: AUC falls from R1 to R4,100,100,1.0,replicated
+F2,Most of the fall sits in host/subdomain structure (R3 to R4 share > 0.5),100,0,0.0,not replicated
+F3,Source dependence: swapping one population moves R4 AUC,400,304,0.76,partly replicated
+F3_depth,Source dependence survives depth reweighting,400,211,0.5275,partly replicated
+H5,A phishing x benign interaction is established (expected: inconclusive),400,105,0.2625,not replicated
+F4,Split sensitivity: SD of R4 AUC > 3 x SD of R1 AUC,100,45,0.45,not replicated
+HP,Masking hosting-platform identity raises R4 AUC,0,0,,not testable
+H6,Transfer to fully independent cells stays above chance (R4),392,392,1.0,replicated
+OOD,False alarms on natural legitimate pages > 5 x the in-cell rate,100,76,0.76,partly replicated

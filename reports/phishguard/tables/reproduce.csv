@@ -1,0 +1,151 @@
+stage,urls_phish,urls_benign,depth0_phish,depth0_benign,split,rep,model,auc
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,0,R1,xgboost,0.9431084832531548
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,0,R1,char_ngram,0.944035762721889
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,0,R2,xgboost,0.9227697658531094
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,0,R2,char_ngram,0.9252196985848316
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,0,R4,xgboost,0.8305535204818577
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,0,R4,char_ngram,0.9006794812035113
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,1,R1,xgboost,0.9230725553752576
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,1,R1,char_ngram,0.9277631948499719
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,1,R2,xgboost,0.8969035280280662
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,1,R2,char_ngram,0.9021361825931513
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,1,R4,xgboost,0.7890085945581191
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,1,R4,char_ngram,0.8799793404083035
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,2,R1,xgboost,0.9407602332506084
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,2,R1,char_ngram,0.9397218258736607
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,2,R2,xgboost,0.9190334061804195
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,2,R2,char_ngram,0.9169393440510849
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,2,R4,xgboost,0.8685706275164988
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,2,R4,char_ngram,0.9052001697633562
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,3,R1,xgboost,0.9517544170586903
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,3,R1,char_ngram,0.9528907021269103
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,3,R2,xgboost,0.9361234203209843
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,3,R2,char_ngram,0.9378861955603264
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,3,R4,xgboost,0.8636011968092576
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,3,R4,char_ngram,0.9262180184836368
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,4,R1,xgboost,0.917695320628747
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,4,R1,char_ngram,0.9194748223312453
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,4,R2,xgboost,0.8896533783463031
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,4,R2,char_ngram,0.894412176124376
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,4,R4,xgboost,0.8494894334264398
+S0 raw PhiUSIIL (as in the first study),96716,134825,0.7314611853261095,1.0,4,R4,char_ngram,0.8780059876879095
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,0,R1,xgboost,0.9391010113887472
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,0,R1,char_ngram,0.9279462009178989
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,0,R2,xgboost,0.9169241883392828
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,0,R2,char_ngram,0.9034559323474418
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,0,R4,xgboost,0.8551731684514704
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,0,R4,char_ngram,0.8869812383137854
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,1,R1,xgboost,0.9151833116297706
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,1,R1,char_ngram,0.9074228967021714
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,1,R2,xgboost,0.8859470822620676
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,1,R2,char_ngram,0.8744741059801663
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,1,R4,xgboost,0.7724271539394748
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,1,R4,char_ngram,0.8551075717608824
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,2,R1,xgboost,0.9338001716521246
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,2,R1,char_ngram,0.9231772644579184
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,2,R2,xgboost,0.9119579388652959
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,2,R2,char_ngram,0.8969278088260831
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,2,R4,xgboost,0.8620194899713518
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,2,R4,char_ngram,0.8856797305934454
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,3,R1,xgboost,0.9462256888886263
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,3,R1,char_ngram,0.9333169610963175
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,3,R2,xgboost,0.9283664505186962
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,3,R2,char_ngram,0.9130287334604734
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,3,R4,xgboost,0.8579777937850939
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,3,R4,char_ngram,0.8995883384897885
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,4,R1,xgboost,0.9047676399921545
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,4,R1,char_ngram,0.8870504192409533
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,4,R2,xgboost,0.8792861871138571
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,4,R2,char_ngram,0.8594513092085907
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,4,R4,xgboost,0.8341267652250662
+"S0b raw, sampled to 10,000 per class",10000,10000,0.7362,1.0,4,R4,char_ngram,0.849490046091988
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,0,R1,xgboost,0.8755498716416692
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,0,R1,char_ngram,0.8822056262160833
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,0,R2,xgboost,0.8327987555677889
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,0,R2,char_ngram,0.8433393430515227
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,0,R4,xgboost,0.7937264129410854
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,0,R4,char_ngram,0.826224917567229
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,1,R1,xgboost,0.8792502114800265
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,1,R1,char_ngram,0.8901813847115998
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,1,R2,xgboost,0.8400055713450213
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,1,R2,char_ngram,0.84802378987479
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,1,R4,xgboost,0.8016065512320343
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,1,R4,char_ngram,0.8297848466323166
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,2,R1,xgboost,0.8874300428960507
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,2,R1,char_ngram,0.8893001167033847
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,2,R2,xgboost,0.8493390604647915
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,2,R2,char_ngram,0.8535823372519359
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,2,R4,xgboost,0.8010926082239463
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,2,R4,char_ngram,0.835935242577893
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,3,R1,xgboost,0.8776570381205757
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,3,R1,char_ngram,0.8825415626758972
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,3,R2,xgboost,0.8403073190329865
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,3,R2,char_ngram,0.8486626541343463
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,3,R4,xgboost,0.8002141827867633
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,3,R4,char_ngram,0.8346985514234875
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,4,R1,xgboost,0.8755103097285208
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,4,R1,char_ngram,0.8825264941860245
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,4,R2,xgboost,0.8362202872539749
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,4,R2,char_ngram,0.8468309160645118
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,4,R4,xgboost,0.7967090885848124
+S1 + domains shared with other sources removed,55907,115340,0.730266335163754,1.0,4,R4,char_ngram,0.8328956745675643
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,0,R1,xgboost,0.872471826327472
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,0,R1,char_ngram,0.8813648038850422
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,0,R2,xgboost,0.8288088045012331
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,0,R2,char_ngram,0.8431575791432666
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,0,R4,xgboost,0.7944091661551076
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,0,R4,char_ngram,0.8277282533910562
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,1,R1,xgboost,0.8718565077459391
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,1,R1,char_ngram,0.8838274537316666
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,1,R2,xgboost,0.8303228768196587
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,1,R2,char_ngram,0.8421962713596433
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,1,R4,xgboost,0.7988535342868001
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,1,R4,char_ngram,0.827393626372631
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,2,R1,xgboost,0.8741024072149748
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,2,R1,char_ngram,0.8825802191517893
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,2,R2,xgboost,0.8319030520266459
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,2,R2,char_ngram,0.8441938685950509
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,2,R4,xgboost,0.799401962986447
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,2,R4,char_ngram,0.8300558950652294
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,3,R1,xgboost,0.8730175693161702
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,3,R1,char_ngram,0.880851606470611
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,3,R2,xgboost,0.8337444618936232
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,3,R2,char_ngram,0.8465231718188466
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,3,R4,xgboost,0.8003057621976208
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,3,R4,char_ngram,0.8332959630454692
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,4,R1,xgboost,0.8741168253371541
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,4,R1,char_ngram,0.8823144804396831
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,4,R2,xgboost,0.8340845950552791
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,4,R2,char_ngram,0.8461952366641057
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,4,R4,xgboost,0.7972511970109338
+"S2 + pool URL rules (20 per domain, depth balance)",52452,115336,0.7483032105544116,1.0,4,R4,char_ngram,0.8319182661366874
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,0,R1,xgboost,0.8535472995794183
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,0,R1,char_ngram,0.8447332211643884
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,0,R2,xgboost,0.8037857538511742
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,0,R2,char_ngram,0.7968953139500685
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,0,R4,xgboost,0.7718043542196897
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,0,R4,char_ngram,0.7858968769713137
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,1,R1,xgboost,0.8591942041071614
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,1,R1,char_ngram,0.8589367147197143
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,1,R2,xgboost,0.8078182755867142
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,1,R2,char_ngram,0.8091156978997345
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,1,R4,xgboost,0.7801129162661969
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,1,R4,char_ngram,0.7972870219862269
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,2,R1,xgboost,0.8691332796364125
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,2,R1,char_ngram,0.8488115217666492
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,2,R2,xgboost,0.8203456458534951
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,2,R2,char_ngram,0.8036359246691411
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,2,R4,xgboost,0.7941597197551584
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,2,R4,char_ngram,0.7972678373820403
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,3,R1,xgboost,0.8673890888604199
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,3,R1,char_ngram,0.8604749186243976
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,3,R2,xgboost,0.8278542546036323
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,3,R2,char_ngram,0.8250902465741059
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,3,R4,xgboost,0.7966713624022799
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,3,R4,char_ngram,0.8162275751821337
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,4,R1,xgboost,0.8671824807433248
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,4,R1,char_ngram,0.8531094045238634
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,4,R2,xgboost,0.8278141738851214
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,4,R2,char_ngram,0.8148717436997635
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,4,R4,xgboost,0.796238727760955
+"S3 + study caps (5 per domain, 10,000 per class) = study cell",10000,10000,0.7484,1.0,4,R4,char_ngram,0.8030345014628804

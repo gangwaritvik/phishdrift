@@ -1,0 +1,55 @@
+# PhishGuard verification study (the research study, not the PhishDrift detector).
+# Frozen before the first real run; any later change is listed under "Deviations" in the report.
+# Proposal: Claude Doc "PhishGuard: Study Report and Verification Proposal".
+
+seed: 42
+n_splits: 10
+split: {train: 0.7, cal: 0.1, test: 0.2}   # domain-grouped
+cap_per_class: 10000                        # URLs per class per population
+cap_per_domain: 5                           # URLs per registrable domain, before sampling
+bootstrap: 200                              # domain-cluster bootstrap draws per split
+target_fprs: [0.01, 0.001]
+min_negatives: 10
+
+# Populations: name -> (pool part, filter). Each cell = one phishing x one benign population.
+phishing: [phreshphish, phiusiil, urlphish, phishstorm, phishpedia]
+benign: [phreshphish, phiusiil, urlphish, phishstorm, crawl]
+
+# Part A (URLs)
+representations: [R1, R2, R3, R4]
+models_a: [lightgbm, xgboost, logreg, char_ngram]
+masking_models: [lightgbm, char_ngram]      # E4, at R4
+transfer_models: [lightgbm, char_ngram]     # E5, at R1 and R4
+control_models: [lightgbm, char_ngram]      # shuffled labels, at R1 and R4
+
+# Part B (page HTML, exploratory: counts toward no verdict)
+phishing_b: [phreshphish, phishpedia]
+benign_b: [phreshphish, crawl]
+page_representations:                       # tier B feature groups kept
+  P1: [forms, links, resources, text, structure, scripts]
+  P2: [forms, links, resources, text]       # scripts and code structure removed
+  P3: [forms, text]                         # visible text and form fields
+  P4: [forms]                               # form structure only
+models_b: [lightgbm, xgboost]
+
+# Replication rule (proposal section 5)
+testable: {min_urls_per_class: 500, min_domains_per_class: 100}
+holds: {min_splits_same_sign: 9, ci: 0.95}
+verdict: {replicated: 0.8, partly: 0.5, min_settings: 3}
+f2_share: 0.5
+f4_sd_ratio: 3.0
+ood_ratio: 5.0
+control_flag: 0.05
+
+# Published values of the first study (v1.1.1) for the reproduction check (E0), XGBoost.
+published:
+  phiusiil__phiusiil: {R1: 0.9988, R2: 0.9924, R3: 0.9640, R4: 0.7297}
+  phiusiil__crawl: {R1: 0.9988, R2: 0.9873, R3: 0.9716, R4: 0.6794}
+
+lightgbm: {n_estimators: 300, learning_rate: 0.05, num_leaves: 31, min_child_samples: 20,
+           subsample: 0.8, subsample_freq: 1, colsample_bytree: 0.8, reg_lambda: 1.0}
+xgboost: {n_estimators: 300, learning_rate: 0.05, max_depth: 6, min_child_weight: 5,
+          subsample: 0.8, colsample_bytree: 0.8, reg_lambda: 1.0, tree_method: hist}
+logreg: {C: 1.0, max_iter: 2000}
+char_ngram: {ngram_range: [3, 5], min_df: 2, max_features: 200000, sublinear_tf: true, C: 4.0,
+             max_iter: 1000}
