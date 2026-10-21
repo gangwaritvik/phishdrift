@@ -90,7 +90,7 @@ I, **[Your name]{.fill}** ([Roll number]{.fill}), declare that this report is my
 
 Phishing detectors are usually judged by one score on one benchmark. This project asks how far such scores can be trusted, and then builds a detector that is evaluated under the stricter rules the answer calls for. It has two parts. **Part I** is an evaluation study: seven questions about how a detector's score depends on URL form, source composition, the split and the legitimate pages it meets, tested across five phishing sources, five legitimate sources, four model families and ten domain-grouped splits, with the rule for calling a result consistent fixed before the run. **Part II** is the detector itself: a pooled, tiered phishing detector (URL model, page model, domain checks) shipped as a Chrome extension with a FastAPI backend, with allowlist and blocklist layers and plain-English reasons for every warning.
 
-In Part I, the median score falls from 0.977 on raw URLs to 0.850 when a URL is reduced to its domain, and the fall appears in 100% of settings; transfer to datasets that share no source stays above chance. Source dependence holds in part (76% of settings) and the gap in false alarms on naturally browsed legitimate pages holds in part (76%): at the 1% threshold 15.2% of those pages are flagged against 1.0% on the model's own test side. The share of the fall that sits in the host name does not hold across cells and depends on how the benchmark is prepared, and the larger split-to-split spread of the normalised score does not hold. The effect of masking hosting platforms could not be tested. Each result is stated as behaviour under one frozen design, not as a general claim.
+In Part I, the median score falls from 0.977 on raw URLs to 0.850 when a URL is reduced to its domain, and the fall appears in 100% of settings; transfer to datasets that share no source stays above chance. Source dependence holds in part (76% of settings) and the gap in false alarms on naturally browsed legitimate pages holds in part (76%): at the 1% threshold 15.2% of those pages are flagged against 1.0% on the model's own test side. The share of the fall that sits in the host name does not hold across cells and depends on how the benchmark is prepared, and the larger split-to-split spread of the normalised score does not hold. Masking hosting platforms showed no measurable effect in an exploratory test (Section 4.14), and a second condition without the data cleaning changes the answers to some questions (Section 4.13). Each result is stated as behaviour under one frozen design, not as a general claim.
 
 # 1. Introduction
 
@@ -342,7 +342,64 @@ Four cells (Phishpedia or PhreshPhish phishing against PhreshPhish or crawled le
 - **Part B.** Four cells, two sources with saved HTML, uneven coverage by class.
 - **No hand-typed results.** Every number is read from `reports/phishguard/tables/` by `python -m phishguard.report`; seeds are fixed.
 
-## 4.13 What can and cannot be claimed
+## 4.13 A second condition: data prepared without the cleaning
+
+Questions 2 and 4 and the interaction check did not hold in the main design. The main design cleans its data: it caps URLs per registrable domain, removes domains shared by several phishing sources and balances URL depth. Before any result was seen, a second condition was written down in `docs/PHISHGUARD_SENSITIVITY_PLAN.md` that rebuilds the same populations *without* that cleaning (only exact duplicates and URLs labelled both ways are removed; each population is sampled to at most 10,000 URLs per class). Models, splits, bootstrap, the rule for "holds" and its cut-offs are unchanged. The crawled legitimate population cannot be rebuilt without the cleaning, so both conditions are compared on the same 20 cells (five phishing sources by four legitimate sources). The comparison was run once; nothing was changed after seeing it.
+
+| Question | Cleaned data (same 20 cells) | Without the cleaning |
+|---|---|---|
+| Q1 | holds (80 of 80, 100%) | holds (79 of 80, 99%) |
+| Q2 | does not hold (0 of 80, 0%) | does not hold (0 of 80, 0%) |
+| Q3 | holds (232 of 280, 83%) | does not hold (27 of 280, 10%) |
+| Q4 | does not hold (31 of 80, 39%) | holds in part (55 of 80, 69%) |
+| interaction | does not hold (78 of 240, 32%) | does not hold (0 of 240, 0%) |
+
+The median score of the 20 cells is 0.976 on raw URLs and 0.857 on domain-only URLs with the cleaning, against 0.982 and 0.862 without it (the table below lists every cell). Source: `reports/phishguard/sensitivity_uncleaned.md`.
+
+**What this shows.**
+
+- Question 1 holds in both conditions.
+- Question 2 (how much of the fall sits in the host name) does not hold in either, so it is not explained by the cleaning.
+- Question 4 (the spread of the domain-only score across splits) does not hold with the cleaning and holds in part without it, so it depends on how the data is prepared.
+- Question 3 (source dependence) is the reverse: it holds with the cleaning (232 of 280 settings in these 20 cells) and does not hold without it (27 of 280). The cleaning is part of what makes the source effect show up, so Question 3 is a result of the cleaned design and should be reported that way.
+- The interaction check does not hold in either condition.
+
+The honest summary is that the answers to Questions 3 and 4 depend on how the benchmark is prepared, in opposite directions. Neither condition is the "true" one; both are reported.
+
+| Cell | Cleaned R1 | Cleaned R4 | Uncleaned R1 | Uncleaned R4 |
+|---|---|---|---|---|
+| phishpedia__phishstorm | 0.975 | 0.831 | 0.981 | 0.886 |
+| phishpedia__phiusiil | 0.998 | 0.727 | 0.996 | 0.773 |
+| phishpedia__phreshphish | 0.968 | 0.769 | 0.970 | 0.837 |
+| phishpedia__urlphish | 0.993 | 0.872 | 0.994 | 0.893 |
+| phishstorm__phishstorm | 0.972 | 0.798 | 0.968 | 0.821 |
+| phishstorm__phiusiil | 0.995 | 0.725 | 0.995 | 0.742 |
+| phishstorm__phreshphish | 0.978 | 0.776 | 0.976 | 0.801 |
+| phishstorm__urlphish | 0.991 | 0.854 | 0.991 | 0.853 |
+| phiusiil__phishstorm | 0.988 | 0.841 | 0.990 | 0.899 |
+| phiusiil__phiusiil | 0.860 | 0.792 | 0.931 | 0.868 |
+| phiusiil__phreshphish | 0.948 | 0.812 | 0.972 | 0.861 |
+| phiusiil__urlphish | 0.923 | 0.895 | 0.959 | 0.927 |
+| phreshphish__phishstorm | 0.983 | 0.907 | 0.985 | 0.905 |
+| phreshphish__phiusiil | 0.958 | 0.860 | 0.984 | 0.885 |
+| phreshphish__phreshphish | 0.955 | 0.870 | 0.956 | 0.852 |
+| phreshphish__urlphish | 0.970 | 0.935 | 0.986 | 0.941 |
+| urlphish__phishstorm | 0.977 | 0.923 | 0.970 | 0.829 |
+| urlphish__phiusiil | 0.985 | 0.886 | 0.990 | 0.863 |
+| urlphish__phreshphish | 0.967 | 0.903 | 0.955 | 0.737 |
+| urlphish__urlphish | 0.980 | 0.939 | 0.983 | 0.906 |
+
+Median ROC-AUC per cell on raw (R1) and domain-only (R4) URLs in both conditions.
+
+
+## 4.14 Hosting-platform masking (exploratory)
+
+Question 5 asks whether replacing the name of a hosting platform (for example `github.io`) with a neutral token helps a model on tenants it has not seen. It was not testable in the main design, because the cap per domain and the removal of shared domains leave almost no platform URLs. An exploratory test was therefore run outside the seven questions: platform URLs were taken straight from the source files, at most 5 URLs per tenant site were kept, splits were grouped by registrable domain, and a model trained with the platform name masked was compared with one trained without masking on domain-only URLs. Only one legitimate source (PhreshPhish) has enough platform URLs (1,019 URLs on 617 tenant sites), so the five tested pairs share the same legitimate set and are not independent.
+
+Masking raised the held-out score in none of the 10 settings (five phishing sources, two models, ten splits each). The median change ranges from -0.014 to +0.012 and every interval includes zero. The effect of masking is therefore **not shown** in this test. This does not show that masking never helps; it shows that no effect could be detected here. Source: `reports/phishguard/HP_platform.md`.
+
+
+## 4.15 What can and cannot be claimed
 
 **Table 4.7.** Claim register: each finding with the wording this run supports.
 
@@ -818,7 +875,7 @@ Blocklist coverage on the corpus is not measurable, because the test URLs come f
 
 ## 10.2 Limitations
 
-See Sections 4.12 and Chapter 9. In short: public benchmarks only, two of them old or homepage-heavy; the HTML part rests on two sources with uneven coverage; one shuffled-label control is flagged; platform masking is untested; tier C of the detector rests on a small live capture; and the extension has been checked in test harnesses and on stored pages, not in a long field trial.
+See Sections 4.12 and Chapter 9. In short: public benchmarks only, two of them old or homepage-heavy; the HTML part rests on two sources with uneven coverage; one shuffled-label control is flagged; platform masking showed no effect in a test that rests on one legitimate source; tier C of the detector rests on a small live capture; and the extension has been checked in test harnesses and on stored pages, not in a long field trial.
 
 ## 10.3 Future work
 

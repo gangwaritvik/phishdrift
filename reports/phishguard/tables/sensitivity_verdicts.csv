@@ -1,0 +1,6 @@
+question,cleaned: settings,cleaned: hold,cleaned: share,cleaned: verdict,uncleaned: settings,uncleaned: hold,uncleaned: share,uncleaned: verdict
+Q1,80,80,1.0,replicated,80,79,0.9875,replicated
+Q2,80,0,0.0,not replicated,80,0,0.0,not replicated
+Q3,280,232,0.8285714285714286,replicated,280,27,0.09642857142857143,not replicated
+Q4,80,31,0.3875,not replicated,80,55,0.6875,partly replicated
+interaction,240,78,0.325,not replicated,240,0,0.0,not replicated

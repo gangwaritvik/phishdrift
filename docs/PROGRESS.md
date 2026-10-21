@@ -939,3 +939,14 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   every interval spans 0): not replicated. Copy of the PC output in `reports/phishguard/HP_platform.md`. Cells share one legitimate
   population, so they are not independent. Exploratory, outside the seven frozen verdicts.
 - Next: add to the report with the uncleaned-data condition; run `phishguard.sensitivity prepare` and `run` on the PC.
+
+### 2026-10-21 — Uncleaned-data condition run on the PC; PBL report sections 4.13 and 4.14
+- Ritvik ran `phishguard.sensitivity prepare` and `run` (200 jobs, 20 cells x 10 splits); results read in the cloud against the frozen
+  results. Same 20 cells in both conditions (`reports/phishguard/sensitivity_uncleaned.md`, `tables/sensitivity_{verdicts,ladder}.csv`).
+- Results (settings that hold, cleaned -> uncleaned): Q1 80/80 -> 79/80 (holds); Q2 0/80 -> 0/80 (does not hold); Q3 232/280 -> 27/280
+  (holds -> does not hold); Q4 31/80 -> 55/80 (does not hold -> holds in part); interaction 78/240 -> 0/240 (does not hold). Median
+  R1 / R4 AUC 0.976 / 0.857 cleaned, 0.982 / 0.862 uncleaned. So Q2 and the interaction check do not hold in either condition; Q3 and Q4
+  depend on data preparation in opposite directions. No cut-off or result was changed.
+- Report: `scripts/build_pbl.py` adds 4.13 (second condition, side by side) and 4.14 (platform masking, exploratory, no effect), claims
+  section renumbered 4.15; abstract and limitations updated. `reports/pbl/pbl_report.{md,pdf,docx}` rebuilt (47 pages), copies in `paper/`.
+- Note: one result file was damaged in the first upload and was re-sent; all 200 files then loaded.

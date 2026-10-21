@@ -122,13 +122,13 @@ tools used here, whose work made the study possible.</p>
 <li>2. Background and questions<span class="dots"></span><span class="pg">7</span></li>
 <li>3. Part I: design and method<span class="dots"></span><span class="pg">8</span></li>
 <li>4. Part I: results<span class="dots"></span><span class="pg">10</span></li>
-<li>5. Data and corpus<span class="dots"></span><span class="pg">20</span></li>
-<li>6. Feature engine and models<span class="dots"></span><span class="pg">23</span></li>
-<li>7. System: extension and backend<span class="dots"></span><span class="pg">25</span></li>
-<li>8. Evaluation of the detector<span class="dots"></span><span class="pg">31</span></li>
-<li>9. Limitations and what is not done<span class="dots"></span><span class="pg">42</span></li>
-<li>10. Conclusion and future work<span class="dots"></span><span class="pg">44</span></li>
-<li>References<span class="dots"></span><span class="pg">45</span></li>
+<li>5. Data and corpus<span class="dots"></span><span class="pg">22</span></li>
+<li>6. Feature engine and models<span class="dots"></span><span class="pg">25</span></li>
+<li>7. System: extension and backend<span class="dots"></span><span class="pg">27</span></li>
+<li>8. Evaluation of the detector<span class="dots"></span><span class="pg">33</span></li>
+<li>9. Limitations and what is not done<span class="dots"></span><span class="pg">44</span></li>
+<li>10. Conclusion and future work<span class="dots"></span><span class="pg">46</span></li>
+<li>References<span class="dots"></span><span class="pg">47</span></li>
 </ul>
 <h1 class="unnumbered" id="abstract">Abstract</h1>
 <p>Phishing detectors are usually judged by one score on one benchmark.
@@ -152,7 +152,9 @@ alarms on naturally browsed legitimate pages holds in part (76%): at the
 model’s own test side. The share of the fall that sits in the host name
 does not hold across cells and depends on how the benchmark is prepared,
 and the larger split-to-split spread of the normalised score does not
-hold. The effect of masking hosting platforms could not be tested. Each
+hold. Masking hosting platforms showed no measurable effect in an
+exploratory test (Section 4.14), and a second condition without the data
+cleaning changes the answers to some questions (Section 4.13). Each
 result is stated as behaviour under one frozen design, not as a general
 claim.</p>
 <h1 id="introduction">1. Introduction</h1>
@@ -985,7 +987,261 @@ uneven coverage by class.</li>
 <code>reports/phishguard/tables/</code> by
 <code>python -m phishguard.report</code>; seeds are fixed.</li>
 </ul>
-<h2 id="what-can-and-cannot-be-claimed">4.13 What can and cannot be
+<h2 id="a-second-condition-data-prepared-without-the-cleaning">4.13 A
+second condition: data prepared without the cleaning</h2>
+<p>Questions 2 and 4 and the interaction check did not hold in the main
+design. The main design cleans its data: it caps URLs per registrable
+domain, removes domains shared by several phishing sources and balances
+URL depth. Before any result was seen, a second condition was written
+down in <code>docs/PHISHGUARD_SENSITIVITY_PLAN.md</code> that rebuilds
+the same populations <em>without</em> that cleaning (only exact
+duplicates and URLs labelled both ways are removed; each population is
+sampled to at most 10,000 URLs per class). Models, splits, bootstrap,
+the rule for “holds” and its cut-offs are unchanged. The crawled
+legitimate population cannot be rebuilt without the cleaning, so both
+conditions are compared on the same 20 cells (five phishing sources by
+four legitimate sources). The comparison was run once; nothing was
+changed after seeing it.</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Question</th>
+<th>Cleaned data (same 20 cells)</th>
+<th>Without the cleaning</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Q1</td>
+<td>holds (80 of 80, 100%)</td>
+<td>holds (79 of 80, 99%)</td>
+</tr>
+<tr class="even">
+<td>Q2</td>
+<td>does not hold (0 of 80, 0%)</td>
+<td>does not hold (0 of 80, 0%)</td>
+</tr>
+<tr class="odd">
+<td>Q3</td>
+<td>holds (232 of 280, 83%)</td>
+<td>does not hold (27 of 280, 10%)</td>
+</tr>
+<tr class="even">
+<td>Q4</td>
+<td>does not hold (31 of 80, 39%)</td>
+<td>holds in part (55 of 80, 69%)</td>
+</tr>
+<tr class="odd">
+<td>interaction</td>
+<td>does not hold (78 of 240, 32%)</td>
+<td>does not hold (0 of 240, 0%)</td>
+</tr>
+</tbody>
+</table>
+<p>The median score of the 20 cells is 0.976 on raw URLs and 0.857 on
+domain-only URLs with the cleaning, against 0.982 and 0.862 without it
+(the table below lists every cell). Source:
+<code>reports/phishguard/sensitivity_uncleaned.md</code>.</p>
+<p><strong>What this shows.</strong></p>
+<ul>
+<li>Question 1 holds in both conditions.</li>
+<li>Question 2 (how much of the fall sits in the host name) does not
+hold in either, so it is not explained by the cleaning.</li>
+<li>Question 4 (the spread of the domain-only score across splits) does
+not hold with the cleaning and holds in part without it, so it depends
+on how the data is prepared.</li>
+<li>Question 3 (source dependence) is the reverse: it holds with the
+cleaning (232 of 280 settings in these 20 cells) and does not hold
+without it (27 of 280). The cleaning is part of what makes the source
+effect show up, so Question 3 is a result of the cleaned design and
+should be reported that way.</li>
+<li>The interaction check does not hold in either condition.</li>
+</ul>
+<p>The honest summary is that the answers to Questions 3 and 4 depend on
+how the benchmark is prepared, in opposite directions. Neither condition
+is the “true” one; both are reported.</p>
+<table>
+<thead>
+<tr class="header">
+<th>Cell</th>
+<th>Cleaned R1</th>
+<th>Cleaned R4</th>
+<th>Uncleaned R1</th>
+<th>Uncleaned R4</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>phishpedia__phishstorm</td>
+<td>0.975</td>
+<td>0.831</td>
+<td>0.981</td>
+<td>0.886</td>
+</tr>
+<tr class="even">
+<td>phishpedia__phiusiil</td>
+<td>0.998</td>
+<td>0.727</td>
+<td>0.996</td>
+<td>0.773</td>
+</tr>
+<tr class="odd">
+<td>phishpedia__phreshphish</td>
+<td>0.968</td>
+<td>0.769</td>
+<td>0.970</td>
+<td>0.837</td>
+</tr>
+<tr class="even">
+<td>phishpedia__urlphish</td>
+<td>0.993</td>
+<td>0.872</td>
+<td>0.994</td>
+<td>0.893</td>
+</tr>
+<tr class="odd">
+<td>phishstorm__phishstorm</td>
+<td>0.972</td>
+<td>0.798</td>
+<td>0.968</td>
+<td>0.821</td>
+</tr>
+<tr class="even">
+<td>phishstorm__phiusiil</td>
+<td>0.995</td>
+<td>0.725</td>
+<td>0.995</td>
+<td>0.742</td>
+</tr>
+<tr class="odd">
+<td>phishstorm__phreshphish</td>
+<td>0.978</td>
+<td>0.776</td>
+<td>0.976</td>
+<td>0.801</td>
+</tr>
+<tr class="even">
+<td>phishstorm__urlphish</td>
+<td>0.991</td>
+<td>0.854</td>
+<td>0.991</td>
+<td>0.853</td>
+</tr>
+<tr class="odd">
+<td>phiusiil__phishstorm</td>
+<td>0.988</td>
+<td>0.841</td>
+<td>0.990</td>
+<td>0.899</td>
+</tr>
+<tr class="even">
+<td>phiusiil__phiusiil</td>
+<td>0.860</td>
+<td>0.792</td>
+<td>0.931</td>
+<td>0.868</td>
+</tr>
+<tr class="odd">
+<td>phiusiil__phreshphish</td>
+<td>0.948</td>
+<td>0.812</td>
+<td>0.972</td>
+<td>0.861</td>
+</tr>
+<tr class="even">
+<td>phiusiil__urlphish</td>
+<td>0.923</td>
+<td>0.895</td>
+<td>0.959</td>
+<td>0.927</td>
+</tr>
+<tr class="odd">
+<td>phreshphish__phishstorm</td>
+<td>0.983</td>
+<td>0.907</td>
+<td>0.985</td>
+<td>0.905</td>
+</tr>
+<tr class="even">
+<td>phreshphish__phiusiil</td>
+<td>0.958</td>
+<td>0.860</td>
+<td>0.984</td>
+<td>0.885</td>
+</tr>
+<tr class="odd">
+<td>phreshphish__phreshphish</td>
+<td>0.955</td>
+<td>0.870</td>
+<td>0.956</td>
+<td>0.852</td>
+</tr>
+<tr class="even">
+<td>phreshphish__urlphish</td>
+<td>0.970</td>
+<td>0.935</td>
+<td>0.986</td>
+<td>0.941</td>
+</tr>
+<tr class="odd">
+<td>urlphish__phishstorm</td>
+<td>0.977</td>
+<td>0.923</td>
+<td>0.970</td>
+<td>0.829</td>
+</tr>
+<tr class="even">
+<td>urlphish__phiusiil</td>
+<td>0.985</td>
+<td>0.886</td>
+<td>0.990</td>
+<td>0.863</td>
+</tr>
+<tr class="odd">
+<td>urlphish__phreshphish</td>
+<td>0.967</td>
+<td>0.903</td>
+<td>0.955</td>
+<td>0.737</td>
+</tr>
+<tr class="even">
+<td>urlphish__urlphish</td>
+<td>0.980</td>
+<td>0.939</td>
+<td>0.983</td>
+<td>0.906</td>
+</tr>
+</tbody>
+</table>
+<p>Median ROC-AUC per cell on raw (R1) and domain-only (R4) URLs in both
+conditions.</p>
+<h2 id="hosting-platform-masking-exploratory">4.14 Hosting-platform
+masking (exploratory)</h2>
+<p>Question 5 asks whether replacing the name of a hosting platform (for
+example <code>github.io</code>) with a neutral token helps a model on
+tenants it has not seen. It was not testable in the main design, because
+the cap per domain and the removal of shared domains leave almost no
+platform URLs. An exploratory test was therefore run outside the seven
+questions: platform URLs were taken straight from the source files, at
+most 5 URLs per tenant site were kept, splits were grouped by
+registrable domain, and a model trained with the platform name masked
+was compared with one trained without masking on domain-only URLs. Only
+one legitimate source (PhreshPhish) has enough platform URLs (1,019 URLs
+on 617 tenant sites), so the five tested pairs share the same legitimate
+set and are not independent.</p>
+<p>Masking raised the held-out score in none of the 10 settings (five
+phishing sources, two models, ten splits each). The median change ranges
+from -0.014 to +0.012 and every interval includes zero. The effect of
+masking is therefore <strong>not shown</strong> in this test. This does
+not show that masking never helps; it shows that no effect could be
+detected here. Source:
+<code>reports/phishguard/HP_platform.md</code>.</p>
+<h2 id="what-can-and-cannot-be-claimed">4.15 What can and cannot be
 claimed</h2>
 <p><strong>Table 4.7.</strong> Claim register: each finding with the
 wording this run supports.</p>
@@ -2854,9 +3110,10 @@ before the run.</li>
 <p>See Sections 4.12 and Chapter 9. In short: public benchmarks only,
 two of them old or homepage-heavy; the HTML part rests on two sources
 with uneven coverage; one shuffled-label control is flagged; platform
-masking is untested; tier C of the detector rests on a small live
-capture; and the extension has been checked in test harnesses and on
-stored pages, not in a long field trial.</p>
+masking showed no effect in a test that rests on one legitimate source;
+tier C of the detector rests on a small live capture; and the extension
+has been checked in test harnesses and on stored pages, not in a long
+field trial.</p>
 <h2 id="future-work">10.3 Future work</h2>
 <ol type="1">
 <li>Add PhishTank and further live-feed sources to the study, and re-run

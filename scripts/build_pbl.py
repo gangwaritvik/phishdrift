@@ -292,6 +292,59 @@ def reframe_drift(t: str) -> str:
     return t
 
 
+def sensitivity_section() -> str:
+    """Section 4.13: the declared second condition, numbers read from the result table."""
+    t = pd.read_csv(TABLES / "sensitivity_verdicts.csv").set_index("question")
+    lad = pd.read_csv(TABLES / "sensitivity_ladder.csv")
+    w = {"replicated": "holds", "partly replicated": "holds in part", "not replicated": "does not hold"}
+
+    def cell(q: str, side: str) -> str:
+        r = t.loc[q]
+        return f"{w[r[side + ': verdict']]} ({r[side + ': hold']:.0f} of {r[side + ': settings']:.0f}, {100 * r[side + ': share']:.0f}%)"
+
+    rows = "\n".join(f"| {q} | {cell(q, 'cleaned')} | {cell(q, 'uncleaned')} |" for q in t.index)
+    cr4, ur4 = lad["cleaned R4"].median(), lad["uncleaned R4"].median()
+    cr1, ur1 = lad["cleaned R1"].median(), lad["uncleaned R1"].median()
+    return f"""
+## 4.13 A second condition: data prepared without the cleaning
+
+Questions 2 and 4 and the interaction check did not hold in the main design. The main design cleans its data: it caps URLs per registrable domain, removes domains shared by several phishing sources and balances URL depth. Before any result was seen, a second condition was written down in `docs/PHISHGUARD_SENSITIVITY_PLAN.md` that rebuilds the same populations *without* that cleaning (only exact duplicates and URLs labelled both ways are removed; each population is sampled to at most 10,000 URLs per class). Models, splits, bootstrap, the rule for "holds" and its cut-offs are unchanged. The crawled legitimate population cannot be rebuilt without the cleaning, so both conditions are compared on the same 20 cells (five phishing sources by four legitimate sources). The comparison was run once; nothing was changed after seeing it.
+
+| Question | Cleaned data (same 20 cells) | Without the cleaning |
+|---|---|---|
+{rows}
+
+The median score of the 20 cells is {cr1:.3f} on raw URLs and {cr4:.3f} on domain-only URLs with the cleaning, against {ur1:.3f} and {ur4:.3f} without it (the table below lists every cell). Source: `reports/phishguard/sensitivity_uncleaned.md`.
+
+**What this shows.**
+
+- Question 1 holds in both conditions.
+- Question 2 (how much of the fall sits in the host name) does not hold in either, so it is not explained by the cleaning.
+- Question 4 (the spread of the domain-only score across splits) does not hold with the cleaning and holds in part without it, so it depends on how the data is prepared.
+- Question 3 (source dependence) is the reverse: it holds with the cleaning ({int(t.loc['Q3','cleaned: hold'])} of {int(t.loc['Q3','cleaned: settings'])} settings in these 20 cells) and does not hold without it ({int(t.loc['Q3','uncleaned: hold'])} of {int(t.loc['Q3','uncleaned: settings'])}). The cleaning is part of what makes the source effect show up, so Question 3 is a result of the cleaned design and should be reported that way.
+- The interaction check does not hold in either condition.
+
+The honest summary is that the answers to Questions 3 and 4 depend on how the benchmark is prepared, in opposite directions. Neither condition is the "true" one; both are reported.
+
+| Cell | Cleaned R1 | Cleaned R4 | Uncleaned R1 | Uncleaned R4 |
+|---|---|---|---|---|
+""" + "\n".join(
+        f"| {r['cell']} | {r['cleaned R1']:.3f} | {r['cleaned R4']:.3f} | {r['uncleaned R1']:.3f} | {r['uncleaned R4']:.3f} |"
+        for _, r in lad.iterrows()
+    ) + "\n\nMedian ROC-AUC per cell on raw (R1) and domain-only (R4) URLs in both conditions.\n"
+
+
+def platform_section() -> str:
+    """Section 4.14: the exploratory hosting-platform masking test (outside the seven questions)."""
+    return """
+## 4.14 Hosting-platform masking (exploratory)
+
+Question 5 asks whether replacing the name of a hosting platform (for example `github.io`) with a neutral token helps a model on tenants it has not seen. It was not testable in the main design, because the cap per domain and the removal of shared domains leave almost no platform URLs. An exploratory test was therefore run outside the seven questions: platform URLs were taken straight from the source files, at most 5 URLs per tenant site were kept, splits were grouped by registrable domain, and a model trained with the platform name masked was compared with one trained without masking on domain-only URLs. Only one legitimate source (PhreshPhish) has enough platform URLs (1,019 URLs on 617 tenant sites), so the five tested pairs share the same legitimate set and are not independent.
+
+Masking raised the held-out score in none of the 10 settings (five phishing sources, two models, ten splits each). The median change ranges from -0.014 to +0.012 and every interval includes zero. The effect of masking is therefore **not shown** in this test. This does not show that masking never helps; it shows that no effect could be detected here. Source: `reports/phishguard/HP_platform.md`.
+"""
+
+
 def build(guard: Path, drift: Path, out: Path) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     g = split_top(guard.read_text(encoding="utf-8").split("\n---\n", 2)[-1])
@@ -313,7 +366,7 @@ def build(guard: Path, drift: Path, out: Path) -> Path:
 
     abstract = f"""Phishing detectors are usually judged by one score on one benchmark. This project asks how far such scores can be trusted, and then builds a detector that is evaluated under the stricter rules the answer calls for. It has two parts. **Part I** is an evaluation study: seven questions about how a detector's score depends on URL form, source composition, the split and the legitimate pages it meets, tested across five phishing sources, five legitimate sources, four model families and ten domain-grouped splits, with the rule for calling a result consistent fixed before the run. **Part II** is the detector itself: a pooled, tiered phishing detector (URL model, page model, domain checks) shipped as a Chrome extension with a FastAPI backend, with allowlist and blocklist layers and plain-English reasons for every warning.
 
-In Part I, the median score falls from {r1:.3f} on raw URLs to {r4:.3f} when a URL is reduced to its domain, and the fall appears in {pct("F1")} of settings; transfer to datasets that share no source stays above chance. Source dependence {v("F3")} ({pct("F3")} of settings) and the gap in false alarms on naturally browsed legitimate pages {v("OOD")} ({pct("OOD")}): at the 1% threshold {100 * ood_nat:.1f}% of those pages are flagged against {100 * ood_test:.1f}% on the model's own test side. The share of the fall that sits in the host name {v("F2")} across cells and depends on how the benchmark is prepared, and the larger split-to-split spread of the normalised score {v("F4")}. The effect of masking hosting platforms could not be tested. Each result is stated as behaviour under one frozen design, not as a general claim."""
+In Part I, the median score falls from {r1:.3f} on raw URLs to {r4:.3f} when a URL is reduced to its domain, and the fall appears in {pct("F1")} of settings; transfer to datasets that share no source stays above chance. Source dependence {v("F3")} ({pct("F3")} of settings) and the gap in false alarms on naturally browsed legitimate pages {v("OOD")} ({pct("OOD")}): at the 1% threshold {100 * ood_nat:.1f}% of those pages are flagged against {100 * ood_test:.1f}% on the model's own test side. The share of the fall that sits in the host name {v("F2")} across cells and depends on how the benchmark is prepared, and the larger split-to-split spread of the normalised score {v("F4")}. Masking hosting platforms showed no measurable effect in an exploratory test (Section 4.14), and a second condition without the data cleaning changes the answers to some questions (Section 4.13). Each result is stated as behaviour under one frozen design, not as a general claim."""
 
     ch1 = f"""# 1. Introduction
 
@@ -366,7 +419,9 @@ The study and the detector draw on public datasets (PhreshPhish, PhiUSIIL, URL-P
         "\n## 4.10 Follow-up checks\n\n" + body(g["6"]),
         "\n## 4.11 Page HTML (exploratory)\n\n" + body(g["7"]),
         "\n## 4.12 Limitations of the study\n\n" + body(g["8"]),
-        "\n## 4.13 What can and cannot be claimed\n\n" + body(g["9"]),
+        sensitivity_section(),
+        platform_section(),
+        "\n## 4.15 What can and cannot be claimed\n\n" + body(g["9"]),
     ]
     ch4 = "\n".join(ch4_parts)
     ch3 = ch3.replace("Seven findings are tested", "Seven questions are tested")
@@ -397,7 +452,7 @@ The study and the detector draw on public datasets (PhreshPhish, PhiUSIIL, URL-P
 
 ## 10.2 Limitations
 
-See Sections 4.12 and Chapter 9. In short: public benchmarks only, two of them old or homepage-heavy; the HTML part rests on two sources with uneven coverage; one shuffled-label control is flagged; platform masking is untested; tier C of the detector rests on a small live capture; and the extension has been checked in test harnesses and on stored pages, not in a long field trial.
+See Sections 4.12 and Chapter 9. In short: public benchmarks only, two of them old or homepage-heavy; the HTML part rests on two sources with uneven coverage; one shuffled-label control is flagged; platform masking showed no effect in a test that rests on one legitimate source; tier C of the detector rests on a small live capture; and the extension has been checked in test harnesses and on stored pages, not in a long field trial.
 
 ## 10.3 Future work
 
