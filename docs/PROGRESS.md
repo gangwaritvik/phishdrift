@@ -887,3 +887,11 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Reading: the false-alarm gain on natural pages holds over 10 splits; recall is about flat (blend test 73.3 vs 73.7
   before, time slice 81.3 vs 84.2). Brand-list change not separated from the crawl.
 - Next: `experiments.threshold_transfer` (PhishStorm false alarms), then brand candidates from feed evidence.
+
+### 2026-10-21 — Threshold transfer, main setting (10 splits, cloud)
+- `python -m experiments.threshold_transfer --setting main` (4 processes, scores cached; `reports/threshold_transfer.md`,
+  `reports/tables/threshold_transfer_*.csv`). Address model hybrid2, rules fitted on cal side, allowlist off, median of 10.
+- Target 1%: held-out PhishStorm false alarms / test recall: pooled (current) 2.7 / 68.6; worst_source 1.6 / 64.2;
+  ucb_boot 1.2 / 61.9; ucb_binom 1.2 / 61.8; balanced = pooled. Natural pages 0.9 -> 0.7 / 0.6 / 0.5. At 0.1% only
+  ucb_binom changes anything (recall 51 -> 36), so the dangerous threshold stays. Not run: loso setting.
+- Open: which rule the extension ships for "suspicious" (decision with Ritvik).
