@@ -39,10 +39,14 @@ def tranco_homepages(path: Path, top: int) -> pd.DataFrame:
 
 def run_node(urls: list[str]) -> pd.DataFrame:
     subprocess.run(["node", str(ROOT / "extension" / "build.mjs")], check=True, capture_output=True)
-    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as f:
         f.write("\n".join(urls))
     out = subprocess.run(
-        ["node", str(BENCH), f.name, str(ALLOWLIST)], capture_output=True, text=True, check=True
+        ["node", str(BENCH), f.name, str(ALLOWLIST)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
     )
     Path(f.name).unlink()
     return pd.DataFrame(json.loads(out.stdout))

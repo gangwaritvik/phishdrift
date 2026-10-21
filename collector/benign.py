@@ -408,6 +408,7 @@ def crawl(
         chunk = max(1, int(cfg.get("checkpoint_every", 100)))
 
         include_home = scfg["include_homepage"]
+        site_cfg = {**cfg, **scfg.get("crawl", {})}  # per seed set: store_html, inner_pages_max
         endpoint = None
         if scfg["from"] == "commoncrawl":
             try:
@@ -423,6 +424,7 @@ def crawl(
             include_home: bool = include_home,
             endpoint: str | None = endpoint,
             seed_client: HttpClient = seed_client,
+            site_cfg: dict = site_cfg,
         ) -> DomainResult:
             i, domain = item
             try:
@@ -430,7 +432,7 @@ def crawl(
                     return popular.commoncrawl_pages(
                         seed_client, endpoint, domain, cfg["popular"], base_seed + i
                     )
-                return crawl_domain(seed_client, domain, cfg, base_seed + i, include_home)
+                return crawl_domain(seed_client, domain, site_cfg, base_seed + i, include_home)
             except Exception as exc:  # noqa: BLE001 - one bad site must not stop the run
                 log.debug("crawl %s: %s", domain, exc)
                 return DomainResult(domain, ERROR, [])
@@ -438,6 +440,9 @@ def crawl(
         items = list(enumerate(picked))
         hard_limit_s = cfg.get("domain_deadline_s", 240) + 180  # deadline + a slow last request
         chunk_rows, chunk_log = [], []
+        failures = 0  # sites in a row the Common Crawl index could not answer
+        index_cfg = cfg.get("popular", {}).get("commoncrawl", {})
+        max_failures = int(index_cfg.get("max_consecutive_errors", 0))
         # Different sites run in parallel; each host keeps its own politeness delay.
         for n_done, ((_, domain), res) in enumerate(
             run_parallel(items, one, workers, hard_limit_s), 1
@@ -454,7 +459,9 @@ def crawl(
                 }
             )
             chunk_rows += [{**p, "seed_source": name, "seed_domain": res.domain} for p in res.pages]
-            if len(chunk_log) >= chunk or n_done == len(items):
+            failures = failures + 1 if endpoint is not None and res.status == ERROR else 0
+            give_up = endpoint is not None and 0 < max_failures <= failures
+            if len(chunk_log) >= chunk or n_done == len(items) or give_up:
                 if chunk_rows:  # checkpoint: a stopped run keeps everything finished so far
                     pages = pd.DataFrame(chunk_rows).assign(crawled_at=now)
                     store.write_crawl(pages, crawl_dir, now.date(), name)
@@ -469,6 +476,14 @@ def crawl(
                 log.info(
                     "crawl %s: %d/%d domains, %d pages so far", name, n_done, len(items), len(rows)
                 )
+            if give_up:  # the sites not reached stay untried for the next run
+                log.error(
+                    "crawl %s: %d sites in a row failed, the index is not answering; stopping "
+                    "this seed set (run it again later)",
+                    name,
+                    failures,
+                )
+                break
         statuses = pd.Series([r["status"] for r in log_rows], dtype=object).value_counts()
         summary[name] = {
             "domains": len(picked),

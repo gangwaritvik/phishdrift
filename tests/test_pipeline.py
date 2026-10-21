@@ -127,3 +127,15 @@ def test_pipeline_stops_on_homepage_only_benign(tmp_path, dedup_cfg):
     md = (tmp_path / "reports" / "data_card.md").read_text()
     assert "FAILED" in md  # card written before stopping, so the failure can be inspected
     assert not (tmp_path / "processed" / "pool.parquet").exists()
+
+
+def test_write_meta_drops_html(tmp_path):
+    import pandas as pd
+
+    from data_pipeline.pipeline import write_meta
+
+    pd.DataFrame({"uid": ["a"], "url": ["https://x.com/a"], "html": ["<p>"]}).to_parquet(
+        tmp_path / "pool.parquet"
+    )
+    assert write_meta(tmp_path) == ["pool"]
+    assert list(pd.read_parquet(tmp_path / "meta_pool.parquet").columns) == ["uid", "url"]

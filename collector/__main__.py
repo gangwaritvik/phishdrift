@@ -317,8 +317,8 @@ def main(argv: list[str] | None = None) -> int:
     rr.add_argument("--retry-failed", action="store_true", default=None, help="retry failed pages")
     rr.add_argument("--browser", help="path to chrome.exe / msedge.exe (else searched)")
     rr.add_argument("--resample", action="store_true", help="draw a new sample")
-    sub.add_parser("popular-summary", help="outcome counts of the popular-sites seed sets")
-    for p in (r, c, o, rr):
+    ps = sub.add_parser("popular-summary", help="outcome counts of the popular-sites seed sets")
+    for p in (r, c, o, rr, ps):
         p.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(
