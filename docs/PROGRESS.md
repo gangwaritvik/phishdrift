@@ -832,7 +832,6 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   not a leak (a leak pushes above 0.5); the same model at R4 and in the other 24 cells was not flagged.
 - Next: write both into the study report as limitations; optionally rerun the control unweighted / larger leaves.
 
-<<<<<<< HEAD
 ### 2026-10-20 — PhishGuard study report with figures
 - Changed: `phishguard/report.py` (`python -m phishguard.report --run <run dir>`) builds 12 figures and the report text from
   `reports/phishguard/tables/` and `verification.md` only; output in `reports/phishguard/report/` (Markdown, figures, PDF;
@@ -870,7 +869,7 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   study's holds rule. Output `reports/phishguard/HP_platform.md` and `tables/HP_platform*.csv`. Labelled a deviation, outside the seven
   frozen verdicts.
 - Results: none on real data yet (the cloud has no interim files). Tested on synthetic sources only.
-=======
+
 ### 2026-10-20 — Addresses-only seed set `popular_urls` for lakhs of legitimate inner pages (cloud, code only)
 - Ritvik asked for lakhs of legitimate inner pages. The sandbox cannot reach Common Crawl, Hugging Face, Tranco or Kaggle
   (proxy 403), so everything runs on the PC. Chosen (decision card): addresses first, HTML at scale second.
@@ -912,4 +911,3 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Caveats: one split against earlier 10-split medians; crawl hosts and natural pages both come from popular-site lists;
   brand-list change not separated. The 10-split tables in `reports/` are not refreshed.
 - Next: rerun the 10-split blend (`experiments.blend2`) on the new pool for the report numbers; `shipped_verdicts` encoding fix is PR #41.
->>>>>>> origin/main
