@@ -28,3 +28,17 @@ figcaption::first-line { }
 #contents + ul { list-style:none; padding:0; columns:1; font-family:"Carlito","Segoe UI",sans-serif; font-size:10pt; line-height:1.8; }
 #contents + ul a { color:var(--navy); text-decoration:none; }
 a { color:var(--blue); }
+
+.fill { background:#fff3b0; color:#5a4a00; padding:0 2px; border-radius:2px; }
+.cover { min-height:230mm; display:flex; flex-direction:column; justify-content:center; text-align:left; font-size:11pt; }
+.cover .ctitle { font-size:34pt; margin-bottom:5mm; }
+.cover .csub { font-size:15pt; margin-bottom:14mm; }
+.cover p { margin:0 0 3mm; }
+.slot { border:1.5px dashed #9fb3c8; border-radius:3px; min-height:60mm; padding:4mm; margin:4mm 0; break-inside:avoid; font-family:"Carlito","Segoe UI",sans-serif; font-size:9pt; text-align:left; }
+#contents + ul li { display:flex; align-items:baseline; }
+#contents + ul li .dots { flex:1; border-bottom:1px dotted #9aa5b1; margin:0 4px; }
+#contents + ul li .pg { font-variant-numeric:tabular-nums; }
+h1.unnumbered { }
+.cover .ctitle, .cover .csub { font-family:"Carlito","Segoe UI",sans-serif; }
+.cover .ctitle { color:var(--navy); font-weight:700; }
+.cover .csub { color:var(--blue); }

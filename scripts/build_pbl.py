@@ -15,8 +15,10 @@ import re
 from pathlib import Path
 
 import pandas as pd
+import yaml
 
 TABLES = Path("reports/phishguard/tables")
+FRONT = Path(__file__).parent / "pbl_style" / "front.yaml"
 
 
 def split_top(md: str) -> dict[str, str]:
@@ -67,6 +69,102 @@ QUESTION_IDS = [
     ("H6", "Q6"),
     ("OOD", "Q7"),
 ]
+
+
+PAGEBREAK = (
+    '\n```{=html}\n<div style="break-after:page"></div>\n```\n'
+    '```{=openxml}\n<w:p><w:r><w:br w:type="page"/></w:r></w:p>\n```\n'
+)
+
+# Screenshot slots (the sandbox cannot open real sites, so the author fills these in).
+SHOTS = [
+    (
+        "A page judged safe",
+        "a normal site open in Chrome with the PhishDrift icon showing no warning.",
+    ),
+    ("Suspicious banner", "a page with the yellow banner at the top and its one-line reason."),
+    (
+        "Dangerous warning page",
+        "the full warning page with the plain-English reasons and the buttons.",
+    ),
+    ("Popup with reasons", "the toolbar popup open on a flagged page, listing the reasons."),
+    (
+        "Report a false alarm",
+        "the button or form used to report a wrong warning (domain only is sent).",
+    ),
+    (
+        "URL check page, layer view",
+        "one layer screen of the URL check page, for example the address-model gauge.",
+    ),
+    (
+        "URL check page, verdict",
+        "the final verdict screen with the shield, reasons and score meter.",
+    ),
+]
+SLOTS = (
+    "## 7.8 Screenshots\n\nThe environment that built the system cannot browse, so these slots are for the author's "
+    "own screenshots. Each slot says what the picture should show.\n\n"
+    + "\n\n".join(
+        f"::: {{.slot}}\n**Screenshot {i}. {t}.** [Paste screenshot here]{{.fill}}  \nShould show: {d}\n:::"
+        for i, (t, d) in enumerate(SHOTS, 1)
+    )
+    + "\n\n"
+)
+
+
+def front_matter(name: str, title: str, fields: dict) -> str:
+    """Cover, certificate, declaration and acknowledgement; missing fields are marked for the author."""
+
+    def f(key: str, label: str) -> str:
+        v = fields.get(key)
+        return str(v) if v else f"[{label}]{{.fill}}"
+
+    who, roll = f("student_name", "Your name"), f("roll_no", "Roll number")
+    dept, inst = f("department", "Department"), f("institution", "Institution")
+    guide, sem = f("guide", "Guide name"), f("semester_year", "Semester and year")
+    return f"""::: {{.cover custom-style="Normal"}}
+::: {{.ctitle custom-style="Title"}}
+PhishDrift
+:::
+
+::: {{.csub custom-style="Subtitle"}}
+{title}
+:::
+
+Project-Based Learning final report
+
+Submitted by **{who}** ({roll})
+
+{dept}, {inst}
+
+Guide: {guide}
+
+{sem}
+:::
+{PAGEBREAK}
+# Certificate {{.unnumbered}}
+
+This is to certify that the Project-Based Learning report titled **"PhishDrift: {title}"** is a record of work carried out by **{who}** ({roll}), {dept}, {inst}, during {sem}, under my guidance.
+
+&nbsp;
+
+Guide: {guide} &nbsp;&nbsp;&nbsp;&nbsp; Signature: ____________ &nbsp;&nbsp; Date: __________
+
+Head of Department: ____________ &nbsp;&nbsp; Signature: ____________ &nbsp;&nbsp; Date: __________
+{PAGEBREAK}
+# Declaration {{.unnumbered}}
+
+I, **{who}** ({roll}), declare that this report is my own work. The data come from public datasets and feeds named in the report, and its numbers come from files that scripts in the project repository write to the `reports/` folder, or from the project log, with the source named beside each. Where a result is estimated or not measured, the report says so. Other people's work is cited in the references.
+
+&nbsp;
+
+{who} &nbsp;&nbsp;&nbsp;&nbsp; Signature: ____________ &nbsp;&nbsp; Date: __________
+{PAGEBREAK}
+# Acknowledgement {{.unnumbered}}
+
+[Template, edit before submission.]{{.fill}} I thank my guide, {guide}, for direction and feedback during this project, the {dept} at {inst} for the opportunity to carry out project-based learning, and the authors of the public datasets and tools used here, whose work made the study possible.
+{PAGEBREAK}
+"""
 
 
 def reframe_study(t: str) -> str:
@@ -183,6 +281,7 @@ def reframe_drift(t: str) -> str:
         "No model collapsed the way the prior report's raw benchmark model did (all 11,895 natural URLs flagged), so the homepage shortcut has not returned.",
         "No model flags every natural page, so the homepage shortcut has not returned.",
     )
+    t = re.sub(r"^# 8 ", SLOTS + "# 8 ", t, count=1, flags=re.M)
     t = re.sub(r"^# PhishDrift chapters \(5 to 9\)\n+", "", t)
     t = re.sub(r"^---\n", "", t, flags=re.M)
     m = re.search(r"^# 5 .*$", t, flags=re.M)
@@ -322,37 +421,31 @@ See Sections 4.12 and Chapter 9. In short: public benchmarks only, two of them o
 *Citation details should be checked against the originals before submission.*
 """
 
-    title = """---
-title: "PhishDrift"
-subtitle: "Evaluating Phishing-URL Detection Across Sources, Representations and Splits, and an Explainable Chrome-Extension Detector"
-author: "Ritvik Gangwar"
-date: "Project-Based Learning final report, 6th semester, October 2026"
----
-
-"""
+    title = "---\npagetitle: PhishDrift\n---\n\n" + front_matter(
+        "PhishDrift",
+        "Evaluating Phishing-URL Detection Across Sources, Representations and Splits, and an Explainable Chrome-Extension Detector",
+        yaml.safe_load(FRONT.read_text(encoding="utf-8")) or {} if FRONT.exists() else {},
+    )
     heads = [
         ln[2:].strip()
-        for ln in (ch1 + ch2 + ch3 + ch4 + drift_txt + ch10).splitlines()
+        for ln in "\n".join([ch1, ch2, ch3, ch4, drift_txt, ch10]).splitlines()
         if ln.startswith("# ")
     ]
-    contents = "# Contents\n\n" + "\n".join(f"- {h}" for h in heads) + "\n\n"
-    text = (
-        title
-        + contents
-        + "# Abstract\n\n"
-        + abstract
+    contents = (
+        "# Contents {.unnumbered}\n\n"
+        + "\n".join("- " + re.sub(r"^(\d+)\.", r"\1\\.", h) for h in heads)
         + "\n\n"
-        + ch1
-        + "\n"
-        + ch2
-        + "\n"
-        + ch3
-        + "\n"
-        + ch4
-        + "\n"
-        + drift_txt
-        + "\n"
-        + ch10
+    )
+    text = "\n\n".join(
+        [
+            title + contents + "# Abstract {.unnumbered}\n\n" + abstract,
+            ch1,
+            ch2,
+            ch3,
+            ch4,
+            drift_txt,
+            ch10,
+        ]
     )
     path = out / "pbl_report.md"
     path.write_text(text, encoding="utf-8")

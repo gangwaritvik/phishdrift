@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <meta name="author" content="Ritvik Gangwar" />
   <title>PhishDrift</title>
   <style>
 code{white-space: pre-wrap;}
@@ -52,47 +51,86 @@ figcaption::first-line { }
 #contents + ul { list-style:none; padding:0; columns:1; font-family:"Carlito","Segoe UI",sans-serif; font-size:10pt; line-height:1.8; }
 #contents + ul a { color:var(--navy); text-decoration:none; }
 a { color:var(--blue); }
+.fill { background:#fff3b0; color:#5a4a00; padding:0 2px; border-radius:2px; }
+.cover { min-height:230mm; display:flex; flex-direction:column; justify-content:center; text-align:left; font-size:11pt; }
+.cover .ctitle { font-size:34pt; margin-bottom:5mm; }
+.cover .csub { font-size:15pt; margin-bottom:14mm; }
+.cover p { margin:0 0 3mm; }
+.slot { border:1.5px dashed #9fb3c8; border-radius:3px; min-height:60mm; padding:4mm; margin:4mm 0; break-inside:avoid; font-family:"Carlito","Segoe UI",sans-serif; font-size:9pt; text-align:left; }
+#contents + ul li { display:flex; align-items:baseline; }
+#contents + ul li .dots { flex:1; border-bottom:1px dotted #9aa5b1; margin:0 4px; }
+#contents + ul li .pg { font-variant-numeric:tabular-nums; }
+h1.unnumbered { }
+.cover .ctitle, .cover .csub { font-family:"Carlito","Segoe UI",sans-serif; }
+.cover .ctitle { color:var(--navy); font-weight:700; }
+.cover .csub { color:var(--blue); }
 </style>
 </head>
 <body>
-<header id="title-block-header">
-<h1 class="title">PhishDrift</h1>
-<p class="subtitle">Evaluating Phishing-URL Detection Across Sources,
+<div class="cover" data-custom-style="Normal">
+<div class="ctitle" data-custom-style="Title">
+<p>PhishDrift</p>
+</div>
+<div class="csub" data-custom-style="Subtitle">
+<p>Evaluating Phishing-URL Detection Across Sources, Representations and
+Splits, and an Explainable Chrome-Extension Detector</p>
+</div>
+<p>Project-Based Learning final report</p>
+<p>Submitted by <strong><span class="fill">Your name</span></strong>
+(<span class="fill">Roll number</span>)</p>
+<p><span class="fill">Department</span>, <span class="fill">Institution</span></p>
+<p>Guide: <span class="fill">Guide name</span></p>
+<p><span class="fill">Semester and year</span></p>
+</div>
+<div style="break-after:page"></div>
+<h1 class="unnumbered" id="certificate">Certificate</h1>
+<p>This is to certify that the Project-Based Learning report titled
+<strong>“PhishDrift: Evaluating Phishing-URL Detection Across Sources,
 Representations and Splits, and an Explainable Chrome-Extension
-Detector</p>
-<p class="author">Ritvik Gangwar</p>
-<p class="date">Project-Based Learning final report, 6th semester,
-October 2026</p>
-</header>
-<h1 id="contents">Contents</h1>
+Detector”</strong> is a record of work carried out by <strong><span class="fill">Your name</span></strong> (<span class="fill">Roll
+number</span>), <span class="fill">Department</span>, <span class="fill">Institution</span>, during <span class="fill">Semester and
+year</span>, under my guidance.</p>
+<p> </p>
+<p>Guide: <span class="fill">Guide name</span>      Signature:
+____________    Date: __________</p>
+<p>Head of Department: ____________    Signature: ____________    Date:
+__________</p>
+<div style="break-after:page"></div>
+<h1 class="unnumbered" id="declaration">Declaration</h1>
+<p>I, <strong><span class="fill">Your name</span></strong> (<span class="fill">Roll number</span>), declare that this report is my own
+work. The data come from public datasets and feeds named in the report,
+and its numbers come from files that scripts in the project repository
+write to the <code>reports/</code> folder, or from the project log, with
+the source named beside each. Where a result is estimated or not
+measured, the report says so. Other people’s work is cited in the
+references.</p>
+<p> </p>
+<p><span class="fill">Your name</span>      Signature: ____________   
+Date: __________</p>
+<div style="break-after:page"></div>
+<h1 class="unnumbered" id="acknowledgement">Acknowledgement</h1>
+<p><span class="fill">Template, edit before submission.</span> I thank
+my guide, <span class="fill">Guide name</span>, for direction and
+feedback during this project, the <span class="fill">Department</span>
+at <span class="fill">Institution</span> for the opportunity to carry
+out project-based learning, and the authors of the public datasets and
+tools used here, whose work made the study possible.</p>
+<div style="break-after:page"></div>
+<h1 class="unnumbered" id="contents">Contents</h1>
 <ul>
-<li><ol type="1">
-<li>Introduction</li>
-</ol></li>
-<li><ol start="2" type="1">
-<li>Background and questions</li>
-</ol></li>
-<li><ol start="3" type="1">
-<li>Part I: design and method</li>
-</ol></li>
-<li><ol start="6" type="1">
-<li>Feature engine and models</li>
-</ol></li>
-<li><ol start="7" type="1">
-<li>System: extension and backend</li>
-</ol></li>
-<li><ol start="8" type="1">
-<li>Evaluation of the detector</li>
-</ol></li>
-<li><ol start="9" type="1">
-<li>Limitations and what is not done</li>
-</ol></li>
-<li><ol start="10" type="1">
-<li>Conclusion and future work</li>
-</ol></li>
-<li>References</li>
+<li>1. Introduction<span class="dots"></span><span class="pg">6</span></li>
+<li>2. Background and questions<span class="dots"></span><span class="pg">7</span></li>
+<li>3. Part I: design and method<span class="dots"></span><span class="pg">8</span></li>
+<li>4. Part I: results<span class="dots"></span><span class="pg">10</span></li>
+<li>5. Data and corpus<span class="dots"></span><span class="pg">20</span></li>
+<li>6. Feature engine and models<span class="dots"></span><span class="pg">23</span></li>
+<li>7. System: extension and backend<span class="dots"></span><span class="pg">25</span></li>
+<li>8. Evaluation of the detector<span class="dots"></span><span class="pg">31</span></li>
+<li>9. Limitations and what is not done<span class="dots"></span><span class="pg">42</span></li>
+<li>10. Conclusion and future work<span class="dots"></span><span class="pg">44</span></li>
+<li>References<span class="dots"></span><span class="pg">45</span></li>
 </ul>
-<h1 id="abstract">Abstract</h1>
+<h1 class="unnumbered" id="abstract">Abstract</h1>
 <p>Phishing detectors are usually judged by one score on one benchmark.
 This project asks how far such scores can be trusted, and then builds a
 detector that is evaluated under the stricter rules the answer calls
@@ -337,7 +375,8 @@ URLs and 100 domains per class. The rule and
 <code>configs/phishguard.yaml</code> were frozen at commit
 <code>082b058</code> before any result was seen. “Does not hold”
 describes this design’s data; it is not a claim that the effect is
-absent elsewhere. # 4. Part I: results</p>
+absent elsewhere.</p>
+<h1 id="part-i-results">4. Part I: results</h1>
 <h2 id="q1-representation-sensitivity-holds">4.1 Q1: representation
 sensitivity (holds)</h2>
 <p>AUC falls from R1 to R4 in all 100 model-cell settings. The median R1
@@ -1640,6 +1679,45 @@ replaces the page with a warning page that lists the reasons, offers
 (which sends only the domain). The toolbar popup shows the current
 verdict and its reasons. Screenshots of each state should be taken on
 the author’s own browser for the final report.</p>
+<h2 id="screenshots">7.8 Screenshots</h2>
+<p>The environment that built the system cannot browse, so these slots
+are for the author’s own screenshots. Each slot says what the picture
+should show.</p>
+<div class="slot">
+<p><strong>Screenshot 1. A page judged safe.</strong> <span class="fill">Paste screenshot here</span><br />
+Should show: a normal site open in Chrome with the PhishDrift icon
+showing no warning.</p>
+</div>
+<div class="slot">
+<p><strong>Screenshot 2. Suspicious banner.</strong> <span class="fill">Paste screenshot here</span><br />
+Should show: a page with the yellow banner at the top and its one-line
+reason.</p>
+</div>
+<div class="slot">
+<p><strong>Screenshot 3. Dangerous warning page.</strong> <span class="fill">Paste screenshot here</span><br />
+Should show: the full warning page with the plain-English reasons and
+the buttons.</p>
+</div>
+<div class="slot">
+<p><strong>Screenshot 4. Popup with reasons.</strong> <span class="fill">Paste screenshot here</span><br />
+Should show: the toolbar popup open on a flagged page, listing the
+reasons.</p>
+</div>
+<div class="slot">
+<p><strong>Screenshot 5. Report a false alarm.</strong> <span class="fill">Paste screenshot here</span><br />
+Should show: the button or form used to report a wrong warning (domain
+only is sent).</p>
+</div>
+<div class="slot">
+<p><strong>Screenshot 6. URL check page, layer view.</strong> <span class="fill">Paste screenshot here</span><br />
+Should show: one layer screen of the URL check page, for example the
+address-model gauge.</p>
+</div>
+<div class="slot">
+<p><strong>Screenshot 7. URL check page, verdict.</strong> <span class="fill">Paste screenshot here</span><br />
+Should show: the final verdict screen with the shield, reasons and score
+meter.</p>
+</div>
 <h1 id="evaluation-of-the-detector">8. Evaluation of the detector</h1>
 <h2 id="protocol">8.1 Protocol</h2>
 <p>Every split is grouped by registrable domain, and the split code
@@ -2337,6 +2415,76 @@ allowlist on (30 to 23 with it off), without changing the warned share
 (<code>reports/address_only_blocks.md</code>). All of these are measured
 on stored HTML, not on a live page, and the natural set is
 Tranco-seeded.</p>
+<h3 id="after-retraining-with-deep-legitimate-pages-of-popular-sites">8.8.1
+After retraining with deep legitimate pages of popular sites</h3>
+<p>The address model’s false alarms were attributed to benign training
+URLs that were mostly bare homepages (an explanation from the project
+log, not a separate test). A crawl of inner pages of popular sites
+(14,026 pages, robots.txt respected; the 2,555 natural pages were
+excluded from it) was added to the pool, the brand list was extended
+from 772 to 899 names, and the shipped split-0 model was retrained and
+exported on the project PC on 2026-10-21 (<code>docs/PROGRESS.md</code>,
+entry “Retrain on the pool with the popular-sites crawl”).</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>measure</th>
+<th>before retrain</th>
+<th>after retrain</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>shipped extension, natural pages flagged (of 2,555)</td>
+<td>72 (2.82%)</td>
+<td>8 (0.3%, none dangerous)</td>
+</tr>
+<tr class="even">
+<td>address model alone, natural pages flagged</td>
+<td>115 (4.5%)</td>
+<td>19 (0.7%)</td>
+</tr>
+<tr class="odd">
+<td>sites outside the top 50,000, flagged</td>
+<td>71 of 1,483 (4.8%)</td>
+<td>8 of 1,579 (0.5%)</td>
+</tr>
+<tr class="even">
+<td>blend recall at FPR 1%, test</td>
+<td>73.7 (10-split median)</td>
+<td>74.2 (split 0)</td>
+</tr>
+<tr class="odd">
+<td>blend recall at FPR 1%, held-out PhishStorm</td>
+<td>71.5 (10-split median)</td>
+<td>71.0 (split 0)</td>
+</tr>
+<tr class="even">
+<td>blend recall at FPR 1%, newest time slice</td>
+<td>84.2 (10-split median)</td>
+<td>81.7 (split 0)</td>
+</tr>
+</tbody>
+</table>
+<p>Table 8.7b. Natural-page false alarms and recall before and after the
+retrain (<code>docs/PROGRESS.md</code>, 2026-10-21 entry; PC reports
+<code>reports/shipped_verdicts.md</code> and
+<code>data/models/reports_split0/blend2.md</code>, which are not in the
+repository copy).</p>
+<p>Read these numbers with care. The “after” recall figures come from
+one split, the “before” figures are medians over ten, so the two are not
+strictly comparable. The crawl hosts and the natural pages both come
+from popular-site lists, so some of the drop may reflect that
+similarity. The brand-list change went in together with the new data, so
+the two effects are not separated. The false-alarm rate on PhishStorm at
+the cal-side 1% threshold stays at 3.2%. The ten-split tables elsewhere
+in this chapter were produced before the retrain and have not been
+refreshed.</p>
 <h2 id="negative-controls-1">8.9 Negative controls</h2>
 <table style="width:100%;">
 <colgroup>
@@ -2655,13 +2803,11 @@ the extension’s backend answers are placeholder rules.</li>
 Safe Browsing is not integrated, and the optional second-opinion layer
 was not built. List signatures are off until a key is made on the
 backend machine.</li>
-<li><strong>Model refresh.</strong> The shipped address bundle was
-exported with the 67-name seed brand list while training used the
-reviewed list, and the brand list has since grown to 899; re-exporting
-on the project PC is pending, and the effect is not measured
-(<code>docs/PROGRESS.md</code>, 2026-10-19 and 2026-10-20). The
-popular-sites crawl, which should reduce false alarms on deep legitimate
-URLs, has not yet produced data.</li>
+<li><strong>Model refresh.</strong> The shipped model was retrained on
+2026-10-21 for split 0 with the 899-name brand list and the
+popular-sites crawl (section 8.8.1). The ten-split tables in this
+chapter still describe the earlier model, and the effect of the new data
+and of the brand list is not separated.</li>
 <li><strong>Blocklist coverage</strong> (section 8.12),
 <strong>screenshots</strong> and <strong>demo video</strong> are not
 done.</li>

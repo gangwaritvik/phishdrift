@@ -911,3 +911,14 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Caveats: one split against earlier 10-split medians; crawl hosts and natural pages both come from popular-site lists;
   brand-list change not separated. The 10-split tables in `reports/` are not refreshed.
 - Next: rerun the 10-split blend (`experiments.blend2`) on the new pool for the report numbers; `shipped_verdicts` encoding fix is PR #41.
+
+### 2026-10-21 — PBL report: retrain results, front matter, screenshot slots, contents page numbers (cloud)
+- Changed: chapter 8 gets section 8.8.1 (natural-page false alarms and recall before and after the 2026-10-21 retrain: 72 -> 8 of 2,555
+  flagged by the shipped extension, address model alone 115 -> 19, recall at 1% FPR 74.2 / 71.0 / 81.7 on test / PhishStorm / time
+  slice) and a rewritten "Model refresh" limitation; numbers copied from the 2026-10-21 entry above because the PC reports are not in
+  the repository. `scripts/build_pbl.py`: cover, certificate, declaration and acknowledgement pages with highlighted fields filled from
+  `scripts/pbl_style/front.yaml`, section 7.8 with seven numbered screenshot slots; `scripts/pbl_style/render.py` prints page numbers
+  in the contents list (two-pass render). Output `reports/pbl/pbl_report.{md,pdf,docx}` (45 pages) and `paper/` in the project folder.
+- Caveats written in the report: one split against earlier 10-split medians, crawl and natural pages both from popular-site lists, brand
+  list change not separated, PhishStorm false alarms 3.2%. The ten-split tables are not refreshed.
+- Not done: personal details on the front pages (waiting for Ritvik), screenshots, ten-split numbers after the retrain.

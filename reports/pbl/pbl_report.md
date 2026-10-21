@@ -1,23 +1,92 @@
 ---
-title: "PhishDrift"
-subtitle: "Evaluating Phishing-URL Detection Across Sources, Representations and Splits, and an Explainable Chrome-Extension Detector"
-author: "Ritvik Gangwar"
-date: "Project-Based Learning final report, 6th semester, October 2026"
+pagetitle: PhishDrift
 ---
 
-# Contents
+::: {.cover custom-style="Normal"}
+::: {.ctitle custom-style="Title"}
+PhishDrift
+:::
 
-- 1. Introduction
-- 2. Background and questions
-- 3. Part I: design and method
-- 6. Feature engine and models
-- 7. System: extension and backend
-- 8. Evaluation of the detector
-- 9. Limitations and what is not done
-- 10. Conclusion and future work
+::: {.csub custom-style="Subtitle"}
+Evaluating Phishing-URL Detection Across Sources, Representations and Splits, and an Explainable Chrome-Extension Detector
+:::
+
+Project-Based Learning final report
+
+Submitted by **[Your name]{.fill}** ([Roll number]{.fill})
+
+[Department]{.fill}, [Institution]{.fill}
+
+Guide: [Guide name]{.fill}
+
+[Semester and year]{.fill}
+:::
+
+```{=html}
+<div style="break-after:page"></div>
+```
+```{=openxml}
+<w:p><w:r><w:br w:type="page"/></w:r></w:p>
+```
+
+# Certificate {.unnumbered}
+
+This is to certify that the Project-Based Learning report titled **"PhishDrift: Evaluating Phishing-URL Detection Across Sources, Representations and Splits, and an Explainable Chrome-Extension Detector"** is a record of work carried out by **[Your name]{.fill}** ([Roll number]{.fill}), [Department]{.fill}, [Institution]{.fill}, during [Semester and year]{.fill}, under my guidance.
+
+&nbsp;
+
+Guide: [Guide name]{.fill} &nbsp;&nbsp;&nbsp;&nbsp; Signature: ____________ &nbsp;&nbsp; Date: __________
+
+Head of Department: ____________ &nbsp;&nbsp; Signature: ____________ &nbsp;&nbsp; Date: __________
+
+```{=html}
+<div style="break-after:page"></div>
+```
+```{=openxml}
+<w:p><w:r><w:br w:type="page"/></w:r></w:p>
+```
+
+# Declaration {.unnumbered}
+
+I, **[Your name]{.fill}** ([Roll number]{.fill}), declare that this report is my own work. The data come from public datasets and feeds named in the report, and its numbers come from files that scripts in the project repository write to the `reports/` folder, or from the project log, with the source named beside each. Where a result is estimated or not measured, the report says so. Other people's work is cited in the references.
+
+&nbsp;
+
+[Your name]{.fill} &nbsp;&nbsp;&nbsp;&nbsp; Signature: ____________ &nbsp;&nbsp; Date: __________
+
+```{=html}
+<div style="break-after:page"></div>
+```
+```{=openxml}
+<w:p><w:r><w:br w:type="page"/></w:r></w:p>
+```
+
+# Acknowledgement {.unnumbered}
+
+[Template, edit before submission.]{.fill} I thank my guide, [Guide name]{.fill}, for direction and feedback during this project, the [Department]{.fill} at [Institution]{.fill} for the opportunity to carry out project-based learning, and the authors of the public datasets and tools used here, whose work made the study possible.
+
+```{=html}
+<div style="break-after:page"></div>
+```
+```{=openxml}
+<w:p><w:r><w:br w:type="page"/></w:r></w:p>
+```
+
+# Contents {.unnumbered}
+
+- 1\. Introduction
+- 2\. Background and questions
+- 3\. Part I: design and method
+- 4\. Part I: results
+- 5\. Data and corpus
+- 6\. Feature engine and models
+- 7\. System: extension and backend
+- 8\. Evaluation of the detector
+- 9\. Limitations and what is not done
+- 10\. Conclusion and future work
 - References
 
-# Abstract
+# Abstract {.unnumbered}
 
 Phishing detectors are usually judged by one score on one benchmark. This project asks how far such scores can be trusted, and then builds a detector that is evaluated under the stricter rules the answer calls for. It has two parts. **Part I** is an evaluation study: seven questions about how a detector's score depends on URL form, source composition, the split and the legitimate pages it meets, tested across five phishing sources, five legitimate sources, four model families and ten domain-grouped splits, with the rule for calling a result consistent fixed before the run. **Part II** is the detector itself: a pooled, tiered phishing detector (URL model, page model, domain checks) shipped as a Chrome extension with a FastAPI backend, with allowlist and blocklist layers and plain-English reasons for every warning.
 
@@ -43,6 +112,7 @@ A plain "classifier on a static phishing dataset" is common. Novelty here is in 
 
 Chapter 2 gives the background and the questions. Chapters 3 and 4 are Part I, the evaluation study. Chapters 5 to 9 are Part II: data, features and models, the extension and backend, the evaluation of the detector, and the limitations. Chapter 10 concludes. Results from Part I are not used as evidence for Part II, or the reverse.
 
+
 # 2. Background and questions
 
 ## 2.1 Why one benchmark score misleads
@@ -66,6 +136,7 @@ A second, exploratory part repeats the representation idea on page HTML (Section
 ## 2.3 Related datasets and tools
 
 The study and the detector draw on public datasets (PhreshPhish, PhiUSIIL, URL-Phish, PhishStorm, Phishpedia, Phish-Blitz) and live feeds (OpenPhish, Phishing.Database). Only the URL, label, date and page HTML are read from any of them; no dataset's precomputed feature columns are used, because one such column (a similarity index) alone identifies PhiUSIIL's legitimate class. Features follow the published definitions of Hannousse and Yahiouche and of PhiUSIIL, re-implemented in one engine. Models are LightGBM, XGBoost, logistic regression and a character n-gram TF-IDF linear model.
+
 
 # 3. Part I: design and method
 
@@ -106,6 +177,7 @@ LightGBM, XGBoost, logistic regression on the 99 URL features, and character n-g
 ## 3.4 The rule for calling a result consistent
 
 A setting (one cell and model, or one pair of cells) *holds* when the direction is the same in at least 9 of 10 splits and the pooled bootstrap 95% interval excludes the null. A question's answer **holds** if it holds in at least 80% of its testable settings, **holds in part** at 50 to 80%, and **does not hold** below 50%; with fewer than 3 testable settings it is **not testable**. A setting is testable with at least 500 URLs and 100 domains per class. The rule and `configs/phishguard.yaml` were frozen at commit `082b058` before any result was seen. "Does not hold" describes this design's data; it is not a claim that the effect is absent elsewhere.
+
 # 4. Part I: results
 
 ## 4.1 Q1: representation sensitivity (holds)
@@ -283,6 +355,7 @@ Four cells (Phishpedia or PhreshPhish phishing against PhreshPhish or crawled le
 | Q5 Platform masking | no hosting-platform domains remain after the 5-per-domain cap | Not testable | Leave to a design that keeps platform domains. |
 | Q6 Independent transfer | R4 AUC 0.699 median, lowest 0.554, above 0.5 in every setting | Holds | Transfer stays above chance; the size varies. |
 | Q7 Natural pages | 15.2% flagged on natural pages at the cell's 1% threshold against 1.0% in-cell; 33% at the 0.5 threshold | Holds in part | Benchmark thresholds understate false alarms on natural pages. |
+
 # 5. Data and corpus
 
 Scope. These chapters describe PhishDrift, the software: a layered phishing detector shipped as a Chrome extension (Manifest V3) with a FastAPI backend. The evaluation study (Chapters 3 and 4) is not repeated here.
@@ -455,6 +528,45 @@ Start-up, once per browser session, takes 166 ms to parse the 11.7 MB model bund
 Screenshots are not available in this environment, so the interface is described in words. A suspicious verdict shows a small banner, in a closed shadow root at the top of the page, with the reasons and buttons to dismiss, trust the site or report a false alarm. A dangerous verdict replaces the page with a warning page that lists the reasons, offers "Take me back to safety", "Proceed anyway" and "Report false positive" (which sends only the domain). The toolbar popup shows the current verdict and its reasons. Screenshots of each state should be taken on the author's own browser for the final report.
 
 
+## 7.8 Screenshots
+
+The environment that built the system cannot browse, so these slots are for the author's own screenshots. Each slot says what the picture should show.
+
+::: {.slot}
+**Screenshot 1. A page judged safe.** [Paste screenshot here]{.fill}  
+Should show: a normal site open in Chrome with the PhishDrift icon showing no warning.
+:::
+
+::: {.slot}
+**Screenshot 2. Suspicious banner.** [Paste screenshot here]{.fill}  
+Should show: a page with the yellow banner at the top and its one-line reason.
+:::
+
+::: {.slot}
+**Screenshot 3. Dangerous warning page.** [Paste screenshot here]{.fill}  
+Should show: the full warning page with the plain-English reasons and the buttons.
+:::
+
+::: {.slot}
+**Screenshot 4. Popup with reasons.** [Paste screenshot here]{.fill}  
+Should show: the toolbar popup open on a flagged page, listing the reasons.
+:::
+
+::: {.slot}
+**Screenshot 5. Report a false alarm.** [Paste screenshot here]{.fill}  
+Should show: the button or form used to report a wrong warning (domain only is sent).
+:::
+
+::: {.slot}
+**Screenshot 6. URL check page, layer view.** [Paste screenshot here]{.fill}  
+Should show: one layer screen of the URL check page, for example the address-model gauge.
+:::
+
+::: {.slot}
+**Screenshot 7. URL check page, verdict.** [Paste screenshot here]{.fill}  
+Should show: the final verdict screen with the shield, reasons and score meter.
+:::
+
 # 8. Evaluation of the detector
 
 ## 8.1 Protocol
@@ -600,6 +712,23 @@ No model flags every natural page, so the homepage shortcut has not returned. Ev
 
 The shipped pipeline does better because of the allowlist and the page model. Offline, with the allowlist and the address model at both thresholds, 71 of the 2,555 natural pages are flagged (2.8%; 64 suspicious, 7 dangerous; 38 domains), and 71 of the 1,483 pages on sites outside the top 50,000 (4.8%) (`reports/shipped_verdicts.md`). With the page model, the password-field rules and the allowlist, 29 of 2,226 readable pages with HTML are warned (1.30%) and 11 are dangerous (0.49%); with the allowlist off the figures are 2.61% and 1.17% (`reports/page_fixes_fpr.md`). The rule that stops an address-only "dangerous" from opening the warning page cut the number of pages that would have been blocked from 11 to 6 of 2,373 with the allowlist on (30 to 23 with it off), without changing the warned share (`reports/address_only_blocks.md`). All of these are measured on stored HTML, not on a live page, and the natural set is Tranco-seeded.
 
+### 8.8.1 After retraining with deep legitimate pages of popular sites
+
+The address model's false alarms were attributed to benign training URLs that were mostly bare homepages (an explanation from the project log, not a separate test). A crawl of inner pages of popular sites (14,026 pages, robots.txt respected; the 2,555 natural pages were excluded from it) was added to the pool, the brand list was extended from 772 to 899 names, and the shipped split-0 model was retrained and exported on the project PC on 2026-10-21 (`docs/PROGRESS.md`, entry "Retrain on the pool with the popular-sites crawl").
+
+| measure | before retrain | after retrain |
+|---|---|---|
+| shipped extension, natural pages flagged (of 2,555) | 72 (2.82%) | 8 (0.3%, none dangerous) |
+| address model alone, natural pages flagged | 115 (4.5%) | 19 (0.7%) |
+| sites outside the top 50,000, flagged | 71 of 1,483 (4.8%) | 8 of 1,579 (0.5%) |
+| blend recall at FPR 1%, test | 73.7 (10-split median) | 74.2 (split 0) |
+| blend recall at FPR 1%, held-out PhishStorm | 71.5 (10-split median) | 71.0 (split 0) |
+| blend recall at FPR 1%, newest time slice | 84.2 (10-split median) | 81.7 (split 0) |
+
+Table 8.7b. Natural-page false alarms and recall before and after the retrain (`docs/PROGRESS.md`, 2026-10-21 entry; PC reports `reports/shipped_verdicts.md` and `data/models/reports_split0/blend2.md`, which are not in the repository copy).
+
+Read these numbers with care. The "after" recall figures come from one split, the "before" figures are medians over ten, so the two are not strictly comparable. The crawl hosts and the natural pages both come from popular-site lists, so some of the drop may reflect that similarity. The brand-list change went in together with the new data, so the two effects are not separated. The false-alarm rate on PhishStorm at the cal-side 1% threshold stays at 3.2%. The ten-split tables elsewhere in this chapter were produced before the retrain and have not been refreshed.
+
 ## 8.9 Negative controls
 
 | model | splits | mean ROC-AUC | min | max | flagged |
@@ -671,12 +800,13 @@ Blocklist coverage on the corpus is not measurable, because the test URLs come f
 - **Browsing study.** No systematic test on real sites with screenshots of false alarms. The sandbox cannot open real sites; the author's own use found one false alarm (section 8.12).
 - **Live backend lookups.** Backend response times and a live RDAP, DNS and TLS lookup against real feeds have not been measured; the extension's backend answers are placeholder rules.
 - **Safe Browsing and the language-model layer.** Google Safe Browsing is not integrated, and the optional second-opinion layer was not built. List signatures are off until a key is made on the backend machine.
-- **Model refresh.** The shipped address bundle was exported with the 67-name seed brand list while training used the reviewed list, and the brand list has since grown to 899; re-exporting on the project PC is pending, and the effect is not measured (`docs/PROGRESS.md`, 2026-10-19 and 2026-10-20). The popular-sites crawl, which should reduce false alarms on deep legitimate URLs, has not yet produced data.
+- **Model refresh.** The shipped model was retrained on 2026-10-21 for split 0 with the 899-name brand list and the popular-sites crawl (section 8.8.1). The ten-split tables in this chapter still describe the earlier model, and the effect of the new data and of the brand list is not separated.
 - **Blocklist coverage** (section 8.12), **screenshots** and **demo video** are not done.
 
 **Out of scope.** Phishing hosted on trusted platforms is masked in the URL tier and removed from tier C, so it is invisible to those tiers. Phishing on compromised legitimate sites and behind cloaking is largely invisible to all three. A learn-from-mistakes loop was designed (opt-in reports confirmed by an independent signal before they become labels, then a scheduled retrain that ships only if the held-out source, time slice and natural-page check are no worse) but not built; users can currently report only a false alarm, with the domain alone.
 
 **Known weaknesses of the extension.** A dangerous page can start loading before the warning replaces it, because `webNavigation` cannot block a navigation. A hosting zone that nobody has abused in the data is still trusted until it appears in a feed. A phishing page whose address alone is dangerous now renders with the banner until the page check completes (at most 5 seconds) before the warning page replaces it (`docs/PROGRESS.md`, 2026-10-20).
+
 
 # 10. Conclusion and future work
 
