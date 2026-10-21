@@ -932,3 +932,10 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   (`write_features` split out of `prepare`), `tests/test_phishguard_sensitivity.py`.
 - Results: none on real data yet (synthetic sources only). Frozen results are needed for the comparison (`--frozen`).
 - Next: run on the PC after the masking `count`, one heavy job at a time; add the side-by-side section to the report.
+
+### 2026-10-21 — Platform-masking test (Q5) run on the PC
+- `python -m phishguard.masking run` finished: 5 phishing sources x PhreshPhish legitimate (the only legitimate source with 500+
+  platform URLs), 2 models, 10 splits. Masking raised held-out R4 AUC in 0 of 10 settings (median gain between -0.014 and +0.012,
+  every interval spans 0): not replicated. Copy of the PC output in `reports/phishguard/HP_platform.md`. Cells share one legitimate
+  population, so they are not independent. Exploratory, outside the seven frozen verdicts.
+- Next: add to the report with the uncleaned-data condition; run `phishguard.sensitivity prepare` and `run` on the PC.
