@@ -850,3 +850,11 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   with the old `args.verbose` error, so the PC still lacks PR #37.
 - Next: update the PC from PR #37, rebuild the pool with `--reload popular`, retrain, re-measure false alarms.
 >>>>>>> origin/main
+
+### 2026-10-21 — Retrain stopped: meta_pool.parquet missing after the pool rebuild (cloud)
+- Ritvik's `refresh_brands.ps1 -Model` failed at "train the shipped split (0)": `data\processed\meta_pool.parquet` not found.
+  Cause (code): `write_parts` deletes every `*.parquet` in `data\processed` before writing, and nothing in the repo
+  wrote the `meta_<part>.parquet` files that `experiments/tier_a.load_part` reads (they were made by hand earlier).
+- Changed: `data_pipeline.pipeline.write_meta` (called at the end of every build) and `python -m data_pipeline meta`
+  (writes the three meta files from the part files without reading html). Test added.
+- Next: Ritvik runs `python -m data_pipeline meta`, then the training step again.
