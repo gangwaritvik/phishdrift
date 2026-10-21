@@ -3,6 +3,7 @@
 Outputs in data/processed/:
   pool.parquet, heldout_source.parquet, time_slice.parquet, eval_only.parquet
       schema columns + origin, domain_u2, uid, has_html, weight
+  meta_<part>.parquet   the same parts without the html column (read by experiments and features)
   splits.parquet   uid + split_0..split_9 (train / cal / test) for the pool
   manifest.json    configs, counts and removal stats
 """
@@ -17,7 +18,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from data_pipeline.corpus import POOL, build_corpus, enforce_depth
+from data_pipeline.corpus import HELDOUT, POOL, TIME_SLICE, build_corpus, enforce_depth
 from data_pipeline.datacard import build_card, write_card
 from data_pipeline.split import grouped_splits
 from phishdrift.schema import BOOKKEEPING, COLUMNS
@@ -87,6 +88,19 @@ def write_parts(interim: dict[str, Path], corpus: pd.DataFrame, out_dir: Path) -
     return counts
 
 
+def write_meta(out_dir: Path) -> list[str]:
+    """meta_<part>.parquet = each part file minus its html column (html is never read)."""
+    done = []
+    for part in (POOL, TIME_SLICE, HELDOUT):
+        src = out_dir / f"{part}.parquet"
+        if not src.exists():
+            continue
+        cols = [c for c in pq.ParquetFile(src).schema_arrow.names if c != "html"]
+        pq.write_table(pq.read_table(src, columns=cols), out_dir / f"meta_{part}.parquet")
+        done.append(part)
+    return done
+
+
 def build(
     interim: dict[str, Path],
     cfg: dict,
@@ -114,6 +128,7 @@ def build(
 
     out_dir = Path(cfg["paths"]["processed_dir"])
     counts = write_parts(interim, corpus, out_dir)
+    write_meta(out_dir)
     splits.assign(uid=pool["uid"].to_numpy()).to_parquet(out_dir / "splits.parquet", index=False)
     manifest = {
         "sources": list(interim),

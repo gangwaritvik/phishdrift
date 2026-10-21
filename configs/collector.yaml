@@ -70,6 +70,14 @@ crawler:                               # benign inner pages; robots.txt and Craw
       retry_errors: true               # sites that failed or timed out are tried again next run
       domains_per_run: 1500
       include_homepage: false
+    popular_urls:                      # CrUX hosts, sitemap URLs only: no page download, up to 20 per site
+      from: crux
+      source: popular                  # pages belong to the "popular" source
+      scheduled: false
+      retry_errors: true
+      domains_per_run: 5000
+      include_homepage: false
+      crawl: {store_html: false, inner_pages_max: 20}   # overrides of the crawler section for this set
     commoncrawl:                       # CrUX hosts, URLs from the Common Crawl index (no HTML)
       from: commoncrawl
       source: popular                  # pages belong to the "popular" source with the crawled ones
@@ -110,6 +118,7 @@ popular:
     connect_timeout_s: 30              # its connections are slow to open (8 s timed out for every site)
     retries: 4                         # resets and timeouts are retried with a growing wait
     backoff_factor: 3.0
+    max_consecutive_errors: 6          # that many sites in a row failing: the index is down, stop this run
     fetch_limit: 300                   # CDX lines read at the chosen index page
     per_host: 10                       # deep URLs kept per host
     min_pages: 3                       # fewer is logged as few_pages

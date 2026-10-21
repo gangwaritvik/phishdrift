@@ -659,6 +659,33 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   `scripts\refresh_brands.ps1 -Model` runs on the PC; brand-to-domain map needs Wikidata (PC).
 - Open: Ritvik's review of the list (left-out candidates: halifax and huntington recommended).
 
+### 2026-10-19 — Known gaps: local addresses, zone-aware scoring (measured, not shipped)
+- Found while checking red-team gap 13 (IP hosts): public IP hosts are already warned (dangerous) by the address
+  model, but so are local ones. `http://192.168.0.1/` (a router), `http://127.0.0.1:8000/login` and
+  `http://localhost:3000/` got the warning page or a banner. Changed: `isLocalAddress` in
+  `extension/src/address.js` (localhost and `*.localhost`, `.local`, `.lan`, `.internal`, `.home.arpa`,
+  `.localdomain`, `.intranet`, private / loopback / link-local IPv4 and IPv6, single-label intranet names); such
+  addresses are not scored and `combine` returns safe with a note (a blocklist hit still warns). None of the 3,250
+  list-test URLs or the 300 OpenPhish URLs is local, so no measured number changes. Tests in
+  `extension/test/{address,combine}.test.js`; `npm test` extension 56 pass, e2e smoke 16 steps pass.
+- Lists gap 8 (pages inside learned open-hosting zones are read by the model as the big site's own address):
+  `python -m experiments.zone_masking --cases <list test cases>` (`reports/zone_masking.md`) scores every case URL
+  inside a zone as shipped and with the zone masked like a platform-list domain. Masking warns on 203 of 256
+  phishing tenant URLs against 160 (sites.google.com 16 -> 59 of 100), but on 71 of 134 legitimate ones against 13:
+  every generated Google Drive file link (20 of 20, all dangerous) and every Docs document link, and platform pages
+  such as `notion.so/help` and `sites.google.com/new`. A capped variant (banner only at the dangerous threshold)
+  gives 173 and 36. Not shipped: the model's prior for hosting platforms is too high for big-site zones, so tenant
+  pages there stay with the page model. Also measured: as shipped, 10 of 20 generated Drive file links already get
+  a suspicious banner from the address model (the page model may clear them; not measured in a browser).
+- Red-team gap 5 (train/serve HTML): `python -m experiments.render_gap_offline` (`reports/render_gap_offline.md`) renders the
+  2,373 natural legitimate pages' stored HTML in headless Chromium (offline: inline scripts run, external scripts,
+  styles and frames do not), serialises the DOM as `content.js` does and scores raw and rendered through
+  `js/bench/page_verdicts.mjs`. 2,334 rendered (39 failed). False alarms with the allowlist: 36 -> 36 warned
+  (1.54%), dangerous 11 -> 10; without it 69 -> 67 warned, 30 -> 28 dangerous. No page went from safe to warned;
+  median page-score change 0.000 (95th percentile 0.018). A lower bound: median rendered/raw length is 1.00 because
+  external scripts did not run. The live-rendering number needs the PC: `scripts/render_ood.ps1` with `experiments/render_gap.py` (brand thread) does that.
+- Still open (need Ritvik's PC): `python -m backend make-signing-key` + rebuild, and the Tranco `build-lists`
+  run; live rendering for gap 5. Brand list additions (Slack, Revolut, Swiggy) are with the brand thread.
 ### 2026-10-20 — URL check page without the extension (cloud)
 - Changed: `demo/` (`index.html`, `app.js`, `check.js`, `__main__.py`): `python -m demo` serves the repository on
   127.0.0.1 and opens a page where a pasted address gets the extension's verdict, score (against the suspicious and
@@ -764,6 +791,19 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Not measured: whether the index now answers (needs the PC). The crawler (`popular`) results of the same test run
   were not seen by me.
 
+### 2026-10-20 — Popular-sites crawl, second PC test: crawler works, Common Crawl index still unreachable (cloud)
+- Read Ritvik's log (`data/logs/popular_crawl_2026-10-20.log`, staged from the PC). The new code was running (retries
+  with a 30 s connect timeout). Crawler seed set `popular`, 20 sites per test: 34 to 58 pages from 7 to 12 sites with
+  pages (about 2 pages per site; 4 runs at 22:45, 23:08, 23:25, 23:28). Common Crawl seed set: 20 of 20 `error` in
+  every run; the last run took 17 minutes and the log has 73 connect timeouts (30 s) and 3 connection resets from
+  `index.commoncrawl.org`, so the PC's connection to the index server mostly never opens (the collection list loads,
+  the index queries do not). Cause on the server or the network side; not fixed by retries.
+- Changed: the summary command crashed (`args.verbose` missing on its parser: my bug in PR #34); the index seed set now
+  stops after `max_consecutive_errors` (6) sites in a row fail and leaves the rest untried; `run_popular_crawl.ps1`
+  runs the crawler only by default (`-Seeds popular,commoncrawl` adds the index). Tests added.
+- Next: Ritvik runs the crawler at full size (about 2 pages per site, so 1,500 sites is roughly 3,000 pages;
+  estimate); the index can be tried again later.
+
 ### 2026-10-20 — PhishGuard verification study run (research study, separate from the PhishDrift detector)
 - New `phishguard/` package, `configs/phishguard.yaml` (plan and replication rule frozen at commit 082b058 before
   the run), `tests/test_phishguard.py`. One command: `python -m phishguard all` (resumable, one result file per job).
@@ -799,3 +839,44 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Checked in a scratch folder with Claude Code 2.1.304: after the folder is trusted, `claude plugin install
   <name>@stitch-skills --scope project` installs all three and the 16 skills load.
 - Next: on the PC, run the three install commands once from the repo folder and add the Stitch MCP server locally.
+### 2026-10-20 — Addresses-only seed set `popular_urls` for lakhs of legitimate inner pages (cloud, code only)
+- Ritvik asked for lakhs of legitimate inner pages. The sandbox cannot reach Common Crawl, Hugging Face, Tranco or Kaggle
+  (proxy 403), so everything runs on the PC. Chosen (decision card): addresses first, HTML at scale second.
+- Changed: `collector/benign.py` seed sets can override crawler settings with `crawl:`; new seed set `popular_urls` in
+  `configs/collector.yaml` (CrUX hosts, `store_html: false`, `inner_pages_max: 20`, pages belong to source `popular`),
+  included in `popular-summary`; test in `tests/test_collector_popular.py`.
+- Not measured: yield per site, time, effect on false alarms. Estimate only: 8-10 addresses per site, about 1 hour per lakh.
+- Known limit before a big HTML crawl: `store.write_crawl` rewrites the whole day file at each checkpoint and `load_crawl`
+  loads all HTML at once; the HTML round needs part files and a streaming load.
+- Next: Ritvik's 10k-page rebuild finishes first; then a 500-site test of `popular_urls`.
+
+### 2026-10-21 — Popular-sites crawler, 5,000-site pass (cloud)
+- Ritvik's PC run (log excerpt, not the file): 5,000 sites, 10,818 deep pages; status ok 2,133, no_pages 1,295,
+  robots_disallow_all 891, few_pages 364, robots_unreadable 303, crawl_delay_too_long 14. The end-of-run summary crashed
+  with the old `args.verbose` error, so the PC still lacks PR #37.
+- Next: update the PC from PR #37, rebuild the pool with `--reload popular`, retrain, re-measure false alarms.
+
+### 2026-10-21 — Retrain stopped: meta_pool.parquet missing after the pool rebuild (cloud)
+- Ritvik's `refresh_brands.ps1 -Model` failed at "train the shipped split (0)": `data\processed\meta_pool.parquet` not found.
+  Cause (code): `write_parts` deletes every `*.parquet` in `data\processed` before writing, and nothing in the repo
+  wrote the `meta_<part>.parquet` files that `experiments/tier_a.load_part` reads (they were made by hand earlier).
+- Changed: `data_pipeline.pipeline.write_meta` (called at the end of every build) and `python -m data_pipeline meta`
+  (writes the three meta files from the part files without reading html). Test added.
+- Next: Ritvik runs `python -m data_pipeline meta`, then the training step again.
+
+### 2026-10-21 — shipped_verdicts crashed on Windows (cloud)
+- `python -m experiments.shipped_verdicts` failed on the PC with `UnicodeEncodeError` (cp1252) writing the URL list: a
+  natural page address contains a non-ASCII letter. Changed: the temp file and the node subprocess output are read and
+  written as UTF-8 (`experiments/shipped_verdicts.py`). Checked with two addresses incl. non-ASCII; not run on the PC.
+
+### 2026-10-21 — Retrain on the pool with the popular-sites crawl: false alarms on natural pages (PC run, read in the cloud)
+- Pool rebuilt with `--reload popular` (14,026 crawled inner pages from the 5,000-site pass plus earlier tests; the lakh
+  address-only pass was run before the rebuild), then `refresh_brands.ps1 -Model` (tier A and B features, split 0 trained,
+  models exported, extension built) on the PC. Both changes (new benign data, 899-brand list) went in together.
+- Results (`reports/shipped_verdicts.md`, `data/models/reports_split0/blend2.md` from the PC; the natural pages were excluded from
+  the crawl): shipped extension flags 8 of 2,555 natural legitimate pages (0.3%, none dangerous; was 72, 2.82%); address model
+  alone 19 (0.7%; was 115, 4.5%); sites outside the top 50,000: 8 of 1,579 (0.5%; was 71 of 1,483, 4.8%). Split 0 blend recall at
+  FPR 1%: test 74.2, held-out PhishStorm 71.0, time slice 81.7 (earlier 10-split medians 73.7, 71.5, 84.2). PhishStorm cal 1% FPR 3.2%.
+- Caveats: one split against earlier 10-split medians; crawl hosts and natural pages both come from popular-site lists;
+  brand-list change not separated. The 10-split tables in `reports/` are not refreshed.
+- Next: rerun the 10-split blend (`experiments.blend2`) on the new pool for the report numbers; `shipped_verdicts` encoding fix is PR #41.

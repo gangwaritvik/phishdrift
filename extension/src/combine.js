@@ -26,6 +26,7 @@ export const DANGEROUS = 2;
 export const BLOCKLIST_REASON = "This address is on a list of known phishing sites.";
 export const NO_ADDRESS_REASON = "This page asks for a password or card details but has no web address of its own.";
 export const NO_ADDRESS_NOTE = "This page has no web address to check.";
+export const LOCAL_NOTE = "This is an address on your computer or local network, which PhishDrift does not check.";
 export const ADDRESS_ONLY_NOTE =
   "The address looks like phishing, but this page does not ask for a password or payment details, so it was not blocked.";
 
@@ -42,6 +43,7 @@ export const addressOnly = (result) => result?.verdict === DANGEROUS && result.l
 //   domain: {risk, signals:[{severity,text}]} | null,   backend answer
 //   backendFailed: bool,
 //   unscored: bool,              the document has no web address (address.js effectiveUrl)
+//   local: bool,                 this computer or the local network (address.js isLocalAddress)
 // }
 // page: {hasPassword, credFormCrossDomain, credFormInsecure, asksCredentials} | null (pagefacts.js)
 // pageModel: {hasHtml, blended, verdict, pageDangerous, reasons:[{text}], allowedPageWarning?} | null
@@ -58,7 +60,7 @@ export function combine(layers, page = null, pageModel = null, brand = null) {
 // verdict, never acts on user-trusted or blocklisted addresses, and on an allowlisted page (or a
 // short link) only the page rule applies and only up to suspicious.
 export function brandEscalate(out, brand, layers) {
-  if (!brand || layers.trusted || out.layer === "blocklist" || out.layer === "none") return out;
+  if (!brand || layers.trusted || out.layer === "blocklist" || out.layer === "none" || out.layer === "local") return out;
   const addressTrusted = out.layer === "allowlist" || out.layer === "shortener" || layers.allow || layers.shortener;
   const address = addressTrusted ? [] : (brand.address ?? []);
   const pageHit = brand.page ?? null;
@@ -80,6 +82,7 @@ function combineLayers(layers, page = null, pageModel = null) {
     return { ...out, verdict: DANGEROUS, layer: "blocklist", reasons: [BLOCKLIST_REASON] };
   }
   if (layers.trusted) return { ...out, layer: "user-trusted" };
+  if (layers.local) return { ...out, layer: "local", notes: [LOCAL_NOTE] };
   // Allowlisted pages and short links skip the address model, but not the page: a site anyone can
   // publish on (forms, file shares, link pages) is only as safe as the page it serves. The page
   // model warns there only on strong evidence (page.js `allowedPageWarning`), and never more than

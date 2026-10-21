@@ -103,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--reload", nargs="+", choices=all_sources, help="with --reuse-interim")
     i = sub.add_parser("inspect", help="print raw columns of a source")
     i.add_argument("source", choices=all_sources)
+    sub.add_parser("meta", help="write meta_<part>.parquet (no html) from the processed part files")
     sub.add_parser("seeds", help="write crawl seed lists from homepage-only sources")
     args = parser.parse_args(argv)
     logging.basicConfig(
@@ -110,6 +111,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     if args.cmd == "inspect":
         print(sources.inspect(args.source, _config()))
+        return 0
+    if args.cmd == "meta":
+        from data_pipeline.pipeline import write_meta
+
+        done = write_meta(Path(_config()["paths"]["processed_dir"]))
+        print("wrote meta files for:", ", ".join(done))
         return 0
     if args.cmd == "seeds":
         write_seeds(_config())
