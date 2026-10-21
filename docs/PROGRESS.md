@@ -858,3 +858,8 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Changed: `data_pipeline.pipeline.write_meta` (called at the end of every build) and `python -m data_pipeline meta`
   (writes the three meta files from the part files without reading html). Test added.
 - Next: Ritvik runs `python -m data_pipeline meta`, then the training step again.
+
+### 2026-10-21 — shipped_verdicts crashed on Windows (cloud)
+- `python -m experiments.shipped_verdicts` failed on the PC with `UnicodeEncodeError` (cp1252) writing the URL list: a
+  natural page address contains a non-ASCII letter. Changed: the temp file and the node subprocess output are read and
+  written as UTF-8 (`experiments/shipped_verdicts.py`). Checked with two addresses incl. non-ASCII; not run on the PC.
