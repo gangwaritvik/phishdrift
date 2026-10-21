@@ -953,3 +953,6 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 
 ### 2026-10-21 — PBL report: Q5 wording aligned with the masking test
 - Q5 is now "not testable in the main design" in the heading, summary, claims table and chapter 5; each points to Section 4.14 (exploratory test, no effect detected). No result or cut-off changed. Files: `scripts/build_pbl.py`, `phishguard/report.py`, `reports/phishguard/report/phishguard_report.md`, `reports/pbl/`.
+
+### 2026-10-21 — PBL report: Q5 wording aligned with the masking test
+- Q5 is now "not testable in the main design" in the heading, summary, claims table and chapter 5; each points to Section 4.14 (exploratory test, no effect detected). No result or cut-off changed. Files: `scripts/build_pbl.py`, `phishguard/report.py`, `reports/phishguard/report/phishguard_report.md`, `reports/pbl/`.
