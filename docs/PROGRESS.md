@@ -659,7 +659,6 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   `scripts\refresh_brands.ps1 -Model` runs on the PC; brand-to-domain map needs Wikidata (PC).
 - Open: Ritvik's review of the list (left-out candidates: halifax and huntington recommended).
 
-<<<<<<< HEAD
 ### 2026-10-19 — Known gaps: local addresses, zone-aware scoring (measured, not shipped)
 - Found while checking red-team gap 13 (IP hosts): public IP hosts are already warned (dangerous) by the address
   model, but so are local ones. `http://192.168.0.1/` (a router), `http://127.0.0.1:8000/login` and
@@ -687,7 +686,6 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   external scripts did not run. The live-rendering number needs the PC: `scripts/render_ood.ps1` with `experiments/render_gap.py` (brand thread) does that.
 - Still open (need Ritvik's PC): `python -m backend make-signing-key` + rebuild, and the Tranco `build-lists`
   run; live rendering for gap 5. Brand list additions (Slack, Revolut, Swiggy) are with the brand thread.
-=======
 ### 2026-10-20 — URL check page without the extension (cloud)
 - Changed: `demo/` (`index.html`, `app.js`, `check.js`, `__main__.py`): `python -m demo` serves the repository on
   127.0.0.1 and opens a page where a pasted address gets the extension's verdict, score (against the suspicious and
@@ -833,6 +831,14 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   not a leak (a leak pushes above 0.5); the same model at R4 and in the other 24 cells was not flagged.
 - Next: write both into the study report as limitations; optionally rerun the control unweighted / larger leaves.
 
+### 2026-10-20 — Google Stitch skills enabled for the project (cloud)
+- Changed: `.claude/settings.json` declares an inline marketplace `stitch-skills` with the three plugins of
+  `google-labs-code/stitch-skills` (Apache-2.0; `stitch-design`, `stitch-build`, `stitch-utilities`, 16 skills),
+  pinned to commit 0337446, and enables them. Skills only: no hooks, no MCP server config, no install scripts.
+  Several skills call the Stitch MCP server and some pass a Stitch API key to scripts; the key stays on the PC.
+- Checked in a scratch folder with Claude Code 2.1.304: after the folder is trusted, `claude plugin install
+  <name>@stitch-skills --scope project` installs all three and the 16 skills load.
+- Next: on the PC, run the three install commands once from the repo folder and add the Stitch MCP server locally.
 ### 2026-10-20 — Addresses-only seed set `popular_urls` for lakhs of legitimate inner pages (cloud, code only)
 - Ritvik asked for lakhs of legitimate inner pages. The sandbox cannot reach Common Crawl, Hugging Face, Tranco or Kaggle
   (proxy 403), so everything runs on the PC. Chosen (decision card): addresses first, HTML at scale second.
@@ -849,7 +855,6 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   robots_disallow_all 891, few_pages 364, robots_unreadable 303, crawl_delay_too_long 14. The end-of-run summary crashed
   with the old `args.verbose` error, so the PC still lacks PR #37.
 - Next: update the PC from PR #37, rebuild the pool with `--reload popular`, retrain, re-measure false alarms.
->>>>>>> origin/main
 
 ### 2026-10-21 — Retrain stopped: meta_pool.parquet missing after the pool rebuild (cloud)
 - Ritvik's `refresh_brands.ps1 -Model` failed at "train the shipped split (0)": `data\processed\meta_pool.parquet` not found.
