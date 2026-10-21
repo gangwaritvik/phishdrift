@@ -115,6 +115,21 @@ def prepare(
     out.mkdir(parents=True, exist_ok=True)
     fb = pd.read_parquet(data / "features_b.parquet")
     pops = build_populations(data, cfg, set(fb["uid"]))
+    write_features(pops, out, lists, workers)
+    fb[fb["uid"].isin(set(pops["uid"]))].to_parquet(out / "features_page.parquet", index=False)
+    if natural_urls is not None and not (out / "natural_a.parquet").exists():
+        nat = pd.read_csv(natural_urls)
+        nat = nat[nat["ok"].astype(bool)].drop_duplicates("url")
+        feats = featurise(nat["url"].tolist(), lists, workers)
+        feats["url"] = nat["url"].to_numpy()
+        feats["_rep_url"] = feats["url"]
+        feats["domain"] = nat["domain"].astype(str).str.lower().to_numpy()
+        feats.to_parquet(out / "natural_a.parquet", index=False)
+
+
+def write_features(pops: pd.DataFrame, out: Path, lists: Lists, workers: int) -> None:
+    """Write populations.parquet and the feature cache of every representation (plus R4u)."""
+    out.mkdir(parents=True, exist_ok=True)
     pops.to_parquet(out / "populations.parquet", index=False)
     rows = pops.drop_duplicates("uid")
     for rep, lst in [*((r, lists) for r in REPS), ("R4u", unmasked(lists))]:
@@ -131,15 +146,6 @@ def prepare(
         feats["_rep_url"] = reps
         feats.to_parquet(path, index=False)
         print(f"features {rep}: {len(feats):,} rows", flush=True)
-    fb[fb["uid"].isin(set(pops["uid"]))].to_parquet(out / "features_page.parquet", index=False)
-    if natural_urls is not None and not (out / "natural_a.parquet").exists():
-        nat = pd.read_csv(natural_urls)
-        nat = nat[nat["ok"].astype(bool)].drop_duplicates("url")
-        feats = featurise(nat["url"].tolist(), lists, workers)
-        feats["url"] = nat["url"].to_numpy()
-        feats["_rep_url"] = feats["url"]
-        feats["domain"] = nat["domain"].astype(str).str.lower().to_numpy()
-        feats.to_parquet(out / "natural_a.parquet", index=False)
 
 
 def prepare_natural_b(html_dir: Path, out: Path, lists: Lists) -> None:

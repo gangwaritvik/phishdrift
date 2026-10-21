@@ -922,3 +922,13 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Caveats written in the report: one split against earlier 10-split medians, crawl and natural pages both from popular-site lists, brand
   list change not separated, PhishStorm false alarms 3.2%. The ten-split tables are not refreshed.
 - Not done: personal details on the front pages (waiting for Ritvik), screenshots, ten-split numbers after the retrain.
+
+### 2026-10-21 — Uncleaned-data condition for Q2, Q4 and the interaction check (cloud, script for the PC)
+- Why: pre-declared in `docs/PHISHGUARD_SENSITIVITY_PLAN.md` (729ccec) before any run: the three questions that did not hold
+  are re-tested on populations built without the cleaning, and both conditions are reported side by side.
+- Changed: `phishguard/sensitivity.py` (`python -m phishguard.sensitivity prepare|run|analyze|all`; no per-domain cap, no
+  shared-domain removal, no depth balancing; 20 cells without the crawl population; writes
+  `reports/phishguard/sensitivity_uncleaned.md` and `tables/sensitivity_{verdicts,ladder}.csv`), `phishguard/data.py`
+  (`write_features` split out of `prepare`), `tests/test_phishguard_sensitivity.py`.
+- Results: none on real data yet (synthetic sources only). Frozen results are needed for the comparison (`--frozen`).
+- Next: run on the PC after the masking `count`, one heavy job at a time; add the side-by-side section to the report.
