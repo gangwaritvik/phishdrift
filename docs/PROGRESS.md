@@ -863,3 +863,15 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - `python -m experiments.shipped_verdicts` failed on the PC with `UnicodeEncodeError` (cp1252) writing the URL list: a
   natural page address contains a non-ASCII letter. Changed: the temp file and the node subprocess output are read and
   written as UTF-8 (`experiments/shipped_verdicts.py`). Checked with two addresses incl. non-ASCII; not run on the PC.
+
+### 2026-10-21 — Retrain on the pool with the popular-sites crawl: false alarms on natural pages (PC run, read in the cloud)
+- Pool rebuilt with `--reload popular` (14,026 crawled inner pages from the 5,000-site pass plus earlier tests; the lakh
+  address-only pass was run before the rebuild), then `refresh_brands.ps1 -Model` (tier A and B features, split 0 trained,
+  models exported, extension built) on the PC. Both changes (new benign data, 899-brand list) went in together.
+- Results (`reports/shipped_verdicts.md`, `data/models/reports_split0/blend2.md` from the PC; the natural pages were excluded from
+  the crawl): shipped extension flags 8 of 2,555 natural legitimate pages (0.3%, none dangerous; was 72, 2.82%); address model
+  alone 19 (0.7%; was 115, 4.5%); sites outside the top 50,000: 8 of 1,579 (0.5%; was 71 of 1,483, 4.8%). Split 0 blend recall at
+  FPR 1%: test 74.2, held-out PhishStorm 71.0, time slice 81.7 (earlier 10-split medians 73.7, 71.5, 84.2). PhishStorm cal 1% FPR 3.2%.
+- Caveats: one split against earlier 10-split medians; crawl hosts and natural pages both come from popular-site lists;
+  brand-list change not separated. The 10-split tables in `reports/` are not refreshed.
+- Next: rerun the 10-split blend (`experiments.blend2`) on the new pool for the report numbers; `shipped_verdicts` encoding fix is PR #41.
