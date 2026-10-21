@@ -875,3 +875,15 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Caveats: one split against earlier 10-split medians; crawl hosts and natural pages both come from popular-site lists;
   brand-list change not separated. The 10-split tables in `reports/` are not refreshed.
 - Next: rerun the 10-split blend (`experiments.blend2`) on the new pool for the report numbers; `shipped_verdicts` encoding fix is PR #41.
+
+### 2026-10-21 — 10-split blend2 rerun on the pool with the popular-sites crawl (cloud)
+- `python -m experiments.blend2` over 10 domain-grouped splits on the rebuilt pool and 899-brand list, 4 processes in
+  parallel (`PHISHDRIFT_THREADS=1`, one reports dir each, then merged). Files: `reports/blend2.md`, `reports/blend2_rules.md`,
+  `reports/blend2_fair.md`, `reports/tables/blend2_*.csv`. Allowlist and blocklist off; median [min, max].
+- Results (shipped `agree` rule, warned recall / false alarms): test 71.6 / 0.9; test with HTML 87.7 / 0.4; time slice
+  77.5 / 0.8 (blend 81.3 / 1.1); held-out PhishStorm 79.0 / 3.0 (a_only 77.9 / 2.7; `_ws` rules 76.9 / 2.3); natural
+  legitimate pages (2,555, no HTML) 1.0 false alarms, dangerous 0.2 (before the crawl: 5.3 / 1.1). Pooled 1% address
+  threshold 0.7042 vs source-robust 0.8101 (set by phreshphish in all 10 splits).
+- Reading: the false-alarm gain on natural pages holds over 10 splits; recall is about flat (blend test 73.3 vs 73.7
+  before, time slice 81.3 vs 84.2). Brand-list change not separated from the crawl.
+- Next: `experiments.threshold_transfer` (PhishStorm false alarms), then brand candidates from feed evidence.
