@@ -269,7 +269,7 @@ def reframe_drift(t: str) -> str:
     t = sub(
         t,
         ", following the prior report's result that masking raised held-out AUC in 60 of 60 comparisons",
-        ", so that platform identity cannot stand in for phishing (the effect of masking was not testable in Chapter 4: no platform domains remain in the study cells)",
+        ", so that platform identity cannot stand in for phishing (in Chapter 4 the main design left no platform domains to mask, and an exploratory test in Section 4.14 detected no effect)",
     )
     t = sub(
         t,

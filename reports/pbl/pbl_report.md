@@ -252,9 +252,9 @@ The median SD is 0.006 for R4 and 0.002 for R1, and the largest R4 SD is 0.019. 
 
 ![Figure 4.6. SD of AUC across ten splits, raw against R4, one point per cell and model.](fig06_split.png)
 
-## 4.5 Q5: platform masking (not testable)
+## 4.5 Q5: platform masking (not testable in the main design)
 
-Masking replaces hosting-platform domains with a neutral token. The caps used here leave no registrable domain on a hosting platform in any cell, so there is nothing to mask and the finding cannot be tested. A design that keeps platform domains is future work.
+Masking replaces hosting-platform domains with a neutral token. The caps used here leave no registrable domain on a hosting platform in any cell, so there is nothing to mask and the finding cannot be tested in this design. A separate exploratory test that keeps platform domains found no measurable effect of masking (Section 4.14).
 
 ## 4.6 Q6: independent-benign transfer (holds)
 
@@ -335,7 +335,7 @@ Four cells (Phishpedia or PhreshPhish phishing against PhreshPhish or crawled le
 ## 4.12 Limitations of the study
 
 - **Sources.** Two sources (PhiUSIIL, PhishStorm) are homepage-heavy or old; PhishTank is not in the pool. Results describe these public datasets.
-- **Not testable.** Q5, and per-source temporal effects: PhiUSIIL carries no per-row dates.
+- **Not testable in the main design.** Q5 (an exploratory test is in Section 4.14), and per-source temporal effects: PhiUSIIL carries no per-row dates.
 - **Sample size.** Cells use up to 10,000 URLs per class with 5 per domain; this lowers cross-split variability compared with a larger pool.
 - **Feature engine.** R3 equals R2 by construction, because the engine drops a leading `www`.
 - **Control.** One of 100 shuffled-label controls is flagged (below chance, one cell).
@@ -409,7 +409,7 @@ Masking raised the held-out score in none of the 10 settings (five phishing sour
 | Q2 Where the drop sits | median host/subdomain share 0.21 on the study cells; on raw PhiUSIIL alone 0.76 (XGBoost), falling to 0.36 after cleaning | Does not hold | Say the host/subdomain share depends on how the benchmark is prepared: it is high on the raw benchmark and low on cleaned pools. |
 | Q3 Source dependence | swapping one source moves R4 AUC by a median 0.058; CI excludes 0 in 76% of settings, 53% after depth reweighting | Holds in part | Real in some pairs, absent in others; reweighting for depth halves it. |
 | Q4 Split sensitivity | median SD 0.006 (R4) against 0.002 (R1); larger than 3x in 45% of settings, largest 0.019 | Does not hold | Split variability matters but the 3x margin is not general. |
-| Q5 Platform masking | no hosting-platform domains remain after the 5-per-domain cap | Not testable | Leave to a design that keeps platform domains. |
+| Q5 Platform masking | no hosting-platform domains remain after the 5-per-domain cap | Not testable in the main design | Exploratory test (Section 4.14): no effect detected. |
 | Q6 Independent transfer | R4 AUC 0.699 median, lowest 0.554, above 0.5 in every setting | Holds | Transfer stays above chance; the size varies. |
 | Q7 Natural pages | 15.2% flagged on natural pages at the cell's 1% threshold against 1.0% in-cell; 33% at the 0.5 threshold | Holds in part | Benchmark thresholds understate false alarms on natural pages. |
 
@@ -489,7 +489,7 @@ All features come from one engine, `extract(url, html, domain_info)`, with missi
 
 Table 6.1. Feature tiers (`reports/hybrid2.md`, `reports/tier_b.md`, `reports/tier_c.md`).
 
-Two rules protect the models from leakage. Popularity signals (Tranco rank, traffic, search indexing) and blocklist membership are never model inputs; rank is used only to cut the allowlist. Registrable domains of hosting platforms (from the public suffix list's private section, `configs/platforms.yaml`) are replaced by a neutral token before URL features are computed, and only `is_hosting_platform` is exposed, so that platform identity cannot stand in for phishing (the effect of masking was not testable in Chapter 4: no platform domains remain in the study cells). Tier A features are ported to JavaScript and checked against Python on 272 fixed URLs in both test suites (`docs/PROGRESS.md`).
+Two rules protect the models from leakage. Popularity signals (Tranco rank, traffic, search indexing) and blocklist membership are never model inputs; rank is used only to cut the allowlist. Registrable domains of hosting platforms (from the public suffix list's private section, `configs/platforms.yaml`) are replaced by a neutral token before URL features are computed, and only `is_hosting_platform` is exposed, so that platform identity cannot stand in for phishing (in Chapter 4 the main design left no platform domains to mask, and an exploratory test in Section 4.14 detected no effect). Tier A features are ported to JavaScript and checked against Python on 272 fixed URLs in both test suites (`docs/PROGRESS.md`).
 
 A source-leakage check compared, for each tier A feature, how strongly it separates sources within a class against how strongly it separates the classes. 17 of 99 features were flagged, mostly path and length features (`n_slash`, `path_depth`, `entropy_url`, `url_len`). Dropping the 17 lowered held-out LightGBM ROC-AUC from 0.9168 to 0.8943 and recall at 1% FPR from 59.1 to 55.3 (`reports/tier_a.md`), so they were kept and the question is reported rather than hidden. None of the 84 tier B features was flagged (draft, from `reports/tables/feature_source_check_b.csv`).
 

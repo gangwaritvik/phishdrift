@@ -156,9 +156,9 @@ The first study saw R4 AUC vary far more across splits than raw AUC (SD up to 0.
 
 ![Figure 6. SD of AUC across ten splits, raw against R4, one point per cell and model.](fig06_split.png)
 
-## 4.5 HP: platform masking (not testable)
+## 4.5 HP: platform masking (not testable in the main design)
 
-Masking replaces hosting-platform domains with a neutral token. The caps used here leave no registrable domain on a hosting platform in any cell, so there is nothing to mask and the finding cannot be tested. A design that keeps platform domains is future work.
+Masking replaces hosting-platform domains with a neutral token. The caps used here leave no registrable domain on a hosting platform in any cell, so there is nothing to mask and the finding cannot be tested in this design. A separate exploratory test that keeps platform domains found no measurable effect of masking (Section 4.14).
 
 ## 4.6 H6: independent-benign transfer (replicated)
 
@@ -259,7 +259,7 @@ Four cells (Phishpedia or PhreshPhish phishing against PhreshPhish or crawled le
 # 8. Limitations
 
 - **Sources.** Two sources (PhiUSIIL, PhishStorm) are homepage-heavy or old; PhishTank is not in the pool. Results describe these public datasets.
-- **Not testable.** HP, and per-source temporal effects: PhiUSIIL carries no per-row dates.
+- **Not testable in the main design.** HP (an exploratory test is in Section 4.14), and per-source temporal effects: PhiUSIIL carries no per-row dates.
 - **Sample size.** Cells use up to 10,000 URLs per class with 5 per domain; this lowers cross-split variability compared with a larger pool.
 - **Feature engine.** 99 hand-built features replace the first study's 38; R3 equals R2 by construction.
 - **Control.** One of 100 shuffled-label controls is flagged (below chance, one cell).
@@ -276,7 +276,7 @@ Four cells (Phishpedia or PhreshPhish phishing against PhreshPhish or crawled le
 | F2 Where the drop sits | R1-R4 drop share in host/subdomain 0.870 (cell A), 0.563 (cell C) | median host/subdomain share 0.21 on the study cells; on raw PhiUSIIL alone 0.76 (XGBoost), falling to 0.36 after cleaning | Not replicated | Say the host/subdomain share depends on how the benchmark is prepared: it is high on the raw benchmark and low on cleaned pools. |
 | F3 Source dependence | swapping the phishing source moves R4 by 0.13-0.16 | swapping one source moves R4 AUC by a median 0.058; CI excludes 0 in 76% of settings, 53% after depth reweighting | Partly replicated | Real in some pairs, absent in others; reweighting for depth halves it. |
 | F4 Split sensitivity | R4 SD across 10 splits up to 0.1164 against at most 0.0026 for raw | median SD 0.006 (R4) against 0.002 (R1); larger than 3x in 45% of settings, largest 0.019 | Not replicated | Split variability matters but the 3x margin is not general. |
-| HP Platform masking | masking raised held-out R4 AUC in 60 of 60 pairs | no hosting-platform domains remain after the 5-per-domain cap | Not testable | Leave to a design that keeps platform domains. |
+| HP Platform masking | masking raised held-out R4 AUC in 60 of 60 pairs | no hosting-platform domains remain after the 5-per-domain cap | Not testable in the main design | Exploratory test (Section 4.14): no effect detected. |
 | H6 Independent transfer | R4 0.694 and 0.706, on 119 benign domains | R4 AUC 0.699 median, lowest 0.554, above 0.5 in every setting | Replicated | Transfer stays above chance; the size varies. |
 | OOD Natural pages | raw model 1.0 on natural legitimate pages against 0.00026 on the benchmark; normalised 0.090 | 15.2% flagged on natural pages at the cell's 1% threshold against 1.0% in-cell; 33% at the 0.5 threshold | Partly replicated | Benchmark thresholds understate false alarms on natural pages. |
 

@@ -950,3 +950,6 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Report: `scripts/build_pbl.py` adds 4.13 (second condition, side by side) and 4.14 (platform masking, exploratory, no effect), claims
   section renumbered 4.15; abstract and limitations updated. `reports/pbl/pbl_report.{md,pdf,docx}` rebuilt (47 pages), copies in `paper/`.
 - Note: one result file was damaged in the first upload and was re-sent; all 200 files then loaded.
+
+### 2026-10-21 — PBL report: Q5 wording aligned with the masking test
+- Q5 is now "not testable in the main design" in the heading, summary, claims table and chapter 5; each points to Section 4.14 (exploratory test, no effect detected). No result or cut-off changed. Files: `scripts/build_pbl.py`, `phishguard/report.py`, `reports/phishguard/report/phishguard_report.md`, `reports/pbl/`.

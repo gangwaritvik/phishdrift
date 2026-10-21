@@ -494,8 +494,8 @@ def build(run: Path, out: Path) -> Path:
             "HP Platform masking",
             FIRST["HP"],
             "no hosting-platform domains remain after the 5-per-domain cap",
-            "Not testable",
-            "Leave to a design that keeps platform domains.",
+            "Not testable in the main design",
+            "Exploratory test (Section 4.14): no effect detected.",
         ),
         (
             "H6 Independent transfer",
@@ -613,9 +613,9 @@ The first study saw R4 AUC vary far more across splits than raw AUC (SD up to 0.
 
 ![SD of AUC across ten splits, raw against R4, one point per cell and model.]({figs["split"]})
 
-## 4.5 HP: platform masking (not testable)
+## 4.5 HP: platform masking (not testable in the main design)
 
-Masking replaces hosting-platform domains with a neutral token. The caps used here leave no registrable domain on a hosting platform in any cell, so there is nothing to mask and the finding cannot be tested. A design that keeps platform domains is future work.
+Masking replaces hosting-platform domains with a neutral token. The caps used here leave no registrable domain on a hosting platform in any cell, so there is nothing to mask and the finding cannot be tested in this design. A separate exploratory test that keeps platform domains found no measurable effect of masking (Section 4.14).
 
 ## 4.6 H6: independent-benign transfer (replicated)
 
@@ -682,7 +682,7 @@ Four cells (Phishpedia or PhreshPhish phishing against PhreshPhish or crawled le
 # 8. Limitations
 
 - **Sources.** Two sources (PhiUSIIL, PhishStorm) are homepage-heavy or old; PhishTank is not in the pool. Results describe these public datasets.
-- **Not testable.** HP, and per-source temporal effects: PhiUSIIL carries no per-row dates.
+- **Not testable in the main design.** HP (an exploratory test is in Section 4.14), and per-source temporal effects: PhiUSIIL carries no per-row dates.
 - **Sample size.** Cells use up to 10,000 URLs per class with 5 per domain; this lowers cross-split variability compared with a larger pool.
 - **Feature engine.** 99 hand-built features replace the first study's 38; R3 equals R2 by construction.
 - **Control.** One of 100 shuffled-label controls is flagged (below chance, one cell).

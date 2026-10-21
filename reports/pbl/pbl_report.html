@@ -656,12 +656,13 @@ cell and domain-grouped splits the variability is small.</p>
 <figcaption aria-hidden="true"><strong style="color:#1f5f99;font-family:Carlito,Segoe UI,sans-serif">Figure 4.6.</strong> SD of AUC across ten splits,
 raw against R4, one point per cell and model.</figcaption>
 </figure>
-<h2 id="q5-platform-masking-not-testable">4.5 Q5: platform masking (not
-testable)</h2>
+<h2 id="q5-platform-masking-not-testable-in-the-main-design">4.5 Q5:
+platform masking (not testable in the main design)</h2>
 <p>Masking replaces hosting-platform domains with a neutral token. The
 caps used here leave no registrable domain on a hosting platform in any
-cell, so there is nothing to mask and the finding cannot be tested. A
-design that keeps platform domains is future work.</p>
+cell, so there is nothing to mask and the finding cannot be tested in
+this design. A separate exploratory test that keeps platform domains
+found no measurable effect of masking (Section 4.14).</p>
 <h2 id="q6-independent-benign-transfer-holds">4.6 Q6: independent-benign
 transfer (holds)</h2>
 <p>Models trained on one cell and evaluated on cells that share no
@@ -972,8 +973,9 @@ pages with HTML.</p>
 <li><strong>Sources.</strong> Two sources (PhiUSIIL, PhishStorm) are
 homepage-heavy or old; PhishTank is not in the pool. Results describe
 these public datasets.</li>
-<li><strong>Not testable.</strong> Q5, and per-source temporal effects:
-PhiUSIIL carries no per-row dates.</li>
+<li><strong>Not testable in the main design.</strong> Q5 (an exploratory
+test is in Section 4.14), and per-source temporal effects: PhiUSIIL
+carries no per-row dates.</li>
 <li><strong>Sample size.</strong> Cells use up to 10,000 URLs per class
 with 5 per domain; this lowers cross-split variability compared with a
 larger pool.</li>
@@ -1295,8 +1297,8 @@ settings, largest 0.019</td>
 <tr class="odd">
 <td>Q5 Platform masking</td>
 <td>no hosting-platform domains remain after the 5-per-domain cap</td>
-<td>Not testable</td>
-<td>Leave to a design that keeps platform domains.</td>
+<td>Not testable in the main design</td>
+<td>Exploratory test (Section 4.14): no effect detected.</td>
 </tr>
 <tr class="even">
 <td>Q6 Independent transfer</td>
@@ -1642,10 +1644,11 @@ hosting platforms (from the public suffix list’s private section,
 <code>configs/platforms.yaml</code>) are replaced by a neutral token
 before URL features are computed, and only
 <code>is_hosting_platform</code> is exposed, so that platform identity
-cannot stand in for phishing (the effect of masking was not testable in
-Chapter 4: no platform domains remain in the study cells). Tier A
-features are ported to JavaScript and checked against Python on 272
-fixed URLs in both test suites (<code>docs/PROGRESS.md</code>).</p>
+cannot stand in for phishing (in Chapter 4 the main design left no
+platform domains to mask, and an exploratory test in Section 4.14
+detected no effect). Tier A features are ported to JavaScript and
+checked against Python on 272 fixed URLs in both test suites
+(<code>docs/PROGRESS.md</code>).</p>
 <p>A source-leakage check compared, for each tier A feature, how
 strongly it separates sources within a class against how strongly it
 separates the classes. 17 of 99 features were flagged, mostly path and
