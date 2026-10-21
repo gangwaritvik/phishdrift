@@ -13,7 +13,7 @@
 import { sanitizeSettings } from "./config.js";
 import { addressOnly, combine, DANGEROUS, FRAME_PAGE_REASON, SAFE, SUSPICIOUS, framePageVerdict } from "./combine.js";
 import { listDomainKey, listUrlKey } from "./keys.js";
-import { MAX_URL_CHARS, effectiveUrl, scoreAddress } from "./address.js";
+import { MAX_URL_CHARS, effectiveUrl, isLocalAddress, scoreAddress } from "./address.js";
 import { DOMAIN_FAILURE_MS, usableAnswer } from "./domain.js";
 import { addTrust, liveTrust } from "./trust.js";
 import { safeExit, worse } from "./navigation.js";
@@ -235,11 +235,12 @@ async function layersFor(url) {
     blocked: listed.blocked,
     model: null,
     unscored: false,
+    local: isLocalAddress(url),
     lookalike: [],
   };
   // The model also runs on trusted addresses: trust can expire or be outweighed by a blocklist hit,
   // and the cached layers must not depend on it.
-  if (!layers.allow && !layers.shortener && !layers.blocked) {
+  if (!layers.allow && !layers.shortener && !layers.blocked && !layers.local) {
     layers.model = scoreAddress(model, url);
     try {
       layers.lookalike = addressSignals(await getRules(), url);
@@ -284,7 +285,7 @@ async function pageCheck(layers, url, html, facts, brandFacts = null) {
 async function frameCheck(target, html) {
   if (target === null || html == null || target.length > MAX_URL_CHARS) return null;
   const layers = await layersFor(target);
-  if (layers.allow || layers.shortener || layers.trusted || layers.blocked) return null;
+  if (layers.allow || layers.shortener || layers.trusted || layers.blocked || layers.local) return null;
   try {
     const [model, page] = await Promise.all([getModel(), getPage()]);
     const first = scorePage(model, page, target, html, { allowShort: true });

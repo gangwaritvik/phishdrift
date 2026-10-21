@@ -408,6 +408,7 @@ def crawl(
         chunk = max(1, int(cfg.get("checkpoint_every", 100)))
 
         include_home = scfg["include_homepage"]
+        site_cfg = {**cfg, **scfg.get("crawl", {})}  # per seed set: store_html, inner_pages_max
         endpoint = None
         if scfg["from"] == "commoncrawl":
             try:
@@ -423,6 +424,7 @@ def crawl(
             include_home: bool = include_home,
             endpoint: str | None = endpoint,
             seed_client: HttpClient = seed_client,
+            site_cfg: dict = site_cfg,
         ) -> DomainResult:
             i, domain = item
             try:
@@ -430,7 +432,7 @@ def crawl(
                     return popular.commoncrawl_pages(
                         seed_client, endpoint, domain, cfg["popular"], base_seed + i
                     )
-                return crawl_domain(seed_client, domain, cfg, base_seed + i, include_home)
+                return crawl_domain(seed_client, domain, site_cfg, base_seed + i, include_home)
             except Exception as exc:  # noqa: BLE001 - one bad site must not stop the run
                 log.debug("crawl %s: %s", domain, exc)
                 return DomainResult(domain, ERROR, [])

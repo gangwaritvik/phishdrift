@@ -70,6 +70,14 @@ crawler:                               # benign inner pages; robots.txt and Craw
       retry_errors: true               # sites that failed or timed out are tried again next run
       domains_per_run: 1500
       include_homepage: false
+    popular_urls:                      # CrUX hosts, sitemap URLs only: no page download, up to 20 per site
+      from: crux
+      source: popular                  # pages belong to the "popular" source
+      scheduled: false
+      retry_errors: true
+      domains_per_run: 5000
+      include_homepage: false
+      crawl: {store_html: false, inner_pages_max: 20}   # overrides of the crawler section for this set
     commoncrawl:                       # CrUX hosts, URLs from the Common Crawl index (no HTML)
       from: commoncrawl
       source: popular                  # pages belong to the "popular" source with the crawled ones

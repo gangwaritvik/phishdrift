@@ -3,9 +3,12 @@
 // the blocklist are not applied (both runs the same). Facts the content script would read from the
 // live DOM are read from the stored HTML with a simple tag scan (an approximation of the live page).
 //   node js/bench/page_verdicts.mjs DIST PAGES.jsonl [--no-allowlist] [--old]
+//     PAGES.jsonl: {url, html[, facts]}; `facts` (the content script's facts read from a live DOM,
+//     e.g. by js/bench/render_pages.mjs) replaces the tag scan when given
 //     DIST: an assembled extension/dist (node extension/build.mjs), possibly of an older commit
 //     --old: the pipeline before 2026-10-15 (page model may lower any verdict; no short pages)
-// -> JSON {n, rows: [{url, verdict, layer, address, frame, ...}]} on stdout (frame: the verdict
+// -> JSON {n, rows: [{url, verdict, layer, address, frame, page, ...}]} on stdout (page: the blended
+//    page score, probPage: the page model's raw probability, null when it could not read the page) (frame: the verdict
 //    as a credential frame, for pages that ask for credentials; null otherwise or with --old).
 
 import { createReadStream, readFileSync } from "node:fs";
@@ -67,12 +70,12 @@ const rows = [];
 const MAX_HTML_CHARS = 5_000_000; // the content script's cap
 for await (const line of createInterface({ input: createReadStream(pagesFile), crlfDelay: Infinity })) {
   if (!line.trim()) continue;
-  const { url, html: full } = JSON.parse(line);
+  const { url, html: full, facts: given } = JSON.parse(line);
   const html = full.slice(0, MAX_HTML_CHARS);
   const listed = await lists.check(url);
   const layers = { ...listed, trusted: false, model: null, domain: null, backendFailed: false, unscored: false };
   if (!listed.allow && !listed.shortener && !listed.blocked) layers.model = scoreAddress(model, url);
-  const f = facts(html, url);
+  const f = given ?? facts(html, url);
   const flags = pageFlags(f, url, model.lists.psl);
   const addressTrusted = listed.allow || listed.shortener;
   let pageModel = null;
@@ -91,6 +94,6 @@ for await (const line of createInterface({ input: createReadStream(pagesFile), c
     !old && framePageVerdict && asks && !addressTrusted
       ? framePageVerdict(scorePage(model, page, url, html, { allowShort: true }), page.thresholds)
       : null;
-  rows.push({ url, verdict: r.verdict, layer: r.layer, address, frame, hasHtml: Boolean(pageModel?.hasHtml), short: Boolean(pageModel?.short), creds: flags.asksCredentials ?? flags.hasPassword });
+  rows.push({ url, verdict: r.verdict, layer: r.layer, address, frame, hasHtml: Boolean(pageModel?.hasHtml), page: pageModel?.blended ?? null, probPage: pageModel?.probPage ?? null, short: Boolean(pageModel?.short), creds: flags.asksCredentials ?? flags.hasPassword });
 }
 console.log(JSON.stringify({ n: rows.length, rows }));
