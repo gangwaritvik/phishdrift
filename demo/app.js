@@ -44,7 +44,7 @@ const TONE = { safe: "safe", suspicious: "warn", dangerous: "bad" };
 const SUB = {
   safe: "Nothing in the address raised a flag.",
   suspicious: "Be careful. This address has traits common to phishing.",
-  dangerous: "Harmful. This address is very likely phishing.",
+  dangerous: "This address is very likely phishing.",
 };
 
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -423,14 +423,8 @@ function addressMarkup(url) {
 
 function setVerdictClass(cls) {
   const st = $("stage");
-  st.classList.remove("v-safe", "v-suspicious", "v-dangerous", "shake");
-  if (cls) {
-    st.classList.add(cls);
-    if (cls === "v-dangerous" && !reduce.matches && !fast) {
-      void st.offsetWidth;
-      st.classList.add("shake");
-    }
-  }
+  st.classList.remove("v-safe", "v-suspicious", "v-dangerous");
+  if (cls) st.classList.add(cls);
 }
 
 function showScene(i) {

@@ -73,7 +73,7 @@ test("a popular tenant site on a hosting platform is allowlisted by its host", a
 
 test("evidence shows what each layer looked at for this address", async () => {
   const c = await checker;
-  const bad = (await checkUrl(c, "https://paypa1.com/signin")).evidence;
+  const bad = (await checkUrl(c, "https://paypa1.com/signin/verify-account")).evidence;
   assert.equal(bad.allowlist.domain, "paypa1.com");
   assert.equal(bad.allowlist.found, false);
   assert.equal(bad.allowlist.hash.length, bad.allowlist.bytes * 2);
