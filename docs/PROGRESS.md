@@ -880,3 +880,17 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Caveats: one split against earlier 10-split medians; crawl hosts and natural pages both come from popular-site lists;
   brand-list change not separated. The 10-split tables in `reports/` are not refreshed.
 - Next: rerun the 10-split blend (`experiments.blend2`) on the new pool for the report numbers; `shipped_verdicts` encoding fix is PR #41.
+
+### 2026-10-21 — URL check page: calmer theme; repo model files brought up to the retrained export (cloud)
+- Changed: `demo/index.html` and `demo/app.js` restyle only (neutral greys with one steel-blue accent, light and dark;
+  no glow rings, pill shapes, shake or scanning sweep; smaller radii and plainer intro text). Layout, layers and
+  verdict logic unchanged.
+- Model check (measured by SHA-256 of files staged from the PC): on the PC, `js/data` (what `python -m demo` loads) and
+  `extension/dist/data` (the loaded extension) hold the same `tier_a_hybrid.json`, `tier_b_page.json` and
+  `brand_rules.json`, exported 2026-10-21T12:47Z with the 899-brand list. So the page on the PC already used the
+  latest model. The repository still had the 2026-10-13 address bundle (67-brand seed list, thresholds 0.850 / 0.986).
+- Copied the PC's export into the repo: `js/data/{tier_a_hybrid,tier_b_page,brand_rules}.json`,
+  `tests/fixtures/{hybrid_parity,page_parity}.json`, `configs/lists/brand_domains.json` (Wikidata map). New thresholds
+  0.834 / 0.980. One demo test asserted the old model's score for `paypa1.com/signin` (now 0.69, suspicious via the
+  look-alike rule rather than the model); it now uses `paypa1.com/signin/verify-account`.
+- Tests: `npm test` js 15 and extension 70 pass; page checked in headless Chromium (desktop light, 390 px dark).
