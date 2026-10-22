@@ -881,6 +881,26 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   brand-list change not separated. The 10-split tables in `reports/` are not refreshed.
 - Next: rerun the 10-split blend (`experiments.blend2`) on the new pool for the report numbers; `shipped_verdicts` encoding fix is PR #41.
 
+### 2026-10-21 — 10-split blend2 rerun on the pool with the popular-sites crawl (cloud)
+- `python -m experiments.blend2` over 10 domain-grouped splits on the rebuilt pool and 899-brand list, 4 processes in
+  parallel (`PHISHDRIFT_THREADS=1`, one reports dir each, then merged). Files: `reports/blend2.md`, `reports/blend2_rules.md`,
+  `reports/blend2_fair.md`, `reports/tables/blend2_*.csv`. Allowlist and blocklist off; median [min, max].
+- Results (shipped `agree` rule, warned recall / false alarms): test 71.6 / 0.9; test with HTML 87.7 / 0.4; time slice
+  77.5 / 0.8 (blend 81.3 / 1.1); held-out PhishStorm 79.0 / 3.0 (a_only 77.9 / 2.7; `_ws` rules 76.9 / 2.3); natural
+  legitimate pages (2,555, no HTML) 1.0 false alarms, dangerous 0.2 (before the crawl: 5.3 / 1.1). Pooled 1% address
+  threshold 0.7042 vs source-robust 0.8101 (set by phreshphish in all 10 splits).
+- Reading: the false-alarm gain on natural pages holds over 10 splits; recall is about flat (blend test 73.3 vs 73.7
+  before, time slice 81.3 vs 84.2). Brand-list change not separated from the crawl.
+- Next: `experiments.threshold_transfer` (PhishStorm false alarms), then brand candidates from feed evidence.
+
+### 2026-10-21 — Threshold transfer, main setting (10 splits, cloud)
+- `python -m experiments.threshold_transfer --setting main` (4 processes, scores cached; `reports/threshold_transfer.md`,
+  `reports/tables/threshold_transfer_*.csv`). Address model hybrid2, rules fitted on cal side, allowlist off, median of 10.
+- Target 1%: held-out PhishStorm false alarms / test recall: pooled (current) 2.7 / 68.6; worst_source 1.6 / 64.2;
+  ucb_boot 1.2 / 61.9; ucb_binom 1.2 / 61.8; balanced = pooled. Natural pages 0.9 -> 0.7 / 0.6 / 0.5. At 0.1% only
+  ucb_binom changes anything (recall 51 -> 36), so the dangerous threshold stays. Not run: loso setting.
+- Open: which rule the extension ships for "suspicious" (decision with Ritvik).
+
 ### 2026-10-21 — URL check page: calmer theme; repo model files brought up to the retrained export (cloud)
 - Changed: `demo/index.html` and `demo/app.js` restyle only (neutral greys with one steel-blue accent, light and dark;
   no glow rings, pill shapes, shake or scanning sweep; smaller radii and plainer intro text). Layout, layers and
@@ -894,3 +914,12 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   0.834 / 0.980. One demo test asserted the old model's score for `paypa1.com/signin` (now 0.69, suspicious via the
   look-alike rule rather than the model); it now uses `paypa1.com/signin/verify-account`.
 - Tests: `npm test` js 15 and extension 70 pass; page checked in headless Chromium (desktop light, 390 px dark).
+
+### 2026-10-22 — Extension "suspicious" level set per source (code; export runs on the PC)
+- Ritvik chose "worst source" on the card (`reports/threshold_transfer.md`: held-out PhishStorm false alarms 2.7 -> 1.6,
+  natural pages 0.9 -> 0.7, address-only test recall 68.6 -> 64.2, median of 10 splits). `configs/models.yaml`
+  `eval.suspicious_rule: worst_source`; `models/export_hybrid.py` and `models/export_page.py` then export the highest
+  per-source cal 1% point as "suspicious" (address and blend); "dangerous" stays pooled (no rule helped there).
+- Not run: the export needs the split-0 pickle on the PC (`python -m models.export_page --split 0`, then
+  `node extension\build.mjs`). Tests pass (export/hybrid/page tests); the shipped numbers will be those of split 0.
+- Next: Ritvik runs the export; then recheck natural pages with `experiments.shipped_verdicts`.
