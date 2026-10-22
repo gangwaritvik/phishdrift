@@ -106,7 +106,7 @@ lists:
 # The key stays in the backend machine's environment; only a host and a few path words are sent.
 llm:
   provider: gemini
-  model: gemini-3.5-flash-lite   # cheapest current Gemini per Google model list 2026-10-22; 3.8-flash gave HTTP 429 on a free key
+  model: gemini-3.5-flash        # measured on a free key 2026-10-22: 2.1 s per call; 3.8-flash gives HTTP 429, 3.5-flash-lite took 22 s
   url: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
   api_key_env: GEMINI_API_KEY
   timeout_s: 15
