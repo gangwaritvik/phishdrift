@@ -51,7 +51,7 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
                 data=json.dumps({"domain": host}).encode(),
                 headers={"Content-Type": "application/json"},
             )
-            with urllib.request.urlopen(request, timeout=8) as res:  # noqa: S310
+            with urllib.request.urlopen(request, timeout=25) as res:  # noqa: S310
                 return 200, res.read(65536)
         except Exception:  # noqa: BLE001 - any failure means "backend not reachable"
             return 502, b"{}"

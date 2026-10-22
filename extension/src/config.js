@@ -9,7 +9,7 @@ export const DEFAULTS = {
   domainCacheMs: 60 * 60 * 1000,
   llmCheck: false, // opt-in: ask the backend's LLM about borderline addresses (host name only)
   llmGrayLow: 0.5, // untuned: safe addresses with a model score from here up are borderline
-  llmTimeoutMs: 4000,
+  llmTimeoutMs: 20_000,
   listSyncMinutes: 60, // the backend's remote config (list_sync_minutes) can change it, 15-1440
 };
 
@@ -19,7 +19,7 @@ const RANGES = {
   verdictCacheMax: [10, 10_000],
   domainCacheMs: [0, 24 * 60 * 60 * 1000],
   llmGrayLow: [0.05, 0.99],
-  llmTimeoutMs: [500, 10_000],
+  llmTimeoutMs: [500, 30_000],
   listSyncMinutes: [15, 24 * 60],
 };
 

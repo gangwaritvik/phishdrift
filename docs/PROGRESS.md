@@ -992,3 +992,14 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   (an error still shows if the model fails to load), each layer's lead sentence, the registrable-domain caption and the
   build-lists hint. Detection logic and numbers unchanged. `npm test` extension 69 pass; checked in headless Chromium
   (1280 px and 390 px).
+
+### 2026-10-22 — First real Gemini calls: model name, quota and timeout (cloud, from Ritvik's backend log)
+- With the logging from PR #51 the failures were readable: `gemini-3.8-flash` answered HTTP 429 "exceeded your current quota" (key and
+  model name accepted, no quota for that model on a free key); `gemini-3.5-flash-lite` answered, but the 4 s read timeout expired.
+- Changed: model `gemini-3.5-flash-lite` (PR #52); backend `llm.timeout_s` 4 -> 15, extension `llmTimeoutMs` 4000 -> 20000 (limit 30000),
+  URL check page proxy 8 -> 25 s. The extension never waits for the answer (late answers raise the verdict), so the longer limit costs no page load time.
+- Not measured: Gemini latency per call (only known to exceed 4 s once), answer quality, the free-tier quota of the new model.
+
+### 2026-10-22 — Gemini model chosen by timing on Ritvik's key (cloud, from his PowerShell test)
+- Same trivial request on his free key: `gemini-3.8-flash` HTTP 429 (0.4 s), `gemini-3.5-flash-lite` 22.3 s (the 15 s limit expired),
+  `gemini-3.5-flash` answered "OK" in 2.1 s. Config model set to `gemini-3.5-flash`. One call each, so latency and quota are not characterised.
