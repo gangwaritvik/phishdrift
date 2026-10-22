@@ -34,3 +34,12 @@ $("report").addEventListener("click", async () => {
   const { ok } = await send({ type: "feedback", kind: "false_positive" });
   $("status").textContent = ok ? "Thanks. Only the website name was sent." : "Backend not reachable.";
 });
+
+// Opt-in switch for the backend's LLM brand check (settings.llmCheck, off by default).
+const { settings } = await chrome.storage.local.get("settings");
+$("llm").checked = settings?.llmCheck === true;
+$("llm").addEventListener("change", async () => {
+  const current = (await chrome.storage.local.get("settings")).settings ?? {};
+  await chrome.storage.local.set({ settings: { ...current, llmCheck: $("llm").checked } });
+  $("status").textContent = $("llm").checked ? "AI check on. It applies to the next page you open." : "AI check off.";
+});

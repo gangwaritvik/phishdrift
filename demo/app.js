@@ -238,9 +238,34 @@ function modelScene(r) {
   };
 }
 
-// The LLM brand check needs the backend, so this page only says so.
-function llmScene() {
-  return skipScene(4, "LLM check", "Does the address pretend to be a known brand?", "In the extension, borderline addresses are sent (host name only) to the backend, which asks a language model which brand the address imitates. Code then checks that brand against the real domain. This page has no backend, so it does not run this step.");
+// The LLM brand check: what was sent, what the model answered, and what code made of it.
+function llmScene(r) {
+  const e = r.evidence.llm;
+  const title = "Does the address pretend to be a known brand?";
+  if (e.state === "off") return skipScene(4, "LLM check", title, "In the extension, borderline addresses are sent (host name only) to the backend, which asks a language model which brand the address imitates. Code then checks that brand against the real domain. This page was not given a backend, so it does not run this step.");
+  if (e.state === "skipped") return skipScene(4, "LLM check", title, "An earlier layer already decided, or the address has no host name, so nothing is sent to the model.");
+  if (e.state === "unreachable") return skipScene(4, "LLM check", title, "The local backend did not answer. Start it (python -m uvicorn backend.app:create_app --factory --port 8000) and check again.");
+  if (e.error) return skipScene(4, "LLM check", title, e.error === "disabled" ? "The backend has no GEMINI_API_KEY, so the AI check is off there." : `The backend gave no opinion (${e.error}), so this step changes nothing.`);
+  const sent = `<div class="tstep rv">Sent to the backend: <b>${esc(e.host)}</b> (the host name only, no path and no page).</div>`;
+  const said = e.brand
+    ? `<div class="tstep rv">The model says this imitates <b>${esc(e.brand)}</b>, whose own site is <b>${esc(e.brand_domain ?? "unknown")}</b> (confidence ${Number(e.confidence).toFixed(2)}).</div>`
+    : `<div class="tstep rv">The model found no brand being imitated.</div>`;
+  const result = e.raise
+    ? chip("warn", "bang", `Code agrees: ${esc(e.host)} is not ${esc(e.brand_domain)}. The verdict goes up one step.`)
+    : chip("clear", "ok", e.brand ? "Not raised: the site is the brand's own, or the model was not confident enough" : "Nothing to raise");
+  return {
+    html: head(4, "LLM check", title, "A language model names the brand it thinks the address imitates. Our own code, not the model, decides whether that is a real imitation.") + sent + said + result + (e.reason ? `<p class="note rv">The model's words: ${esc(e.reason)}</p>` : ""),
+    play: async (el, w) => {
+      show(el.querySelector(".lead"));
+      await w(450);
+      for (const row of el.querySelectorAll(".tstep")) {
+        show(row);
+        await w(700);
+      }
+      show(el.querySelector(".result"), el.querySelector(".note"));
+      await w(1000);
+    },
+  };
 }
 
 function combineScene(r) {
@@ -467,6 +492,15 @@ async function main() {
   let checker;
   try {
     checker = await loadChecker({ base: new URL("../extension/src/", import.meta.url), read });
+    // the demo server forwards the host name to the local backend (python -m demo --backend URL)
+    checker.askLlm = async (host) => {
+      try {
+        const res = await fetch("/api/llm-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ domain: host }) });
+        return res.ok ? await res.json() : null;
+      } catch {
+        return null;
+      }
+    };
   } catch (err) {
     $("info").replaceChildren(Object.assign(document.createElement("span"), { className: "err", textContent: `Could not load the model: ${err.message}. Start the page with "python -m demo" from the repository folder.` }));
     return;

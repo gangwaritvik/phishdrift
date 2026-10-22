@@ -81,3 +81,23 @@ test("evidence shows what each layer looked at for this address", async () => {
   assert.equal(ok.model.used, false);
   assert.equal(ok.combine.end, 0);
 });
+
+test("an AI answer from the backend raises the verdict and shows in the trace", async () => {
+  const base = await checker;
+  const url = "https://myshop-handmade-pottery.com/about";
+  const plain = await checkUrl(base, url);
+  assert.equal(plain.trace[3].tone, "na");
+  const asked = [];
+  const c = { ...base, askLlm: async (host) => (asked.push(host), { raise: true, brand: "PayPal", brand_domain: "paypal.com", confidence: 0.9, reason: "x", error: null }) };
+  const r = await checkUrl(c, url);
+  assert.deepEqual(asked, ["myshop-handmade-pottery.com"]);
+  if (plain.verdict === "safe") assert.deepEqual([r.verdict, r.layer], ["suspicious", "llm"]);
+  else assert.notEqual(r.verdict, "safe");
+  assert.equal(r.trace[3].tone, "warn");
+  const down = await checkUrl({ ...base, askLlm: async () => null }, url);
+  assert.equal(down.trace[3].label, "Backend not reachable");
+  assert.equal(down.verdict, plain.verdict);
+  const allow = await checkUrl(c, "web.whatsapp.com");
+  assert.equal(allow.trace[3].tone, "skip");
+  assert.equal(asked.length, 1);
+});
