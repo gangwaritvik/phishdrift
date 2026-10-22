@@ -36,6 +36,7 @@ from backend import lists, remote_config
 from backend.checks import FACT_KEYS, Checker, LiveChecker, empty_facts, evaluate
 from backend.feedback_auth import TokenSigner, load_secret, reporter_key
 from backend.limits import DailyCounter, RateLimiter, TTLCache
+from backend.llm import GeminiProvider, LlmChecker
 from backend.settings import Settings
 from features.lists import load_lists, read_platforms
 
@@ -75,6 +76,17 @@ class ScoreIn(DomainIn):
     local_verdict: Literal[0, 1, 2]
 
 
+class LlmIn(DomainIn):
+    path_words: list[str] = []
+
+    @field_validator("path_words")
+    @classmethod
+    def _words(cls, v: list[str]) -> list[str]:
+        if len(v) > 40 or any(len(w) > 200 for w in v):
+            raise ValueError("too many or too long path words")
+        return v
+
+
 class FeedbackIn(DomainIn):
     kind: Literal["false_positive", "missed_phish"]
     verdict: Literal[0, 1, 2]
@@ -97,6 +109,7 @@ def create_app(
     settings: Settings | None = None,
     checker: Checker | None = None,
     *,
+    llm: Callable[[str], str] | None = None,
     monotonic: Callable[[], float] = time.monotonic,
     utcnow: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> FastAPI:
@@ -126,6 +139,12 @@ def create_app(
     if signing_key is not None:
         signature = lists.sign_body(config_body, signing_key)
         config_doc = config_body[:-1] + f',"signature":"{signature}"}}'.encode("ascii")
+    lc = cfg["llm"]
+    provider = llm or GeminiProvider(lc)
+    llm_on = llm is not None or provider.available
+    llm_check = LlmChecker(lc, provider)
+    llm_cache: TTLCache[dict] = TTLCache(lc["cache_ttl_s"], cfg["cache"]["max_entries"], monotonic)
+    llm_calls = DailyCounter(1)
     lr = cfg["lists"]["rate"]
     lists_limiter = RateLimiter(lr["capacity"], lr["refill_per_s"], lr["max_clients"], monotonic)
 
@@ -204,6 +223,25 @@ def create_app(
             "cached": cached,
             "error": entry["error"],
         }
+
+    @app.post("/llm-check", dependencies=[Depends(rate_limit)])
+    def llm_endpoint(body: LlmIn) -> dict[str, Any]:
+        """Brand-impersonation opinion for a host. It can only say "raise"; it never lowers."""
+        off = {"raise": False, "brand": None, "brand_domain": None, "confidence": 0.0}
+        if not llm_on:
+            return {**off, "cached": False, "error": "disabled"}
+        key = f"{body.domain}|{' '.join(body.path_words)}"
+        hit = llm_cache.get(key)
+        if hit is not None:
+            return {**hit, "cached": True}
+        day = utcnow().date()
+        if llm_calls.get("all", day) >= lc["max_calls_per_day"]:
+            return {**off, "cached": False, "error": "daily_cap"}
+        llm_calls.increment("all", day)
+        result = llm_check(body.domain, body.path_words)
+        if result["error"] is None:
+            llm_cache.put(key, result)
+        return {**result, "cached": False}
 
     @app.post("/register", dependencies=[Depends(register_rate_limit)])
     def register() -> dict[str, str]:
