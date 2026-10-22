@@ -974,3 +974,10 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   answer and whether our code raised the verdict; states: no backend, unreachable, no key (`disabled`), no opinion.
 - Checked with a stub backend in headless Chromium (layer 4 scene text read back); tests: pytest demo 2, `npm test` extension 69. Not run
   against the real Gemini.
+
+### 2026-10-22 — URL check page: light theme, explanations removed (cloud)
+- Ritvik: light theme, attractive, no explanatory paragraphs. `demo/index.html` is light only (indigo accent, white rounded
+  cards with soft shadows, logo header); removed the intro line, the "What this page covers" block, the list/model info line
+  (an error still shows if the model fails to load), each layer's lead sentence, the registrable-domain caption and the
+  build-lists hint. Detection logic and numbers unchanged. `npm test` extension 69 pass; checked in headless Chromium
+  (1280 px and 390 px).
