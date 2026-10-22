@@ -16,6 +16,7 @@ Every lookup fails soft: on an error or timeout the answer is risk "unknown" wit
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -30,12 +31,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend import lists, remote_config
 from backend.checks import FACT_KEYS, Checker, LiveChecker, empty_facts, evaluate
 from backend.feedback_auth import TokenSigner, load_secret, reporter_key
 from backend.limits import DailyCounter, RateLimiter, TTLCache
+from backend.safebrowsing import FILE_NAME as SB_FILE
+from backend.safebrowsing import SafeBrowsing
 from backend.settings import Settings
 from features.lists import load_lists, read_platforms
 
@@ -71,6 +74,10 @@ class DomainIn(_Strict):
         return clean_domain(v)
 
 
+class PrefixIn(_Strict):
+    prefix: str = Field(pattern=r"^[0-9a-f]{8}$")
+
+
 class ScoreIn(DomainIn):
     local_verdict: Literal[0, 1, 2]
 
@@ -96,6 +103,7 @@ def shared_hosts(settings: Settings) -> frozenset[str]:
 def create_app(
     settings: Settings | None = None,
     checker: Checker | None = None,
+    safebrowsing: SafeBrowsing | None = None,
     *,
     monotonic: Callable[[], float] = time.monotonic,
     utcnow: Callable[[], datetime] = lambda: datetime.now(UTC),
@@ -103,6 +111,9 @@ def create_app(
     settings = settings or Settings.load()
     cfg = settings.cfg
     checker = checker or LiveChecker(settings)
+    sb_key = settings.safebrowsing_key()
+    if safebrowsing is None and sb_key:
+        safebrowsing = SafeBrowsing(cfg["safebrowsing"], sb_key, settings.safebrowsing_dir)
     cache: TTLCache[dict] = TTLCache(cfg["cache"]["ttl_s"], cfg["cache"]["max_entries"], monotonic)
     rl = cfg["rate_limit"]
     limiter = RateLimiter(rl["capacity"], rl["refill_per_s"], rl["max_clients"], monotonic)
@@ -276,5 +287,29 @@ def create_app(
         if delta is None:
             raise HTTPException(status_code=404, detail="no delta from that version")
         return delta
+
+    @app.get("/lists/safebrowsing.bin", dependencies=[Depends(lists_rate_limit)])
+    def lists_safebrowsing(request: Request) -> Response:
+        path = settings.safebrowsing_dir / SB_FILE
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="no Safe Browsing prefixes yet")
+        body = path.read_bytes()
+        etag = '"' + hashlib.sha256(body).hexdigest()[:16] + '"'
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+        return Response(body, media_type="application/octet-stream", headers={"ETag": etag})
+
+    @app.post("/safebrowsing/confirm", dependencies=[Depends(rate_limit)])
+    def safebrowsing_confirm(body: PrefixIn) -> dict[str, list[str]]:
+        # one 4-byte hash prefix in, the full hashes Google lists under it out: the extension
+        # compares them with its own and never sends a URL or a domain
+        if safebrowsing is None:
+            raise HTTPException(status_code=404, detail="Safe Browsing is not configured")
+        try:
+            found = safebrowsing.full_hashes(bytes.fromhex(body.prefix))
+        except Exception as exc:  # noqa: BLE001 - the extension treats any failure as "not confirmed"
+            log.warning("safe browsing lookup failed: %s", type(exc).__name__)
+            raise HTTPException(status_code=503, detail="lookup failed") from exc
+        return {"hashes": [h.hex() for h in found]}
 
     return app

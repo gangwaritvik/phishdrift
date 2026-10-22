@@ -64,6 +64,14 @@ class Settings:
         return resolve(self.cfg["lists"]["out_dir"])
 
     @property
+    def safebrowsing_dir(self) -> Path:
+        return resolve(self.cfg["safebrowsing"]["dir"])
+
+    def safebrowsing_key(self) -> str:
+        """Safe Browsing API key from the environment, or "" when there is none."""
+        return os.environ.get(self.cfg["safebrowsing"]["api_key_env"], "")
+
+    @property
     def signing_key_path(self) -> Path:
         lcfg = self.cfg["lists"]
         env = os.environ.get(lcfg.get("signing_key_env", ""), "")

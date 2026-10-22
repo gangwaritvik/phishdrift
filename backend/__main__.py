@@ -3,6 +3,7 @@
     python -m backend build-lists [--tranco-file PATH] [--phishing-file PATH ...]
                                   [--origins-file PATH] [--no-tenant-sites] [--out DIR]
     python -m backend make-signing-key [--private PATH] [--public PATH]
+    python -m backend safebrowsing-update
 
 Serve the API with: ``uvicorn backend.app:create_app --factory``.
 """
@@ -17,6 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from backend import lists
+from backend.safebrowsing import SafeBrowsing
 from backend.settings import Settings
 from features.lists import load_lists, read_platforms
 from phishdrift.config import resolve
@@ -131,6 +133,19 @@ def cmd_make_signing_key(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_safebrowsing_update(_: argparse.Namespace) -> int:
+    settings = Settings.load()
+    key = settings.safebrowsing_key()
+    if not key:
+        log.error(
+            "set %s to your Safe Browsing API key", settings.cfg["safebrowsing"]["api_key_env"]
+        )
+        return 1
+    counts = SafeBrowsing(settings.cfg["safebrowsing"], key, settings.safebrowsing_dir).update()
+    log.info("safe browsing prefixes: %s", counts)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m backend")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -167,6 +182,8 @@ def main(argv: list[str] | None = None) -> int:
         "pass the built extension's copy, e.g. extension/dist/lists_pubkey.js)",
     )
     keygen.set_defaults(func=cmd_make_signing_key)
+    sbu = sub.add_parser("safebrowsing-update", help="sync Google Safe Browsing hash prefixes")
+    sbu.set_defaults(func=cmd_safebrowsing_update)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     return args.func(args)

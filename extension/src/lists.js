@@ -42,7 +42,11 @@ export function withBundledAllowlist(payload, bundled) {
 export class ListSet {
   // payload: { blocklist: {prefix_bytes, domains, urls},
   //            allowlist: {prefix_bytes, domains, open_hosting} } | null
-  constructor(payload, { platforms, psl, shorteners = new Set() }) {
+  // safebrowsing / confirm: a SafeBrowsing (safebrowsing.js) and the function that asks the backend
+  // for the full hashes of one prefix; without them the Google layer is skipped.
+  constructor(payload, { platforms, psl, shorteners = new Set(), safebrowsing = null, confirm = null }) {
+    this.safebrowsing = safebrowsing;
+    this.confirm = confirm;
     this.version = payload?.blocklist?.version ?? null;
     this.blockBytes = payload?.blocklist?.prefix_bytes ?? 0;
     this.allowBytes = payload?.allowlist?.prefix_bytes ?? 0;
@@ -76,6 +80,8 @@ export class ListSet {
         }
       }
     }
+    // Google Safe Browsing lists exact URLs, so a hit is treated like a URL entry (it beats the allowlist).
+    if (!blocked && this.safebrowsing && (await this.safebrowsing.match(url, this.confirm))) blocked = "url";
     if (shared) {
       if (!shortener && !blocked && this.allowBytes && this.allowDomains.size) {
         allow = this.allowDomains.has(await hashPrefix(host, this.allowBytes));

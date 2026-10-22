@@ -115,3 +115,16 @@ rules:                           # heuristics, see backend/checks.py and reports
   risk:
     elevated_warn_count: 1       # this many "warn" signals -> elevated
     high_warn_count: 3           # this many "warn" signals (or any "high") -> high
+
+# Google Safe Browsing, Update API v4 (backend/safebrowsing.py). The key stays on the backend; the
+# extension downloads the 4-byte prefixes and asks /safebrowsing/confirm with one prefix only.
+# No key in the environment variable: the endpoints answer 404/503 and the extension skips the layer.
+safebrowsing:
+  api_key_env: PHISHDRIFT_SAFEBROWSING_KEY
+  client_id: phishdrift
+  client_version: "0.1"
+  threat_types: [SOCIAL_ENGINEERING, MALWARE, UNWANTED_SOFTWARE]
+  dir: data/safebrowsing         # per-threat state and the served safebrowsing.bin
+  timeout_s: 10
+  cache_s: 300                   # full hashes answered for one prefix are reused this long
+  cache_max: 10000

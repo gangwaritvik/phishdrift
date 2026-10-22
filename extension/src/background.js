@@ -26,6 +26,7 @@ import { ListSet, withBundledAllowlist } from "./lists.js";
 import { LIST_PUBKEY } from "./lists_pubkey.js";
 import { fetchConfig, syncLists as fetchLists } from "./listsync.js";
 import { pageFlags } from "./pagefacts.js";
+import { SafeBrowsing, fromBase64, syncSafeBrowsing } from "./safebrowsing.js";
 
 const SYNC_ALARM = "sync-lists";
 const BADGES = { [SAFE]: "", [SUSPICIOUS]: "!", [DANGEROUS]: "X" };
@@ -121,7 +122,26 @@ function getLists() {
     const model = await getModel();
     const { lists } = await chrome.storage.local.get("lists");
     const payload = withBundledAllowlist(lists ?? null, await getBundled());
-    return new ListSet(payload, { platforms: model.lists.platforms, psl: model.lists.psl, shorteners: model.lists.shorteners });
+    const { safebrowsing: sb } = await chrome.storage.local.get("safebrowsing");
+    const settings = await getSettings();
+    // asks the backend for the full hashes Google lists under one 4-byte prefix (never a URL)
+    const confirm = async (prefix) => {
+      const res = await fetch(`${settings.backendUrl}/safebrowsing/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prefix }),
+        signal: AbortSignal.timeout(settings.backendTimeoutMs),
+      });
+      if (!res.ok) throw new Error(`confirm: HTTP ${res.status}`);
+      return (await res.json()).hashes;
+    };
+    return new ListSet(payload, {
+      platforms: model.lists.platforms,
+      psl: model.lists.psl,
+      shorteners: model.lists.shorteners,
+      safebrowsing: sb ? new SafeBrowsing(fromBase64(sb.b64)) : null,
+      confirm,
+    });
   })();
   return listsPromise;
 }
@@ -135,7 +155,14 @@ export async function syncLists() {
   const common = { backendUrl: settings.backendUrl, pubkey: LIST_PUBKEY, timeoutMs: settings.backendTimeoutMs * 4 };
   const res = await fetchLists({ ...common, stored: stored ?? null, bundled: await getBundled() });
   const cfg = await fetchConfig(common);
+  const { safebrowsing: storedSb } = await chrome.storage.local.get("safebrowsing");
+  const sb = await syncSafeBrowsing({ backendUrl: settings.backendUrl, stored: storedSb ?? null, timeoutMs: common.timeoutMs });
   let changed = false;
+  if (sb.status === "updated") {
+    await chrome.storage.local.set({ safebrowsing: sb.stored });
+    listsPromise = undefined;
+    changed = true;
+  }
   if (res.status === "updated") {
     await chrome.storage.local.set({ lists: res.lists });
     listsPromise = undefined;
@@ -151,7 +178,7 @@ export async function syncLists() {
     }
   }
   if (changed) verdictCache.clear();
-  const status = { at: Date.now(), lists: res.status, config: cfg.status, problems: [...(res.problems ?? []), ...(cfg.problems ?? [])] };
+  const status = { at: Date.now(), lists: res.status, config: cfg.status, safebrowsing: sb.status, problems: [...(res.problems ?? []), ...(cfg.problems ?? []), ...(sb.problems ?? [])] };
   if (status.problems.length) console.warn("PhishDrift list sync:", status);
   await chrome.storage.local.set({ listSync: status });
   return { updated: res.status === "updated", version: res.lists?.version ?? stored?.version ?? null, ...status };

@@ -63,7 +63,7 @@ measured in `reports/`. The combiner is a transparent rule set, not yet validate
 - `webNavigation` cannot hold a request back, so a dangerous page may start loading for a moment
   before the warning replaces it. Blocking listed sites before the request (declarativeNetRequest)
   is a later step.
-- Google Safe Browsing and the optional LLM second opinion are not wired in.
+- The optional LLM second opinion is not wired in. Google Safe Browsing is (see docs/BACKEND.md), but untested against the live API.
 - The tier C domain model is not trained (cut list); backend domain checks are placeholder rules.
 
 ## Tests

@@ -931,3 +931,19 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Not run: the export needs the split-0 pickle on the PC (`python -m models.export_page --split 0`, then
   `node extension\build.mjs`). Tests pass (export/hybrid/page tests); the shipped numbers will be those of split 0.
 - Next: Ritvik runs the export; then recheck natural pages with `experiments.shipped_verdicts`.
+
+### 2026-10-22 — Google Safe Browsing blocklist layer (cloud, code only)
+- Ritvik: "do this google safe browsing for now". Changed: `backend/safebrowsing.py` (Update API v4 sync of the prefix
+  lists, checksum check, full-hash lookup with a short cache), `python -m backend safebrowsing-update`,
+  `GET /lists/safebrowsing.bin` and `POST /safebrowsing/confirm` (one 4-byte prefix in, full hashes out),
+  `safebrowsing` block in `configs/backend.yaml`; `extension/src/safebrowsing.js` (Google's URL canonicalisation and
+  host/path expressions, prefix lookup, confirm, prefix-file sync), wired into `ListSet.check` and the list sync in
+  `background.js`; `unlimitedStorage` permission for the stored prefixes. A hit counts as an exact blocklist URL entry.
+- Tests: `tests/test_safebrowsing.py` (stub API: full and partial update, checksum mismatch, cache, endpoints);
+  `extension/test/safebrowsing.test.js` (the spec's canonical-URL and expression vectors, confirm logic, sync).
+  pytest and `npm test` extension 75 pass. `extension/e2e/smoke.mjs` fails at "banner" on evil-blocked.com both with
+  and without this change (stashed and rerun), so it is not caused by this work; not investigated.
+- Not measured: anything against the live API (the sandbox cannot reach Google), the real prefix count and storage
+  size, coverage over the feeds, latency of a confirm. Shortcut: IPs in octal, hex or integer form are not normalised.
+- Next on the PC: get a Google API key, set `PHISHDRIFT_SAFEBROWSING_KEY`, run `safebrowsing-update`, reload the extension.
+

@@ -33,6 +33,8 @@ non-ASCII (send punycode). It is lowercased and one trailing dot is dropped; any
 | `GET /config` | | remote config (below) |
 | `GET /lists/manifest` | | `{"version", "built_at", "prefix_bytes", "counts": {"blocklist_domains", "blocklist_urls", "allowlist_domains", "open_hosting_domains"}}` |
 | `GET /lists/blocklist.json` | | `{"version", "prefix_bytes", "domains": [hex], "urls": [hex]}` |
+| `GET /lists/safebrowsing.bin` | | sorted 4-byte Safe Browsing hash prefixes (ETag; 304 on `If-None-Match`; 404 until the first update) |
+| `POST /safebrowsing/confirm` | `{"prefix": "<8 hex>"}` | `{"hashes": ["<64 hex>", ...]}`: the full hashes Google lists under that prefix (404 without a key, 503 on a failed lookup) |
 | `GET /lists/allowlist.json` | | `{"version", "prefix_bytes", "domains": [hex], "open_hosting": [zone]}` |
 
 `facts`: `age_days, registered, resolves, has_mx, has_spf, has_dmarc, tls_ok, tls_verified,
@@ -194,3 +196,18 @@ The extension lets an exact `urls` hit override the allowlist (one bad download 
   cleared after any list or config change.
 - **Rate limits:** `/lists/*` and `/config` have their own bucket (`lists.rate`), so a burst on
   `/feedback` or `/score` cannot stop list syncs.
+
+## Google Safe Browsing
+
+`python -m backend safebrowsing-update` (with `PHISHDRIFT_SAFEBROWSING_KEY` set; repeat about every
+30 minutes) syncs the Update API v4 prefix lists named in `safebrowsing.threat_types` (RAW
+compression, checksum verified; a mismatch restarts that list from a full update) and writes
+`data/safebrowsing/safebrowsing.bin`. The extension downloads that file with its other lists, hashes
+the Safe Browsing expressions of each address locally, and for a prefix hit asks
+`POST /safebrowsing/confirm` with that one 4-byte prefix; it compares Google's full hashes with its
+own. No URL or domain leaves the browser, a failed confirm counts as "not listed", and a hit is
+treated like an exact blocklist URL entry (it beats the allowlist). The key never leaves the backend.
+The prefix file is not signed: a wrong file can only add candidate hits, and each one still needs
+Google's full hash. Non-commercial use only (Google's terms). Not yet run against the live API (the
+build sandbox cannot reach it); the code is tested with a stub of the API and Google's published
+canonicalisation and expression vectors.
