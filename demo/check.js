@@ -83,9 +83,18 @@ const LAYER_WORD = {
   none: "Nothing to check.",
 };
 
+function llmTrace(llm, decidedEarly, earlyWhy) {
+  if (llm.state === "skipped") return { id: "llm", tone: "skip", label: "Skipped", detail: decidedEarly ? earlyWhy : "There is no host name to send." };
+  if (llm.state === "off") return { id: "llm", tone: "na", label: "No backend here", detail: "The brand-impersonation check asks a language model through the backend. This page was not given a backend, so it does not run it." };
+  if (llm.state === "unreachable") return { id: "llm", tone: "na", label: "Backend not reachable", detail: "The local backend did not answer, so the AI check was not run." };
+  if (llm.error) return { id: "llm", tone: "na", label: "No opinion", detail: `The backend gave no opinion (${llm.error}).` };
+  if (llm.raise) return { id: "llm", tone: "warn", label: "Imitation", detail: `Looks like ${llm.brand}, whose real site is ${llm.brand_domain}.` };
+  return { id: "llm", tone: "clear", label: "Nothing found", detail: "The model did not find a brand being imitated." };
+}
+
 // One entry per layer, in the order the extension runs them: what it found, for the page to
 // animate. tone: safe | clear | warn | bad | skip | na.
-function buildTrace(c, listed, layers, result, label) {
+function buildTrace(c, listed, layers, result, label, llm) {
   const { info } = c;
   const decidedEarly = layers.allow || layers.shortener || layers.blocked;
   const earlyWhy = layers.blocked
@@ -135,12 +144,25 @@ function buildTrace(c, listed, layers, result, label) {
     });
   }
 
-  trace.push({ id: "llm", tone: "na", label: "Extension only", detail: "The brand-impersonation check asks a language model through the backend, for borderline addresses only. This page has no backend, so it does not run it." });
+  trace.push(llmTrace(llm, decidedEarly, earlyWhy));
 
   const short = result.layer === "shortener";
   trace.push({ id: "combine", tone: short ? "skip" : TONE[result.verdict], label: short ? "Short link" : label, detail: LAYER_WORD[result.layer] ?? "Combined the layers." });
   trace.push({ id: "page", tone: "na", label: "Extension only", detail: "Reading login forms on the page and the backend's domain checks need the page itself. A web page can't fetch another site, so only the extension runs them." });
   return trace;
+}
+
+async function askLlm(c, target, layers) {
+  if (!c.askLlm) return { state: "off" };
+  let host = null;
+  try {
+    host = new URL(target).hostname;
+  } catch {
+    // no host
+  }
+  if (!host || layers.allow || layers.shortener || layers.blocked || c.x.urlparts.isIpHost(host)) return { state: "skipped", host };
+  const answer = await c.askLlm(host);
+  return answer && typeof answer.raise === "boolean" ? { state: "answered", host, ...answer } : { state: "unreachable", host };
 }
 
 // The extension's verdict for one address, plus the model's own score for display (the model is
@@ -166,6 +188,11 @@ export async function checkUrl(c, input) {
   if (!layers.allow && !layers.shortener && !layers.blocked) {
     layers.model = c.address.scoreAddress(c.model, target);
   }
+  // The AI step runs only when the page was given a backend (`c.askLlm`), for every address the
+  // allowlist, blocklist and short-link rules did not already decide (the extension asks only
+  // borderline ones; here it is asked always so its answer can be seen).
+  const llm = await askLlm(c, target, layers);
+  if (llm.state === "answered" && !llm.error) layers.llm = { raise: llm.raise, brand: llm.brand, brand_domain: llm.brand_domain };
   const result = c.combine.combine(layers);
   let modelAlone = null;
   if (target.length <= c.address.MAX_URL_CHARS) {
@@ -189,7 +216,7 @@ export async function checkUrl(c, input) {
     blocked: listed.blocked,
     modelAlone,
     thresholds: c.info.thresholds,
-    evidence: await buildEvidence(c, target, listed, layers, result),
-    trace: buildTrace(c, listed, layers, result, VERDICT_WORD[verdict]),
+    evidence: { ...(await buildEvidence(c, target, listed, layers, result)), llm },
+    trace: buildTrace(c, listed, layers, result, VERDICT_WORD[verdict], llm),
   };
 }
