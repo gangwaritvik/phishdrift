@@ -93,7 +93,7 @@ function countUp(node, to, ms, fmt = num) {
 // this address and nothing else.
 
 const head = (n, name, title, lead) =>
-  `<p class="kicker">Layer ${n} of 5 · ${name}</p><h2>${title}</h2><p class="lead rv">${lead}</p>`;
+  `<p class="kicker">Layer ${n} of 5 · ${name}</p><h2>${title}</h2>`;
 const chip = (tone, icon, text) => `<div class="result rv t-${tone}">${svg(I[icon])}<span>${text}</span></div>`;
 const skipScene = (n, name, title, why) => ({
   html: `<p class="kicker">Layer ${n} of 5 · ${name}</p><h2>${title}</h2>${chip("skip", "dash", "Not needed here")}<p class="note rv">${esc(why)}</p>`,
@@ -118,7 +118,6 @@ function allowScene(r) {
     html:
       head(1, "Allowlist", "Is this a well-known site?", `Looking up <b>${esc(e.domain)}</b> among ${num(e.size)} widely used sites.`) +
       `<div class="urlparts rv">${parts}${dom}</div>` +
-      `<p class="cap rv">${e.sub ? "The subdomain is ignored: only the registrable domain counts." : "Only the registrable domain counts, the name you would buy."}</p>` +
       `<div class="lookup"><div class="hashline rv">Fingerprint (SHA-256, first ${e.bytes} bytes): <span class="hash" data-hash></span></div>` +
       `<div class="scan rv"><span class="count">0 / ${num(e.size)}</span></div></div>${verdict}` +
       (e.shared === "zone" ? `<p class="note rv">${esc(e.domain)} is an open hosting zone: anyone can publish there, so being on the list proves nothing about this page.</p>` : "") +
@@ -168,7 +167,7 @@ function blockScene(r) {
       `<ul class="keys">${shown.map((x) => `<li class="keyrow rv" data-hit="${x.hit ? 1 : 0}"><span class="tag">${x.tag}</span><span class="k">${esc(x.key)}</span><span class="h">${esc((x.hash ?? "").slice(0, 8))}…</span><span class="st">${svg(I.ok)}</span></li>`).join("")}` +
       (more > 0 ? `<li class="keyrow rv"><span class="tag"></span><span class="k">and ${more} more variants of the same address</span><span class="h"></span><span class="st">${svg(I.ok)}</span></li>` : "") +
       `</ul>${result}` +
-      (!e.loaded ? `<p class="note rv">Run <code>python -m backend build-lists</code> to build one. The fingerprints above are real; they have just nothing to be compared with.</p>` : ""),
+      "",
     play: async (el, w) => {
       show(el.querySelector(".lead"));
       await w(350);
@@ -505,12 +504,6 @@ async function main() {
     $("info").replaceChildren(Object.assign(document.createElement("span"), { className: "err", textContent: `Could not load the model: ${err.message}. Start the page with "python -m demo" from the repository folder.` }));
     return;
   }
-  const i = checker.info;
-  $("info").textContent =
-    `Allowlist: ${i.allowlist ?? "none"} (${num(i.allowDomains)} domains). ` +
-    (i.blocklist ? `Blocklist: ${i.blocklist} (${num(i.blockDomains)} domains, ${num(i.blockUrls)} URLs). ` : "Blocklist: none on this machine (build it with python -m backend build-lists). ") +
-    (i.modelCreated ? `Model exported ${i.modelCreated}.` : "");
-
   const go = async (text) => {
     if (!text.trim()) return;
     try {

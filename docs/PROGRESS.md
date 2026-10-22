@@ -985,3 +985,10 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   pages (inmotionhosting.com, getresponse.com, google.com.bh ...); URL-level blocks 1 (`https://google.by/`, the feed lists that address).
 - Not measured: extension start-up and memory in a real browser with this list, sync time on a slow link, effect on phishing recall.
 - Next: Ritvik runs `python -m backend build-lists --tranco-file ...` on the PC and checks the extension loads; decide if the 17 MB is acceptable.
+
+### 2026-10-22 — URL check page: light theme, explanations removed (cloud)
+- Ritvik: light theme, attractive, no explanatory paragraphs. `demo/index.html` is light only (indigo accent, white rounded
+  cards with soft shadows, logo header); removed the intro line, the "What this page covers" block, the list/model info line
+  (an error still shows if the model fails to load), each layer's lead sentence, the registrable-domain caption and the
+  build-lists hint. Detection logic and numbers unchanged. `npm test` extension 69 pass; checked in headless Chromium
+  (1280 px and 390 px).
