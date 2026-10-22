@@ -915,6 +915,14 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   look-alike rule rather than the model); it now uses `paypa1.com/signin/verify-account`.
 - Tests: `npm test` js 15 and extension 70 pass; page checked in headless Chromium (desktop light, 390 px dark).
 
+### 2026-10-22 — Per-source "suspicious" level exported and measured (PC run, read in the cloud)
+- The first export on the PC ran on old code (PC files dated 10-20 lacked PR #43), so nothing changed (suspicious 0.834,
+  8 of 2,555 natural pages flagged). Delivered the three files, reran `models.export_page --split 0` (about 15 minutes),
+  `node extension\build.mjs`, `experiments.shipped_verdicts`.
+- Results (split 0, `reports/shipped_verdicts.md` from the PC): address "suspicious" 0.834 -> 0.904 (dangerous 0.980 unchanged);
+  natural legitimate pages flagged 8 -> 5 of 2,555 (0.3% -> 0.2%, none dangerous); cal-side 1% FPR on held-out PhishStorm
+  3.2% -> 1.28%; recall at the shipped suspicious threshold: test 63.3, held-out 72.6 (cal-side numbers in the bundle).
+- Copied the PC's bundles and parity fixtures into the repo (`js/data/tier_{a_hybrid,b_page}.json`, `tests/fixtures/{hybrid,page}_parity.json`).
 ### 2026-10-22 — Extension "suspicious" level set per source (code; export runs on the PC)
 - Ritvik chose "worst source" on the card (`reports/threshold_transfer.md`: held-out PhishStorm false alarms 2.7 -> 1.6,
   natural pages 0.9 -> 0.7, address-only test recall 68.6 -> 64.2, median of 10 splits). `configs/models.yaml`
