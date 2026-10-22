@@ -1,8 +1,8 @@
 // Address check for the demo page: the extension's own layers for a typed URL (allowlist and
-// blocklist, the tier A model, look-alike rules, the combiner), in the order of layersFor() and
+// blocklist, the tier A model, the combiner), in the order of layersFor() and
 // evaluate() in extension/src/background.js. Nothing is reimplemented: the modules are loaded from
 // `base`, a folder laid out like extension/dist (combine.js, lists.js, address.js and lib/).
-// Not applied: the page model (a web page cannot read another site's HTML), backend domain checks,
+// Not applied: the page model (a web page cannot read another site's HTML), backend domain checks, the LLM check,
 // user trust and the remote config. A short link is not followed.
 //
 // `read(path)` returns parsed JSON for a path relative to the repository root, or null when the
@@ -27,26 +27,20 @@ async function loadLists(read) {
 
 export async function loadChecker({ base, read }) {
   const mod = (path) => import(new URL(path, base).href);
-  const [combine, lists, address, hybrid, brand, keys, pslMod, urlparts, explain, modelMod] = await Promise.all([
+  const [combine, lists, address, hybrid, keys, pslMod, urlparts, explain, modelMod] = await Promise.all([
     mod("combine.js"),
     mod("lists.js"),
     mod("address.js"),
     mod("lib/hybrid.js"),
-    mod("lib/brand_rules.js"),
     mod("keys.js"),
     mod("lib/psl.js"),
     mod("lib/urlparts.js"),
     mod("lib/explain.js"),
     mod("lib/model.js"),
   ]);
-  const [bundle, psl, rulesPayload] = await Promise.all([
-    read("js/data/tier_a_hybrid.json"),
-    read("js/data/psl_icann.json"),
-    read("js/data/brand_rules.json"),
-  ]);
-  if (!bundle || !psl || !rulesPayload) throw new Error("js/data is missing model files (tier_a_hybrid.json, psl_icann.json, brand_rules.json)");
+  const [bundle, psl] = await Promise.all([read("js/data/tier_a_hybrid.json"), read("js/data/psl_icann.json")]);
+  if (!bundle || !psl) throw new Error("js/data is missing model files (tier_a_hybrid.json, psl_icann.json)");
   const model = hybrid.loadHybrid(bundle, psl);
-  const rules = brand.loadBrandRules(rulesPayload, model.lists.psl, model.lists.platforms);
   const { synced, bundled, allowSource, block } = await loadLists(read);
   const listSet = new lists.ListSet(lists.withBundledAllowlist(synced, bundled), {
     platforms: model.lists.platforms,
@@ -57,10 +51,8 @@ export async function loadChecker({ base, read }) {
     combine,
     address,
     hybrid,
-    brand,
     x: { keys, psl: pslMod, urlparts, explain, model: modelMod, hybrid, lists },
     model,
-    rules,
     lists: listSet,
     info: {
       modelCreated: bundle.created ?? null,
@@ -87,7 +79,6 @@ const LAYER_WORD = {
   allowlist: "The allowlist decided.",
   blocklist: "The blocklist decided.",
   "url-model": "The address model decided.",
-  lookalike: "The look-alike rules raised the verdict.",
   shortener: "A short link has nothing to judge until it is followed.",
   none: "Nothing to check.",
 };
@@ -144,14 +135,7 @@ function buildTrace(c, listed, layers, result, label) {
     });
   }
 
-  if (!m && decidedEarly) {
-    trace.push({ id: "lookalike", tone: "skip", label: "Skipped", detail: earlyWhy });
-  } else if (layers.lookalike.length) {
-    const n = layers.lookalike.length;
-    trace.push({ id: "lookalike", tone: "warn", label: n === 1 ? "1 match" : `${n} matches`, detail: layers.lookalike.map((h) => h.text).join(" ") });
-  } else {
-    trace.push({ id: "lookalike", tone: "clear", label: "None found", detail: "The domain doesn't imitate a known brand." });
-  }
+  trace.push({ id: "llm", tone: "na", label: "Extension only", detail: "The brand-impersonation check asks a language model through the backend, for borderline addresses only. This page has no backend, so it does not run it." });
 
   const short = result.layer === "shortener";
   trace.push({ id: "combine", tone: short ? "skip" : TONE[result.verdict], label: short ? "Short link" : label, detail: LAYER_WORD[result.layer] ?? "Combined the layers." });
@@ -178,13 +162,11 @@ export async function checkUrl(c, input) {
     blocked: listed.blocked,
     model: null,
     unscored: false,
-    lookalike: [],
   };
   if (!layers.allow && !layers.shortener && !layers.blocked) {
     layers.model = c.address.scoreAddress(c.model, target);
-    layers.lookalike = c.brand.addressSignals(c.rules, target);
   }
-  const result = c.combine.combine(layers, null, null, { address: layers.lookalike, page: null });
+  const result = c.combine.combine(layers);
   let modelAlone = null;
   if (target.length <= c.address.MAX_URL_CHARS) {
     const s = c.hybrid.scoreUrl(c.model, target, { withReasons: true });
@@ -205,7 +187,6 @@ export async function checkUrl(c, input) {
     notes,
     allowlisted: Boolean(listed.allow),
     blocked: listed.blocked,
-    lookalike: layers.lookalike.map((h) => h.text),
     modelAlone,
     thresholds: c.info.thresholds,
     evidence: await buildEvidence(c, target, listed, layers, result),

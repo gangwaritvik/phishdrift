@@ -29,6 +29,7 @@ non-ASCII (send punycode). It is lowercased and one trailing dot is dropped; any
 | `POST /domain-info` | `{"domain"}` | `{"domain", "cached", "facts", "signals", "risk", "error"}` |
 | `POST /score` | `{"domain", "local_verdict": 0\|1\|2}` | `{"domain", "risk", "signals", "tier_c_model": false, "cached"}` |
 | `POST /register` | (no body) | `{"token"}` |
+| `POST /llm-check` | `{"domain": host, "path_words": []}` | `{"raise", "brand", "brand_domain", "confidence", "cached", "error"}` |
 | `POST /feedback` | `{"domain", "kind": "false_positive"\|"missed_phish", "verdict": 0\|1\|2}` + header `X-PhishDrift-Token` | `{"ok": true}` or `{"ok": true, "duplicate": true}` |
 | `GET /config` | | remote config (below) |
 | `GET /lists/manifest` | | `{"version", "built_at", "prefix_bytes", "counts": {"blocklist_domains", "blocklist_urls", "allowlist_domains", "open_hosting_domains"}}` |
@@ -194,3 +195,21 @@ The extension lets an exact `urls` hit override the allowlist (one bad download 
   cleared after any list or config change.
 - **Rate limits:** `/lists/*` and `/config` have their own bucket (`lists.rate`), so a burst on
   `/feedback` or `/score` cannot stop list syncs.
+
+## LLM brand check (`/llm-check`)
+
+Layer 6 of CLAUDE.md, replacing the old brand and look-alike rules. `backend/llm.py` asks Google
+Gemini (`configs/backend.yaml` `llm`) which brand a host imitates and which domain is that brand's
+own, as strict JSON. The verdict is made in code: `raise` is true only if a brand is claimed with
+confidence >= `min_confidence` and the visited registrable domain differs from the claimed one. Any
+other answer (bad JSON, extra keys, provider error, timeout) is "no opinion" with `error` set and is
+not cached. The extension only raises a verdict with it, one step, and only for borderline
+addresses; it never lowers one or touches a blocklist hit.
+
+- The key is read from the environment variable `GEMINI_API_KEY` on the backend machine only. Without
+  it the endpoint answers `error: "disabled"`.
+- Sent to the provider: the host name and (not used by the extension yet) up to 12 lowercase
+  alphanumeric path words. Never a query, a full URL or page text.
+- Cached per host and words for `cache_ttl_s` (24 h); at most `max_calls_per_day` provider calls a
+  day, then `error: "daily_cap"`.
+- `model` and `min_confidence` are untuned defaults until `experiments/llm_eval.py` exists.

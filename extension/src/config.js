@@ -7,6 +7,9 @@ export const DEFAULTS = {
   verdictCacheMs: 10 * 60 * 1000,
   verdictCacheMax: 500,
   domainCacheMs: 60 * 60 * 1000,
+  llmCheck: false, // opt-in: ask the backend's LLM about borderline addresses (host name only)
+  llmGrayLow: 0.5, // untuned: safe addresses with a model score from here up are borderline
+  llmTimeoutMs: 4000,
   listSyncMinutes: 60, // the backend's remote config (list_sync_minutes) can change it, 15-1440
 };
 
@@ -15,6 +18,8 @@ const RANGES = {
   verdictCacheMs: [0, 60 * 60 * 1000],
   verdictCacheMax: [10, 10_000],
   domainCacheMs: [0, 24 * 60 * 60 * 1000],
+  llmGrayLow: [0.05, 0.99],
+  llmTimeoutMs: [500, 10_000],
   listSyncMinutes: [15, 24 * 60],
 };
 
@@ -24,6 +29,7 @@ export function sanitizeSettings(stored) {
     const v = stored?.[key];
     if (Number.isFinite(v) && v >= lo && v <= hi) out[key] = v;
   }
+  if (typeof stored?.llmCheck === "boolean") out.llmCheck = stored.llmCheck;
   const url = stored?.backendUrl;
   if (typeof url === "string") {
     try {

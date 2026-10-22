@@ -942,3 +942,20 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   running; Tranco and CrUX downloads in the scheduled run (a failed Tranco download writes an empty allowlist; the
   extension rejects an allowlist that shrank, see `extension/src/listsync.js`).
 
+
+### 2026-10-22 — LLM brand check (Gemini) replaces the brand and look-alike rules (cloud)
+- Ritvik: drop the old rules completely (no fallback, no shadow), use Google. Plan: `/mnt/project-files/phishdrift/plans/llm_layer_plan.md`.
+- Changed: `backend/llm.py` + `POST /llm-check` (Gemini REST adapter, strict four-field JSON parser, `judge`: raise only for a
+  confident brand claim on a site that is not the brand's own; provider failure or bad output = no opinion, not cached; daily
+  call cap; `llm` block in `configs/backend.yaml`; key only from `GEMINI_API_KEY`); extension (`background.js` `llmWanted` /
+  `llmLookup`, `combine.js` `llmEscalate`: one step up, dangerous only if the page asks for credentials, never on blocklisted,
+  trusted, allowlisted or short-link addresses; setting `llmCheck`, default off). Sent: host name only (no path words, no URL).
+- Removed: `features/{brand_rules,brand_parity,brand_domains}.py`, `js/src/brand_rules.js`, `js/data/brand_rules.json`,
+  `configs/brand_rules.yaml`, brand-domain and confusables maps, parity fixture, their tests and `experiments/brand_rules_eval.py`;
+  the demo's look-alike screen is now a note that the LLM step needs the backend. The brand list stays as a model feature list.
+- Left in place (dead but harmless, parity-tested): `page_facts` collection in `features/html_features.py` / `js/src/html_features.js`.
+- Tests: stub provider only, no network. Not measured: everything about quality. `min_confidence` 0.7, `llmGrayLow` 0.5 and the
+  Gemini model name are untuned/unverified defaults; no model call has ever been made.
+- Known loss: look-alikes the address model scores below the gray zone (the old rules caught `paypa1.com` style hosts) are now
+  missed unless the LLM is asked; measure in `experiments/llm_eval.py` (not written yet).
+- Next: Ritvik creates a Gemini key and sets `GEMINI_API_KEY` on the backend machine; then `experiments/llm_eval.py` on the PC.

@@ -146,16 +146,6 @@
   .delta.up { background: var(--bad-soft); color: var(--bad); } .delta.down { background: var(--safe-soft); color: var(--safe); } .delta.flat { background: var(--line); color: var(--muted); }
   .clue.total { background: transparent; border: 1px solid var(--line); font-weight: 600; }
 
-  /* scene 4: look-alike */
-  .tilerow { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; align-items: center; margin: 0 0 10px; }
-  .tilerow .lab { font-size: .84rem; color: var(--muted); }
-  .tiles { display: flex; flex-wrap: wrap; gap: 4px; }
-  .tile { width: 34px; height: 42px; display: grid; place-items: center; border-radius: 4px; background: var(--surface-2); font: 1.2rem var(--mono); opacity: 0; transition: opacity .3s, background-color .3s, color .3s; }
-  .tile.show { opacity: 1; }
-  .tile.diff { background: var(--warn-soft); color: var(--warn); font-weight: 700; }
-  .tile.gap { background: transparent; border: 2px dashed var(--bad); color: var(--bad); }
-  .tile.fixed { background: var(--accent-soft); color: var(--ink); font-weight: 700; }
-
   /* scene 5: combiner */
   .ladder { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; position: relative; margin: 22px 0 18px; }
   .ladder::before { content: ""; position: absolute; left: 16.6%; right: 16.6%; top: 22px; height: 3px; background: var(--line); border-radius: 2px; }
