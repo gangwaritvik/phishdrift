@@ -931,3 +931,14 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Not run: the export needs the split-0 pickle on the PC (`python -m models.export_page --split 0`, then
   `node extension\build.mjs`). Tests pass (export/hybrid/page tests); the shipped numbers will be those of split 0.
 - Next: Ritvik runs the export; then recheck natural pages with `experiments.shipped_verdicts`.
+
+
+### 2026-10-22 — Blocklist rebuilt after every collector run (cloud, script only)
+- Why: Ritvik asked whether feeds are collected regularly. The collector task runs every 12 h, but `python -m backend
+  build-lists` was a separate manual command, so the blocklist the extension syncs was only as new as the last manual build.
+- Changed: `scripts/run_collector_once.ps1` runs `python -m backend build-lists` after the collector (same log; exit 2
+  if the build fails). The scheduled task runs this file, so copying it to the PC is enough; no new task.
+- Not checked: whether `build-lists` finishes inside the task's 3 h limit, or whether the PC has the backend (uvicorn)
+  running; Tranco and CrUX downloads in the scheduled run (a failed Tranco download writes an empty allowlist; the
+  extension rejects an allowlist that shrank, see `extension/src/listsync.js`).
+

@@ -13,7 +13,12 @@
   and the task never overlap. API keys are read from the environment, or from %USERPROFILE%\.phishdrift.env
   or <repo>\.env (KEY=VALUE lines, never committed): URLHAUS_AUTH_KEY, PHISHTANK_APP_KEY.
 
-  Exit code: 0 ok, 2 partial (a feed or the capture failed; see the log), anything else = failure.
+  After the collector it rebuilds the extension's lists (`python -m backend build-lists`, same log), so
+  the blocklist the backend serves is never older than the last run. The backend itself (uvicorn)
+  must be running for the extension to sync them.
+
+  Exit code: 0 ok, 2 partial (a feed or the capture failed; see the log, or the list build failed),
+  anything else = failure.
 #>
 
 $ErrorActionPreference = "Continue"   # native stderr lines must not stop the script (PowerShell 5.1)
@@ -42,5 +47,9 @@ $started = Get-Date
 Write-Log ("==== {0} START python={1}" -f (Get-Date -Format s), $py)
 & $py -u -m collector run 2>&1 | ForEach-Object { Write-Log ("$_") }
 $code = $LASTEXITCODE
+# the collector may exit 2 (partial) with feeds saved, so the lists are rebuilt after any exit
+Write-Log ("==== {0} build-lists" -f (Get-Date -Format s))
+& $py -u -m backend build-lists 2>&1 | ForEach-Object { Write-Log ("$_") }
+if ($LASTEXITCODE -ne 0 -and $code -eq 0) { $code = 2 }
 Write-Log ("==== {0} END exit={1} seconds={2}" -f (Get-Date -Format s), $code, [int]((Get-Date) - $started).TotalSeconds)
 exit $code
