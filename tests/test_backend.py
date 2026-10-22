@@ -764,8 +764,7 @@ def test_gemini_provider_request_shape(monkeypatch):
     seen = {}
 
     class Resp:
-        def raise_for_status(self):
-            pass
+        ok = True
 
         def json(self):
             return {"candidates": [{"content": {"parts": [{"text": "{}"}]}}]}
@@ -778,3 +777,29 @@ def test_gemini_provider_request_shape(monkeypatch):
     assert GeminiProvider(cfg, post)("hi") == "{}"
     assert seen["headers"] == {"x-goog-api-key": "k"} and "key=" not in seen["url"]
     assert seen["body"]["generationConfig"]["responseMimeType"] == "application/json"
+
+
+def test_gemini_provider_errors_carry_status_and_google_message(monkeypatch):
+    from backend.llm import GeminiProvider, ProviderError
+
+    monkeypatch.setenv("GEMINI_API_KEY", "secret-key")
+
+    class Bad:
+        ok = False
+        status_code = 404
+
+        def json(self):
+            return {"error": {"message": "models/nope is not found"}}
+
+    class Empty:
+        ok = True
+
+        def json(self):
+            return {"candidates": [{"finishReason": "MAX_TOKENS"}]}
+
+    cfg = Settings.load().cfg["llm"]
+    for resp, text in ((Bad(), "HTTP 404: models/nope"), (Empty(), "finishReason=MAX_TOKENS")):
+        provider = GeminiProvider(cfg, lambda *a, resp=resp, **k: resp)
+        with pytest.raises(ProviderError, match=text) as info:
+            provider("hi")
+        assert "secret-key" not in str(info.value)

@@ -9,6 +9,7 @@ Output is strict JSON; anything else is "no opinion". The caller never lowers a 
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -50,6 +51,18 @@ SCHEMA = {
 }
 
 
+class ProviderError(RuntimeError):
+    """The provider answered with an error or no usable text; the message is safe to log."""
+
+
+def _google_message(resp: Any) -> str:
+    """Google's own error message (never the request, so the key cannot appear)."""
+    try:
+        return str(resp.json()["error"]["message"])[:200]
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return "no error message"
+
+
 class GeminiProvider:
     """Google Gemini ``generateContent`` over REST. The key comes from the environment only."""
 
@@ -79,8 +92,15 @@ class GeminiProvider:
         resp = self._post(
             self.url, json=body, headers={"x-goog-api-key": self._key}, timeout=self.timeout_s
         )
-        resp.raise_for_status()
-        return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        if not resp.ok:
+            raise ProviderError(f"HTTP {resp.status_code}: {_google_message(resp)}")
+        try:
+            return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            reason = ""
+            with contextlib.suppress(KeyError, IndexError, TypeError, ValueError, AttributeError):
+                reason = resp.json()["candidates"][0].get("finishReason", "")
+            raise ProviderError(f"no answer text (finishReason={reason or 'none'})") from exc
 
 
 def build_prompt(host: str, words: list[str]) -> str:
@@ -144,7 +164,7 @@ class LlmChecker:
         try:
             text = self.provider(build_prompt(host, clean_words(words, self.cfg["max_path_words"])))
         except Exception as exc:  # noqa: BLE001 - fail soft: any provider problem is "no opinion"
-            log.warning("llm check failed: %s", type(exc).__name__)
+            log.warning("llm check failed: %s: %s", type(exc).__name__, str(exc)[:200])
             return {
                 "raise": False,
                 "brand": None,
