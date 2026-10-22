@@ -6,6 +6,7 @@ seed: 42
 
 eval:
   target_fprs: [0.01, 0.001]          # recall at these FPRs is the headline (CLAUDE.md)
+  suspicious_rule: worst_source       # exported 'suspicious' = highest per-source cal 1% point (reports/threshold_transfer.md); dangerous stays pooled
   min_negatives: 10                   # fewer negatives than this: point is granularity-limited
   leakage_tripwire: 0.99              # any held-out result above this is investigated first
   shuffled_label_flag: 0.05           # negative controls: flag |mean AUC - 0.5| above this

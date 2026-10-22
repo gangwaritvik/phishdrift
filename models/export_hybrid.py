@@ -30,6 +30,7 @@ import numpy as np
 import pandas as pd
 
 from data_pipeline.split import CAL, TEST, TRAIN
+from experiments.blend2 import worst_source_threshold
 from experiments.hybrid_a import make_hybrid
 from experiments.metrics import evaluate
 from experiments.tier_a import (
@@ -112,6 +113,10 @@ def address_bundle(model, cal, sets: dict, fitted, lists: Lists, cfg: dict, k: i
     s_cal = model.score(cal)
     calib = Calibrator({"suspicious": targets[0], "dangerous": targets[1]}, min_neg)
     calib.fit(cal["label"].to_numpy(), s_cal)
+    if ev.get("suspicious_rule") == "worst_source":
+        # reports/threshold_transfer.md: the pooled 1% point does not hold on other sources
+        worst, _ = worst_source_threshold(cal, s_cal, targets[0], min_neg)
+        calib.thresholds["suspicious"] = max(calib.thresholds["suspicious"], worst)
     thresholds = dict(zip(targets, calib.thresholds.values(), strict=True))
     metrics = {}
     for set_name, frame in sets.items():

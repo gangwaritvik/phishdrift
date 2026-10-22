@@ -914,3 +914,12 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   0.834 / 0.980. One demo test asserted the old model's score for `paypa1.com/signin` (now 0.69, suspicious via the
   look-alike rule rather than the model); it now uses `paypa1.com/signin/verify-account`.
 - Tests: `npm test` js 15 and extension 70 pass; page checked in headless Chromium (desktop light, 390 px dark).
+
+### 2026-10-22 — Extension "suspicious" level set per source (code; export runs on the PC)
+- Ritvik chose "worst source" on the card (`reports/threshold_transfer.md`: held-out PhishStorm false alarms 2.7 -> 1.6,
+  natural pages 0.9 -> 0.7, address-only test recall 68.6 -> 64.2, median of 10 splits). `configs/models.yaml`
+  `eval.suspicious_rule: worst_source`; `models/export_hybrid.py` and `models/export_page.py` then export the highest
+  per-source cal 1% point as "suspicious" (address and blend); "dangerous" stays pooled (no rule helped there).
+- Not run: the export needs the split-0 pickle on the PC (`python -m models.export_page --split 0`, then
+  `node extension\build.mjs`). Tests pass (export/hybrid/page tests); the shipped numbers will be those of split 0.
+- Next: Ritvik runs the export; then recheck natural pages with `experiments.shipped_verdicts`.
