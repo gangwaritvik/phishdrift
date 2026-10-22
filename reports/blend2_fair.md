@@ -13,20 +13,20 @@ and source capture. ESS = effective sample size of the weights. Median over spli
 
 | quantity | phishing | legitimate |
 |---|---|---|
-| rows in these sources | 11,264 | 20,102 |
-| share with usable HTML | 59.9 [59.0, 61.1] | 90.8 [90.4, 91.2] |
-| share with usable HTML, phreshphish | 63.4 [61.3, 64.1] | 90.8 [90.4, 91.2] |
-| address model warned: rows with HTML | 81.5 [80.4, 82.5] | 1.3 [1.1, 1.4] |
-| address model warned: rows without HTML | 82.4 [81.4, 83.3] | 3.8 [3.2, 4.6] |
-| address model warned: rows with HTML, IPW | 79.2 [78.0, 81.1] | 1.4 [1.3, 1.6] |
-| blend warned: rows with HTML (as reported) | 93.0 [91.9, 93.9] | 0.6 [0.5, 0.8] |
-| blend warned: rows with HTML, IPW (fair) | 91.9 [90.0, 93.1] | 0.6 [0.5, 0.9] |
-| blend dangerous: rows with HTML | 85.7 [82.3, 87.1] | 0.1 [0.0, 0.1] |
-| blend dangerous: rows with HTML, IPW (fair) | 82.5 [79.0, 85.0] | 0.1 [0.0, 0.2] |
-| IPW effective sample size | 4787.5960 [4062.4320, 5167.1888] | 17854.5896 [17607.2833, 18098.1086] |
-| phreshphish end to end, shipped warned (no HTML -> address model) | 89.0 [87.9, 89.6] | 1.0 [0.9, 1.2] |
-| phreshphish end to end, shipped dangerous | 77.8 [76.6, 79.0] | 0.2 [0.1, 0.3] |
-| phreshphish, address model only warned | 80.7 [80.1, 82.0] | 1.5 [1.4, 1.6] |
+| rows in these sources | 11,263 | 15,455 |
+| share with usable HTML | 59.7 [59.0, 61.4] | 90.6 [90.2, 91.3] |
+| share with usable HTML, phreshphish | 63.0 [62.2, 64.0] | 90.6 [90.2, 91.3] |
+| address model warned: rows with HTML | 80.0 [78.5, 80.9] | 1.3 [1.1, 1.5] |
+| address model warned: rows without HTML | 79.7 [78.6, 81.0] | 4.4 [3.7, 5.8] |
+| address model warned: rows with HTML, IPW | 77.6 [75.5, 78.6] | 1.5 [1.3, 1.7] |
+| blend warned: rows with HTML (as reported) | 93.3 [92.5, 93.9] | 0.8 [0.5, 1.2] |
+| blend warned: rows with HTML, IPW (fair) | 92.2 [91.4, 93.0] | 0.8 [0.6, 1.2] |
+| blend dangerous: rows with HTML | 84.4 [82.1, 88.0] | 0.1 [0.0, 0.2] |
+| blend dangerous: rows with HTML, IPW (fair) | 81.6 [79.2, 86.0] | 0.1 [0.0, 0.2] |
+| IPW effective sample size | 4716.1675 [4348.6754, 5022.5961] | 13667.4520 [13431.1041, 13915.5141] |
+| phreshphish end to end, shipped warned (no HTML -> address model) | 87.6 [87.3, 88.4] | 1.2 [1.0, 1.5] |
+| phreshphish end to end, shipped dangerous | 76.1 [73.8, 78.4] | 0.2 [0.2, 0.3] |
+| phreshphish, address model only warned | 78.9 [77.9, 79.5] | 1.5 [1.5, 1.8] |
 
 ## time_slice
 
@@ -35,14 +35,14 @@ and source capture. ESS = effective sample size of the weights. Median over spli
 | rows in these sources | 24,289 | 56,364 |
 | share with usable HTML | 45.5 [45.5, 45.5] | 91.1 [91.1, 91.1] |
 | share with usable HTML, phreshphish | 45.5 [45.5, 45.5] | 91.1 [91.1, 91.1] |
-| address model warned: rows with HTML | 69.7 [69.0, 70.1] | 1.3 [1.2, 1.4] |
-| address model warned: rows without HTML | 84.6 [83.1, 85.1] | 3.4 [3.0, 3.6] |
-| address model warned: rows with HTML, IPW | 71.0 [69.9, 72.0] | 1.5 [1.3, 1.5] |
-| blend warned: rows with HTML (as reported) | 80.4 [79.3, 82.0] | 0.6 [0.5, 0.7] |
-| blend warned: rows with HTML, IPW (fair) | 80.7 [79.3, 82.0] | 0.7 [0.6, 0.8] |
-| blend dangerous: rows with HTML | 66.9 [61.7, 69.2] | 0.1 [0.1, 0.1] |
-| blend dangerous: rows with HTML, IPW (fair) | 66.2 [61.5, 68.6] | 0.1 [0.1, 0.2] |
-| IPW effective sample size | 7580.7543 [6762.6210, 8106.5037] | 48675.0651 [45712.7165, 49648.4859] |
-| phreshphish end to end, shipped warned (no HTML -> address model) | 84.1 [83.3, 84.6] | 1.0 [0.9, 1.1] |
-| phreshphish end to end, shipped dangerous | 66.7 [64.6, 68.7] | 0.2 [0.2, 0.3] |
-| phreshphish, address model only warned | 77.8 [76.7, 78.2] | 1.5 [1.4, 1.6] |
+| address model warned: rows with HTML | 67.3 [66.4, 67.6] | 1.2 [1.1, 1.3] |
+| address model warned: rows without HTML | 81.1 [79.7, 82.0] | 3.7 [3.3, 4.2] |
+| address model warned: rows with HTML, IPW | 67.9 [67.2, 69.6] | 1.4 [1.3, 1.4] |
+| blend warned: rows with HTML (as reported) | 80.9 [78.9, 82.8] | 0.8 [0.5, 1.0] |
+| blend warned: rows with HTML, IPW (fair) | 80.9 [77.7, 82.4] | 0.8 [0.6, 1.1] |
+| blend dangerous: rows with HTML | 64.8 [60.0, 71.4] | 0.1 [0.1, 0.2] |
+| blend dangerous: rows with HTML, IPW (fair) | 63.4 [57.2, 71.6] | 0.1 [0.1, 0.2] |
+| IPW effective sample size | 7601.9262 [6099.7990, 8122.1667] | 47897.0229 [45512.2281, 49209.6934] |
+| phreshphish end to end, shipped warned (no HTML -> address model) | 81.5 [80.9, 82.5] | 1.1 [0.8, 1.3] |
+| phreshphish end to end, shipped dangerous | 62.3 [60.8, 67.4] | 0.2 [0.2, 0.3] |
+| phreshphish, address model only warned | 74.8 [73.8, 75.3] | 1.4 [1.3, 1.5] |
