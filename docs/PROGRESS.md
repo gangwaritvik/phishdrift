@@ -965,3 +965,12 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   Found while delivering PR #47 to the PC: only `extension/src/address.js` there was older than main (missing `isLocalAddress`),
   fixed by copying; other extension, js/src and backend files matched by size.
 - Not tested in a browser (no popup test harness); `npm test` extension passes.
+
+### 2026-10-22 — URL check page shows the AI brand check (cloud)
+- Ritvik: show the AI step on the URL check page. `python -m demo [--backend URL]` now serves `POST /api/llm-check`, which forwards the
+  host name only (validated, nothing else) to the local backend's `/llm-check` (a page cannot call it directly: CORS); fails soft (502).
+  `demo/check.js` asks for every address the allowlist, blocklist and short-link rules did not decide (the extension asks only borderline
+  ones, so the page asks more often) and passes the answer to the combiner; `demo/app.js` layer 4 shows what was sent, the model's
+  answer and whether our code raised the verdict; states: no backend, unreachable, no key (`disabled`), no opinion.
+- Checked with a stub backend in headless Chromium (layer 4 scene text read back); tests: pytest demo 2, `npm test` extension 69. Not run
+  against the real Gemini.
