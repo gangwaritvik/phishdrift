@@ -11,6 +11,13 @@ export function usableAnswer(json) {
   return json;
 }
 
+// The backend's /llm-check JSON -> {raise, brand, brand_domain}, or null when it gave no opinion.
+export function usableLlmAnswer(json) {
+  if (!json || typeof json !== "object" || json.error || typeof json.raise !== "boolean") return null;
+  if (json.raise && (typeof json.brand !== "string" || typeof json.brand_domain !== "string")) return null;
+  return { raise: json.raise, brand: json.brand, brand_domain: json.brand_domain };
+}
+
 // How long a cached lookup stays fresh.
 export function domainTtl(entry, okMs, failMs = DOMAIN_FAILURE_MS) {
   return entry.answer ? okMs : failMs;

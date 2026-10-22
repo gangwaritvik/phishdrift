@@ -9,37 +9,6 @@ function humanise(name) {
   return name.replaceAll("_", " ");
 }
 
-// Edit-distance alignment of two code-point arrays: columns of {a, b, op} (match / sub / ins / del).
-export function align(aText, bText) {
-  const a = Array.from(aText);
-  const b = Array.from(bText);
-  const d = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
-  for (let i = 0; i <= a.length; i++) d[i][0] = i;
-  for (let j = 0; j <= b.length; j++) d[0][j] = j;
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    }
-  }
-  const cols = [];
-  let i = a.length;
-  let j = b.length;
-  while (i > 0 || j > 0) {
-    if (i > 0 && j > 0 && d[i][j] === d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)) {
-      cols.push({ a: a[i - 1], b: b[j - 1], op: a[i - 1] === b[j - 1] ? "match" : "sub" });
-      i--;
-      j--;
-    } else if (i > 0 && d[i][j] === d[i - 1][j] + 1) {
-      cols.push({ a: a[i - 1], b: null, op: "del" });
-      i--;
-    } else {
-      cols.push({ a: null, b: b[j - 1], op: "ins" });
-      j--;
-    }
-  }
-  return { distance: d[a.length][b.length], cols: cols.reverse() };
-}
-
 async function allowlistEvidence(c, target, listed, layers) {
   const { keys, psl } = c.x;
   const host = keys.listUrlKey(target).split(/[/?:]/)[0];
@@ -135,42 +104,6 @@ function modelEvidence(c, target, layers) {
   };
 }
 
-function lookalikeEvidence(c, target, layers) {
-  const { urlparts } = c.x;
-  const brand = c.brand;
-  const rules = c.rules;
-  let p = null;
-  try {
-    p = urlparts.parse(target, new Set(), rules.psl);
-  } catch {
-    p = null;
-  }
-  if (!p || p.isIp || !p.suffix) return { used: Boolean(layers.model), applicable: false, hits: [] };
-  const decoded = brand.decodeLabel(p.label);
-  const skel = brand.skeleton(rules, decoded);
-  let nearest = null;
-  for (const key of rules.targetKeys) {
-    if (Math.abs(Array.from(key).length - Array.from(skel).length) > 3) continue;
-    const a = align(skel, key);
-    if (!nearest || a.distance < nearest.distance) nearest = { key, brand: rules.targets.get(key)[0], ...a };
-  }
-  const official = rules.official.get(p.domain) ?? null;
-  return {
-    used: Boolean(layers.model),
-    applicable: true,
-    domain: p.domain,
-    label: p.label,
-    decoded,
-    skeleton: skel,
-    changed: Array.from(decoded).map((ch, i) => ch !== Array.from(skel)[i]),
-    nearest,
-    official,
-    isBrand: rules.brandSet.has(p.label) || rules.brandSet.has(p.label.replaceAll("-", "")),
-    brandCount: rules.brands.length,
-    hits: layers.lookalike.map((h) => ({ rule: h.rule, brand: h.brand, text: h.text })),
-  };
-}
-
 // The steps the combiner took, as positions on the safe / suspicious / dangerous ladder.
 function combineEvidence(layers, result) {
   const names = ["safe", "suspicious", "dangerous"];
@@ -188,11 +121,6 @@ function combineEvidence(layers, result) {
   } else {
     start = layers.model?.verdict ?? 0;
     steps.push({ text: `The address model says ${names[start]}.`, to: start });
-    if (layers.lookalike.length && result.verdict > start) {
-      steps.push({ text: "A look-alike match raises it one step.", to: result.verdict });
-    } else if (layers.lookalike.length) {
-      steps.push({ text: "A look-alike match is found, but the verdict is already at the top.", to: result.verdict });
-    }
   }
   return { steps, start, end: result.verdict };
 }
@@ -204,7 +132,6 @@ export async function buildEvidence(c, target, listed, layers, result) {
     allowlist: await allowlistEvidence(c, target, listed, layers),
     blocklist: await blocklistEvidence(c, target, layers),
     model,
-    lookalike: lookalikeEvidence(c, target, layers),
     combine: combineEvidence(layers, result),
   };
 }

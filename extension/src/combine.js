@@ -48,31 +48,28 @@ export const addressOnly = (result) => result?.verdict === DANGEROUS && result.l
 // page: {hasPassword, credFormCrossDomain, credFormInsecure, asksCredentials} | null (pagefacts.js)
 // pageModel: {hasHtml, blended, verdict, pageDangerous, reasons:[{text}], allowedPageWarning?} | null
 //            (scorePage in page.js)
-// brand: {address: [{rule, brand, text}], page: {rule, brand, text} | null} from brand_rules.js.
-// The brand and look-alike rules only raise a verdict (see brandEscalate).
-export function combine(layers, page = null, pageModel = null, brand = null) {
-  return brandEscalate(combineLayers(layers, page, pageModel), brand, layers);
+// llm: layers.llm = {raise, brand, brand_domain} | null, the backend's brand-impersonation opinion
+// (backend/llm.py). It only raises (see llmEscalate).
+export function combine(layers, page = null, pageModel = null) {
+  return llmEscalate(combineLayers(layers, page, pageModel), layers, page);
 }
 
-// One step up for a look-alike address (homograph, embedded domain, one letter away, brand + lure
-// word) and one for a page that shows a brand, asks for a credential and is not on the brand's
-// domain. Never lowers a
-// verdict, never acts on user-trusted or blocklisted addresses, and on an allowlisted page (or a
-// short link) only the page rule applies and only up to suspicious.
-export function brandEscalate(out, brand, layers) {
-  if (!brand || layers.trusted || out.layer === "blocklist" || out.layer === "none" || out.layer === "local") return out;
-  const addressTrusted = out.layer === "allowlist" || out.layer === "shortener" || layers.allow || layers.shortener;
-  const address = addressTrusted ? [] : (brand.address ?? []);
-  const pageHit = brand.page ?? null;
-  let verdict = out.verdict;
-  if (address.length) verdict += 1;
-  if (pageHit) verdict += 1;
-  verdict = Math.min(verdict, addressTrusted ? SUSPICIOUS : DANGEROUS);
-  const hits = [...(pageHit ? [pageHit] : []), ...address];
-  if (!hits.length) return out;
-  const reasons = [...new Set([...hits.map((h) => h.text), ...out.reasons])];
-  if (verdict <= out.verdict) return out.verdict === SAFE ? out : { ...out, reasons };
-  return { ...out, verdict, layer: pageHit ? "brand-page" : "lookalike", reasons };
+export const llmReason = (llm) =>
+  `This address looks like it imitates ${llm.brand}, whose real site is ${llm.brand_domain}.`;
+
+// One step up when the LLM check says the address imitates a brand whose own domain it is not:
+// safe to suspicious, suspicious to dangerous only if the page asks for credentials. Never lowers
+// a verdict, never acts on blocklisted, trusted, allowlisted, short-link, local or unscored
+// addresses.
+export function llmEscalate(out, layers, page) {
+  const llm = layers.llm;
+  if (!llm?.raise || layers.trusted || layers.allow || layers.shortener) return out;
+  if (["blocklist", "none", "local", "allowlist", "shortener", "user-trusted"].includes(out.layer)) return out;
+  const cap = page?.asksCredentials ? DANGEROUS : SUSPICIOUS;
+  const verdict = Math.min(out.verdict + 1, Math.max(cap, out.verdict));
+  const reasons = [...new Set([llmReason(llm), ...out.reasons])];
+  if (verdict <= out.verdict) return { ...out, reasons };
+  return { ...out, verdict, layer: "llm", reasons };
 }
 
 function combineLayers(layers, page = null, pageModel = null) {

@@ -109,11 +109,11 @@ test("the address model alone blocks only a page that asks for credentials or th
   assert.equal(combine({ ...base, model: model(DANGEROUS) }, noCreds, pageSays).verdict, DANGEROUS);
   // a page verdict that only echoes the dangerous address is no second opinion
   assert.equal(combine({ ...base, model: model(DANGEROUS) }, noCreds, pageModel(DANGEROUS)).verdict, SUSPICIOUS);
-  // a second layer can still raise the banner back: high domain risk, a look-alike address
+  // a second layer can still raise the banner back: high domain risk, an LLM brand opinion
   const domain = { risk: "high", signals: [{ severity: "high", text: "young" }] };
   assert.equal(combine({ ...base, model: model(DANGEROUS), domain }, noCreds, pageModel(SAFE)).verdict, DANGEROUS);
-  const look = { address: [{ rule: "edit1", brand: "x", text: "look" }], page: null };
-  const raised = combine({ ...base, model: model(DANGEROUS) }, noCreds, pageModel(SAFE), look);
+  const llm = { raise: true, brand: "X", brand_domain: "x.com" };
+  const raised = combine({ ...base, model: model(DANGEROUS), domain, llm }, noCreds, pageModel(SAFE));
   assert.equal(raised.verdict, DANGEROUS);
   assert.equal(addressOnly(raised), false);
   assert.equal(addressOnly(combine({ ...base, blocked: "url" })), false);
@@ -172,37 +172,28 @@ test("a local address is not judged, but a blocklist hit still warns", async () 
   assert.equal(combine({ ...base, blocked: "url" }).verdict, DANGEROUS);
 });
 
-// --- brand and look-alike rules (escalate only) ---------------------------------------------
-const look = (rule) => ({ rule, brand: "paypal", text: `look-alike ${rule}` });
-const brandPage = { rule: "brand_page", brand: "paypal", text: "brand page" };
+// --- LLM brand opinion (escalate only) ----------------------------------------------------
+const llm = { raise: true, brand: "PayPal", brand_domain: "paypal.com" };
+const REASON = "This address looks like it imitates PayPal, whose real site is paypal.com.";
 
-test("a look-alike address raises safe to suspicious and suspicious to dangerous", () => {
-  const r = combine(base, null, null, { address: [look("homograph")], page: null });
-  assert.deepEqual([r.verdict, r.layer, r.reasons], [SUSPICIOUS, "lookalike", ["look-alike homograph"]]);
-  const d = combine({ ...base, model: model(SUSPICIOUS, ["m"]) }, null, null, { address: [look("embedded")], page: null });
-  assert.deepEqual([d.verdict, d.reasons], [DANGEROUS, ["look-alike embedded", "m"]]);
+test("an LLM brand opinion raises safe to suspicious, and to dangerous only on a credential page", () => {
+  const r = combine({ ...base, llm });
+  assert.deepEqual([r.verdict, r.layer, r.reasons], [SUSPICIOUS, "llm", [REASON]]);
+  const sus = combine({ ...base, model: model(SUSPICIOUS, ["m"]), llm });
+  assert.deepEqual([sus.verdict, sus.reasons], [SUSPICIOUS, [REASON, "m"]]);
+  const login = combine({ ...base, model: model(SUSPICIOUS, ["m"]), llm }, { asksCredentials: true });
+  assert.deepEqual([login.verdict, login.layer], [DANGEROUS, "llm"]);
 });
 
-test("one letter away raises one step", () => {
-  assert.equal(combine(base, null, null, { address: [look("edit1")], page: null }).verdict, SUSPICIOUS);
-  const r = combine({ ...base, model: model(SUSPICIOUS) }, null, null, { address: [look("edit1")], page: null });
-  assert.equal(r.verdict, DANGEROUS);
+test("the LLM opinion never lowers, and no opinion or raise:false changes nothing", () => {
+  assert.equal(combine({ ...base, model: model(DANGEROUS), llm }).verdict, DANGEROUS);
+  assert.equal(combine({ ...base, llm: { ...llm, raise: false } }).verdict, SAFE);
+  assert.equal(combine({ ...base, llm: null }).verdict, SAFE);
 });
 
-test("brand page plus look-alike address go two steps; nothing ever lowers a verdict", () => {
-  const r = combine(base, null, null, { address: [look("combo")], page: brandPage });
-  assert.deepEqual([r.verdict, r.layer], [DANGEROUS, "brand-page"]);
-  const d = combine({ ...base, model: model(DANGEROUS, ["m"]) }, null, null, { address: [], page: brandPage });
-  assert.deepEqual([d.verdict, d.reasons], [DANGEROUS, ["brand page", "m"]]);
-  assert.equal(combine({ ...base, model: model(DANGEROUS) }, null, null, { address: [], page: null }).verdict, DANGEROUS);
-});
-
-test("brand rules never act on trusted or blocklisted addresses; allowlisted pages get at most a banner", () => {
-  const brand = { address: [look("homograph")], page: brandPage };
-  assert.equal(combine({ ...base, trusted: true }, null, null, brand).verdict, SAFE);
-  assert.equal(combine({ ...base, blocked: "url", model: null }, null, null, brand).layer, "blocklist");
-  const allowed = combine({ ...base, allow: true }, null, null, brand);
-  assert.deepEqual([allowed.verdict, allowed.layer, allowed.reasons], [SUSPICIOUS, "brand-page", ["brand page"]]);
-  const addressOnly = combine({ ...base, allow: true }, null, null, { address: [look("homograph")], page: null });
-  assert.equal(addressOnly.verdict, SAFE);
+test("the LLM opinion never acts on trusted, blocklisted, allowlisted or short-link addresses", () => {
+  assert.equal(combine({ ...base, trusted: true, llm }).verdict, SAFE);
+  assert.equal(combine({ ...base, blocked: "url", model: null, llm }).layer, "blocklist");
+  assert.equal(combine({ ...base, allow: true, llm }).verdict, SAFE);
+  assert.equal(combine({ ...base, shortener: true, llm }).verdict, SAFE);
 });

@@ -26,12 +26,6 @@ test("allowlisted site is safe even when the model alone would flag it", async (
   assert.ok(r.modelAlone && typeof r.modelAlone.prob === "number");
 });
 
-test("look-alike address is warned with a look-alike reason", async () => {
-  const r = await checkUrl(await checker, "https://paypa1.com/signin");
-  assert.notEqual(r.verdict, "safe");
-  assert.ok(r.lookalike.some((t) => t.includes("paypal")));
-});
-
 test("verdict matches the address model when no other layer applies", async () => {
   const c = await checker;
   const { scoreUrl } = c.hybrid;
@@ -50,7 +44,7 @@ test("short links and non-web addresses are not scored by the model", async () =
 
 test("trace lists every layer in order, with the deciding tone", async () => {
   const c = await checker;
-  const ids = ["allowlist", "blocklist", "model", "lookalike", "combine", "page"];
+  const ids = ["allowlist", "blocklist", "model", "llm", "combine", "page"];
   const safe = await checkUrl(c, "web.whatsapp.com");
   assert.deepEqual(safe.trace.map((t) => t.id), ids);
   assert.equal(safe.trace[0].tone, "safe");
@@ -73,18 +67,15 @@ test("a popular tenant site on a hosting platform is allowlisted by its host", a
 
 test("evidence shows what each layer looked at for this address", async () => {
   const c = await checker;
-  const bad = (await checkUrl(c, "https://paypa1.com/signin/verify-account")).evidence;
-  assert.equal(bad.allowlist.domain, "paypa1.com");
+  const bad = (await checkUrl(c, "http://secure-login-verify-account.xyz/wp-admin/office365/index.php")).evidence;
+  assert.equal(bad.allowlist.domain, "secure-login-verify-account.xyz");
   assert.equal(bad.allowlist.found, false);
   assert.equal(bad.allowlist.hash.length, bad.allowlist.bytes * 2);
   assert.ok(bad.blocklist.keys.length > 0 && bad.blocklist.keys.every((k) => k.hash));
   const m = bad.model;
   const sum = m.base + m.items.reduce((s, r) => s + r.delta, 0) + m.other;
   assert.ok(Math.abs(sum - m.raw) < 1e-6);
-  assert.equal(bad.lookalike.skeleton, "paypal");
-  assert.equal(bad.lookalike.nearest.distance, 0);
-  assert.equal(bad.combine.start, 1);
-  assert.equal(bad.combine.end, 2);
+  assert.equal(bad.combine.start, bad.combine.end);
   const ok = (await checkUrl(c, "web.whatsapp.com")).evidence;
   assert.equal(ok.allowlist.found, true);
   assert.equal(ok.model.used, false);

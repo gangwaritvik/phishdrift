@@ -14,12 +14,10 @@ import { sanitizeSettings } from "./config.js";
 import { addressOnly, combine, DANGEROUS, FRAME_PAGE_REASON, SAFE, SUSPICIOUS, framePageVerdict } from "./combine.js";
 import { listDomainKey, listUrlKey } from "./keys.js";
 import { MAX_URL_CHARS, effectiveUrl, isLocalAddress, scoreAddress } from "./address.js";
-import { DOMAIN_FAILURE_MS, usableAnswer } from "./domain.js";
+import { DOMAIN_FAILURE_MS, usableAnswer, usableLlmAnswer } from "./domain.js";
 import { addTrust, liveTrust } from "./trust.js";
 import { safeExit, worse } from "./navigation.js";
 import { loadHybrid } from "./lib/hybrid.js";
-import { addressSignals, loadBrandRules, pageSignal } from "./lib/brand_rules.js";
-import { analyzeHtml } from "./lib/html_features.js";
 import { loadPage, scorePage } from "./lib/page.js";
 import { isIpHost } from "./lib/urlparts.js";
 import { ListSet, withBundledAllowlist } from "./lists.js";
@@ -95,16 +93,6 @@ function getPage() {
     return page;
   })();
   return pagePromise;
-}
-
-let rulesPromise;
-function getRules() {
-  rulesPromise ??= (async () => {
-    const model = await getModel();
-    const payload = await (await fetch(chrome.runtime.getURL("data/brand_rules.json"))).json();
-    return loadBrandRules(payload, model.lists.psl, model.lists.platforms);
-  })();
-  return rulesPromise;
 }
 
 let listsPromise;
@@ -206,11 +194,61 @@ function domainLookup(domain, localVerdict, settings) {
   return { pending: domainInflight.get(domain) };
 }
 
+// LLM brand check (backend /llm-check): only the host name is sent. A failed lookup is "no
+// opinion" and is remembered briefly; it never lowers or raises anything.
+const llmCache = new Map(); // host -> { at, answer | null }
+const llmInflight = new Map();
+
+async function fetchLlm(host, settings) {
+  let answer = null;
+  try {
+    const res = await fetch(`${settings.backendUrl}/llm-check`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ domain: host, path_words: [] }),
+      signal: AbortSignal.timeout(settings.llmTimeoutMs),
+    });
+    if (res.ok) answer = usableLlmAnswer(await res.json());
+  } catch {
+    // fall through: no opinion
+  }
+  cacheSet(llmCache, host, { answer }, settings.verdictCacheMax);
+}
+
+function llmLookup(host, settings) {
+  const hit = llmCache.get(host);
+  if (hit && Date.now() - hit.at < (hit.answer ? settings.domainCacheMs : DOMAIN_FAILURE_MS)) {
+    return { answer: hit.answer };
+  }
+  if (!llmInflight.has(host)) {
+    llmInflight.set(host, fetchLlm(host, settings).finally(() => llmInflight.delete(host)));
+  }
+  return { pending: llmInflight.get(host) };
+}
+
+function hostOf(target) {
+  try {
+    const host = new URL(target).hostname;
+    return isIpHost(host) ? null : host;
+  } catch {
+    return null;
+  }
+}
+
+// Borderline only: suspicious, or safe with a model score near the warning level or a page that
+// asks for credentials. Never for allowlisted, short-link, trusted, listed, local or unscored.
+function llmWanted(layers, result, page, settings) {
+  if (!settings.llmCheck || !layers.domainName || layers.unscored || layers.local) return false;
+  if (layers.allow || layers.shortener || layers.trusted || layers.blocked) return false;
+  if (result.verdict === SUSPICIOUS) return true;
+  return result.verdict === SAFE && ((result.prob ?? 0) >= settings.llmGrayLow || Boolean(page?.asksCredentials));
+}
+
 const askable = (layers) => Boolean(layers.domainName) && !layers.shared && !isIpHost(layers.domainName);
 
 const UNSCORED = {
   trustKey: null, domainName: null, shared: false, allow: false, shortener: false, blocked: null,
-  model: null, unscored: true, lookalike: [],
+  model: null, unscored: true,
 };
 
 // Address layers (lists and the URL model) for a web address; cached per address.
@@ -236,17 +274,11 @@ async function layersFor(url) {
     model: null,
     unscored: false,
     local: isLocalAddress(url),
-    lookalike: [],
   };
   // The model also runs on trusted addresses: trust can expire or be outweighed by a blocklist hit,
   // and the cached layers must not depend on it.
   if (!layers.allow && !layers.shortener && !layers.blocked && !layers.local) {
     layers.model = scoreAddress(model, url);
-    try {
-      layers.lookalike = addressSignals(await getRules(), url);
-    } catch (err) {
-      console.warn("PhishDrift look-alike check failed:", err);
-    }
   }
   cacheSet(verdictCache, key, { layers }, settings.verdictCacheMax);
   return { ...layers, trusted: trusted.has(listed.trustKey) };
@@ -258,15 +290,14 @@ async function layersFor(url) {
 // asks for a password (reports/stress_test: 1 of 893 allowlisted legitimate pages with HTML).
 // A page with a password field but too little text for the page model (a bare login-form clone)
 // is still read; the combiner never lets the page model lower a verdict on such a page.
-// `brandFacts` (an object) receives the brand-rule page facts from the same parse.
-async function pageCheck(layers, url, html, facts, brandFacts = null) {
+async function pageCheck(layers, url, html, facts) {
   if (html == null || layers.trusted || layers.blocked || layers.unscored || url.length > MAX_URL_CHARS) return null;
   const addressTrusted = layers.allow || layers.shortener;
   if (!addressTrusted && !layers.model) return null;
   try {
-    const [model, page, rules] = await Promise.all([getModel(), getPage(), getRules()]);
+    const [model, page] = await Promise.all([getModel(), getPage()]);
     const allowShort = !addressTrusted && (facts?.passwordFields ?? 0) > 0;
-    const first = scorePage(model, page, url, html, { allowShort, facts: brandFacts, factBrands: rules.brandSet });
+    const first = scorePage(model, page, url, html, { allowShort });
     const scored =
       first.verdict > SAFE && first.hasHtml ? scorePage(model, page, url, html, { withReasons: true, allowShort }) : first;
     if (addressTrusted) {
@@ -308,40 +339,34 @@ export async function evaluate(url, { facts = null, html = null, origin = null }
   const layers = target === null ? { ...UNSCORED, trusted: false } : { ...(await layersFor(target)) };
   const model = await getModel();
   const page = facts ? pageFlags(facts, target, model.lists.psl) : null;
-  const brandFacts = {};
-  const pageModel = target === null ? null : await pageCheck(layers, target, html, facts, brandFacts);
-  const brand = await brandSignals(layers, target, html, brandFacts, model);
-  let result = combine(layers, page, pageModel, brand);
-  let pending = null;
+  const pageModel = target === null ? null : await pageCheck(layers, target, html, facts);
+  let result = combine(layers, page, pageModel);
+  const waits = [];
+  let answered = false;
   // Domain evidence can only raise suspicious to dangerous, so only suspicious pages ask for it.
   if (result.verdict === SUSPICIOUS && askable(layers) && !layers.allow && !layers.shortener) {
     const found = domainLookup(layers.domainName, result.verdict, settings);
     if (found.pending) {
-      pending = found.pending;
+      waits.push(found.pending);
     } else {
       layers.domain = found.answer;
       layers.backendFailed = found.failed;
-      result = combine(layers, page, pageModel, brand);
+      answered = true;
     }
   }
-  return { result: { ...result, url, domain: layers.domainName }, pending };
-}
-
-// Look-alike address hits (from the cached layers) and the brand-page rule on the page's HTML.
-async function brandSignals(layers, target, html, brandFacts, model) {
-  const brand = { address: layers.lookalike ?? [], page: null };
-  if (target === null || html == null || layers.trusted || layers.blocked) return brand;
-  try {
-    const rules = await getRules();
-    // the page check parses the page once; when it did not run, parse here for the facts only
-    if (!Object.keys(brandFacts).length && target.length <= MAX_URL_CHARS) {
-      analyzeHtml(target, html, model.lists, null, { facts: brandFacts, factBrands: rules.brandSet });
+  // The brand-impersonation opinion (opt-in, borderline addresses only; the host name is sent).
+  const host = llmWanted(layers, result, page, settings) ? hostOf(target) : null;
+  if (host) {
+    const found = llmLookup(host, settings);
+    if (found.pending) {
+      waits.push(found.pending);
+    } else {
+      layers.llm = found.answer;
+      answered = true;
     }
-    brand.page = pageSignal(rules, target, brandFacts);
-  } catch (err) {
-    console.warn("PhishDrift brand-page check failed:", err);
   }
-  return brand;
+  if (answered) result = combine(layers, page, pageModel);
+  return { result: { ...result, url, domain: layers.domainName }, pending: waits.length ? Promise.all(waits) : null };
 }
 
 // Evaluate, apply, and apply again once a backend lookup it started has settled.

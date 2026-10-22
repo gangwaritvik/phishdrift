@@ -10,9 +10,6 @@ const reduce = matchMedia("(prefers-reduced-motion: reduce)");
 const EXAMPLES = [
   ["Normal site", "https://en.wikipedia.org/wiki/Phishing"],
   ["Popular site the model alone flags", "https://web.whatsapp.com/"],
-  ["Look-alike", "https://paypa1.com/signin"],
-  ["Look-alike letters (punycode)", "https://www.xn--pple-43d.com/"],
-  ["Brand + lure word", "https://sbi-kyc-update.com/login"],
   ["Phishing style", "http://secure-login-verify-account.xyz/wp-admin/office365/index.php"],
 ];
 
@@ -22,7 +19,7 @@ const I = {
   allow: '<path d="M4 7h10M4 12h7M4 17h10"/><path d="m16 15 2.5 2.5L22 12"/>',
   block: '<circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/>',
   model: '<path d="M3 17c2-8 4-8 6-2s4 6 6-4 3-7 6-1"/>',
-  look: '<circle cx="9" cy="12" r="5.5"/><circle cx="15" cy="12" r="5.5"/>',
+  llm: '<circle cx="9" cy="12" r="5.5"/><circle cx="15" cy="12" r="5.5"/>',
   combine: '<path d="M5 5v4c0 3 2 4 4 5l3 1.5M19 5v4c0 3-2 4-4 5l-3 1.5M12 15.5V20"/>',
   verdict: '<path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z"/>',
   ok: '<path d="m5 12 4.5 4.5L19 7"/>',
@@ -34,11 +31,11 @@ const STEPS = [
   ["allow", "Allowlist"],
   ["block", "Blocklist"],
   ["model", "Address model"],
-  ["look", "Look-alikes"],
+  ["llm", "LLM check"],
   ["combine", "Combiner"],
   ["verdict", "Verdict"],
 ];
-const TRACE_ID = { allow: "allowlist", block: "blocklist", model: "model", look: "lookalike", combine: "combine" };
+const TRACE_ID = { allow: "allowlist", block: "blocklist", model: "model", llm: "llm", combine: "combine" };
 const WORD = { safe: "Looks safe", suspicious: "Suspicious", dangerous: "Dangerous" };
 const TONE = { safe: "safe", suspicious: "warn", dangerous: "bad" };
 const SUB = {
@@ -241,59 +238,9 @@ function modelScene(r) {
   };
 }
 
-function tiles(cols, pick, cls) {
-  return cols
-    .map((c, i) => {
-      const ch = pick(c);
-      const klass = cls(c);
-      return `<span class="tile ${klass}" style="transition-delay:${i * 55}ms">${ch === null ? "–" : esc(ch)}</span>`;
-    })
-    .join("");
-}
-
-function lookScene(r) {
-  const e = r.evidence.lookalike;
-  const title = "Does the name imitate a known brand?";
-  if (!e.applicable) return skipScene(4, "Look-alike rules", title, "This address is a number, not a domain name, so there is no name to compare.");
-  if (!e.used) {
-    return skipScene(4, "Look-alike rules", title, `The allowlist already decided, so the brand comparison is not run. (${e.domain} would have been compared with ${num(e.brandCount)} known brands.)`);
-  }
-  const n = e.nearest;
-  const cols = n ? n.cols : [];
-  const cleaned = e.skeleton !== e.decoded;
-  const rowsHtml = [];
-  if (cleaned) {
-    rowsHtml.push(`<div class="tilerow rv"><span class="lab">Your domain name${e.decoded !== e.label ? ` <small>(written ${esc(e.label)})</small>` : ""}</span><div class="tiles">${tiles(Array.from(e.decoded).map((ch, i) => ({ ch, changed: e.changed[i] })), (c) => c.ch, (c) => (c.changed ? "diff" : ""))}</div></div>`);
-  }
-  const near = n && n.distance <= 3;
-  if (!near) {
-    rowsHtml.push(`<div class="tstep rv">Closest of ${num(e.brandCount)} brands: <b>${esc(n?.brand ?? "none")}</b>${n ? `, ${n.distance} edits away. Too different to count as an imitation.` : "."}</div>`);
-  } else rowsHtml.push(
-    `<div class="tilerow rv"><span class="lab">${cleaned ? "After mapping look-alike letters" : "Your domain name"}</span><div class="tiles">${tiles(cols, (c) => c.a, (c) => (c.a === null ? "gap" : c.op === "match" ? "" : "diff"))}</div></div>`,
-    `<div class="tilerow rv"><span class="lab">Closest brand: <b>${esc(n.brand)}</b> <small>(${n.distance} ${n.distance === 1 ? "edit" : "edits"} apart)</small></span><div class="tiles">${tiles(cols, (c) => c.b, (c) => (c.b === null ? "gap" : c.op === "match" ? "" : "diff"))}</div></div>`,
-  );
-  let result;
-  if (e.hits.length) result = chip("warn", "bang", esc(e.hits[0].text));
-  else if (e.official || e.isBrand) result = chip("clear", "ok", e.official ? `${esc(e.domain)} belongs to ${esc(e.official)}: not an imitation` : `${esc(e.label)} is itself a known brand name: not an imitation`);
-  else result = chip("clear", "ok", `Not close enough to any of ${num(e.brandCount)} known brands`);
-  return {
-    html: head(4, "Look-alike rules", title, `Comparing <b>${esc(e.label)}</b> with ${num(e.brandCount)} known brands, after turning look-alike characters (such as 1 for l or Cyrillic a) back into plain letters.`) + rowsHtml.join("") + result + (e.hits.length > 1 ? `<p class="note rv">${e.hits.slice(1).map((h) => esc(h.text)).join(" ")}</p>` : ""),
-    play: async (el, w) => {
-      show(el.querySelector(".lead"));
-      await w(450);
-      for (const row of el.querySelectorAll(".tilerow, .tstep")) {
-        show(row);
-        await w(60);
-        row.querySelectorAll(".tile").forEach((t) => t.classList.add("show"));
-        await w(Math.min(900, 220 + row.querySelectorAll(".tile").length * 55));
-      }
-      // letters that were swapped for look-alikes turn into the plain letter they imitate
-      el.querySelectorAll(".tilerow .tile.diff").forEach((t) => (t.dataset.was = "1"));
-      await w(350);
-      show(el.querySelector(".result"), el.querySelector(".note"));
-      await w(1000);
-    },
-  };
+// The LLM brand check needs the backend, so this page only says so.
+function llmScene() {
+  return skipScene(4, "LLM check", "Does the address pretend to be a known brand?", "In the extension, borderline addresses are sent (host name only) to the backend, which asks a language model which brand the address imitates. Code then checks that brand against the real domain. This page has no backend, so it does not run this step.");
 }
 
 function combineScene(r) {
@@ -354,7 +301,7 @@ function verdictScene(r) {
   };
 }
 
-const BUILD = [allowScene, blockScene, modelScene, lookScene, combineScene, verdictScene];
+const BUILD = [allowScene, blockScene, modelScene, llmScene, combineScene, verdictScene];
 
 // --- stage ----------------------------------------------------------------------------------
 

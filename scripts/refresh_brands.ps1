@@ -1,37 +1,33 @@
 <#
 .SYNOPSIS
-  After a brand list change (configs/lists/brands.txt): rebuild the brand-to-domain map and the
-  brand rules, and optionally the models that use brand names as features.
+  After a brand list change (configs/lists/brands.txt): rebuild the extension, and optionally the
+  models that use brand names as features.
 
 .DESCRIPTION
   Run from the repo folder after copying the update in:
 
-      powershell -ExecutionPolicy Bypass -File scripts\refresh_brands.ps1            (rules only)
-      powershell -ExecutionPolicy Bypass -File scripts\refresh_brands.ps1 -Model     (rules + models)
+      powershell -ExecutionPolicy Bypass -File scripts\refresh_brands.ps1            (extension only)
+      powershell -ExecutionPolicy Bypass -File scripts\refresh_brands.ps1 -Model     (models too)
 
-  Rules only (minutes; needs internet for Wikidata):
-    1. python -m features brand-domains --wikidata --misp   (configs\lists\brand_domains.json:
-                                                              each brand's own websites)
-    2. python -m features export-rules                      (js\data\brand_rules.json)
-    3. node extension\build.mjs                             (extension\dist; reload it in Chrome)
+  Extension only (seconds): node extension\build.mjs (extension\dist; reload it in Chrome)
 
   -Model adds (long: the tier B step took about 3.5 hours last time; needs about 3 GB free disk):
-    4. python -m features build [--split time_slice | heldout_source]   (tier A features)
-    5. python -m features build --tier B [--split ...]   (tier B features; shards built with the
+    1. python -m features build [--split time_slice | heldout_source]   (tier A features)
+    2. python -m features build --tier B [--split ...]   (tier B features; shards built with the
                                                            old lists are deleted first, once)
-    6. python -m experiments.blend2 --splits 0 --save-models data\models
+    3. python -m experiments.blend2 --splits 0 --save-models data\models
                                    --reports data\models\reports_split0
        (the shipped split's models; its tables go to data\models, not reports\)
-    7. python -m models.export_page --models data\models --split 0
+    4. python -m models.export_page --models data\models --split 0
        (js\data\tier_a_hybrid.json, js\data\tier_b_page.json and their parity fixtures)
-    8. node extension\build.mjs
+    5. node extension\build.mjs
 
   -Rescrape runs `python -m features lists brands` first. It fetches today's Wikidata, so the list
   can differ from the reviewed one in the repo; leave it off unless a new review is planned.
 
   Stopping: Ctrl+C is safe. Tier B keeps finished shards and resumes when the same command is run
   again; the other steps restart from the beginning. The 10-split numbers in reports\ were measured
-  with the old list; the exported model is the only thing step 6-7 change.
+  with the old list; the exported model is the only thing step 3-4 change.
 #>
 
 param([switch]$Model, [switch]$Rescrape, [int]$Workers = 0)
@@ -72,8 +68,6 @@ if ($Model) {
 if ($Rescrape) {
     Invoke-Step "scrape brands (Wikidata + reviewed files)" { & $py -m features lists brands }
 }
-Invoke-Step "brand-to-domain map" { & $py -m features brand-domains --wikidata --misp }
-Invoke-Step "brand rules for the extension" { & $py -m features export-rules }
 
 if ($Model) {
     Invoke-Step "tier A features: pool" { & $py -m features build }

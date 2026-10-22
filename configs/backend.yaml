@@ -98,6 +98,20 @@ lists:
     cache_ttl_s: 604800
     timeout_s: 300
 
+# LLM second opinion (backend/llm.py), layer 6 of CLAUDE.md. Off until the key variable is set.
+# The key stays in the backend machine's environment; only a host and a few path words are sent.
+llm:
+  provider: gemini
+  model: gemini-2.5-flash-lite   # unverified default, check the current model list before first use
+  url: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+  api_key_env: GEMINI_API_KEY
+  timeout_s: 4
+  max_output_tokens: 200
+  max_path_words: 12
+  min_confidence: 0.7            # not tuned yet: to be set from experiments/llm_eval.py
+  cache_ttl_s: 86400             # one question per host and path words per day
+  max_calls_per_day: 2000        # hard daily cap on provider calls (cost bound)
+
 rules:                           # heuristics, see backend/checks.py and reports/domain_rules.md
   very_young_domain_days: 7
   young_domain_days: 30
