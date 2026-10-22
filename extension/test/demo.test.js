@@ -91,7 +91,8 @@ test("an AI answer from the backend raises the verdict and shows in the trace", 
   const c = { ...base, askLlm: async (host) => (asked.push(host), { raise: true, brand: "PayPal", brand_domain: "paypal.com", confidence: 0.9, reason: "x", error: null }) };
   const r = await checkUrl(c, url);
   assert.deepEqual(asked, ["myshop-handmade-pottery.com"]);
-  assert.ok(r.verdict !== "safe" && r.layer === "llm" || plain.verdict !== "safe");
+  if (plain.verdict === "safe") assert.deepEqual([r.verdict, r.layer], ["suspicious", "llm"]);
+  else assert.notEqual(r.verdict, "safe");
   assert.equal(r.trace[3].tone, "warn");
   const down = await checkUrl({ ...base, askLlm: async () => null }, url);
   assert.equal(down.trace[3].label, "Backend not reachable");
