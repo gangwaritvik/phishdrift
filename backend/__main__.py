@@ -25,25 +25,31 @@ from phishdrift.http import HttpClient
 log = logging.getLogger("backend")
 
 
-def fetch_zone_evidence(settings: Settings) -> list[str]:
-    """Phishing URL histories from ``lists.open_hosting.evidence_urls`` (cached on disk); a
-    failed download is logged and skipped."""
+def fetch_url_lists(settings: Settings, urls: list[str], what: str) -> list[str]:
+    """URLs from downloaded one-per-line lists (cached on disk, ``lists.open_hosting`` timeouts);
+    a failed download is logged and skipped."""
     ocfg = settings.cfg["lists"]["open_hosting"]
     paths = settings.collector["paths"]
     client = HttpClient.from_config(settings.collector["http"], resolve(paths["http_cache_dir"]))
     out: list[str] = []
-    for url in ocfg.get("evidence_urls", []):
+    for url in urls:
         try:
             body = client.get(
                 url, cache_ttl_s=ocfg["evidence_cache_ttl_s"], timeout_s=ocfg["evidence_timeout_s"]
             )
-        except Exception as exc:  # noqa: BLE001 - the zones then come from the other inputs only
-            log.warning("zone evidence %s not fetched (%s: %s)", url, type(exc).__name__, exc)
+        except Exception as exc:  # noqa: BLE001 - the lists then come from the other inputs only
+            log.warning("%s %s not fetched (%s: %s)", what, url, type(exc).__name__, exc)
             continue
         got = lists.parse_url_lines(body.decode("utf-8", errors="replace"))
-        log.info("%d zone-evidence URLs from %s", len(got), url)
+        log.info("%d %s URLs from %s", len(got), what, url)
         out += got
     return out
+
+
+def fetch_zone_evidence(settings: Settings) -> list[str]:
+    """Phishing URL histories from ``lists.open_hosting.evidence_urls``."""
+    urls = settings.cfg["lists"]["open_hosting"].get("evidence_urls", [])
+    return fetch_url_lists(settings, urls, "zone-evidence")
 
 
 def fetch_popular_origins(settings: Settings, now: datetime | None = None) -> list[str]:
@@ -76,7 +82,11 @@ def cmd_build_lists(args: argparse.Namespace) -> int:
     lcfg = settings.cfg["lists"]
     paths = settings.collector["paths"]
     urls = lists.collect_blocklist_urls(resolve(paths["raw_dir"]), resolve(paths["blocklist_dir"]))
-    log.info("%d distinct phishing URLs for the blocklist", len(urls))
+    feed: list[str] = []
+    if not args.no_feeds:
+        feed = fetch_url_lists(settings, lcfg.get("blocklist_feeds", []), "blocklist-feed")
+        feed = sorted(set(feed) - set(urls))
+    log.info("%d own + %d feed phishing URLs for the blocklist", len(urls), len(feed))
 
     top_n = lcfg["allowlist_top_n"]
     candidates: list[str] = []
@@ -92,6 +102,8 @@ def cmd_build_lists(args: argparse.Namespace) -> int:
     extra = [u for path in args.phishing_file or [] for u in lists.read_phishing_file(Path(path))]
     if not args.no_evidence:
         extra += fetch_zone_evidence(settings)
+    listed = {*urls, *feed}
+    extra = [u for u in extra if u not in listed]  # already counted as blocklist URLs
     origins: list[str] = []
     if args.origins_file:
         origins = lists.read_origins_file(Path(args.origins_file), lcfg["tenant_sites"]["top_rank"])
@@ -111,6 +123,7 @@ def cmd_build_lists(args: argparse.Namespace) -> int:
         min_children_whole=lcfg["open_hosting"].get("min_children_whole"),
         shorteners=load_lists().shorteners,
         popular_origins=origins,
+        exact_block_urls=feed,
     )
     out_dir = Path(args.out) if args.out else settings.lists_dir
     key = settings.signing_key()
@@ -146,6 +159,11 @@ def main(argv: list[str] | None = None) -> int:
         "--no-evidence",
         action="store_true",
         help="skip downloading lists.open_hosting.evidence_urls",
+    )
+    build.add_argument(
+        "--no-feeds",
+        action="store_true",
+        help="skip downloading lists.blocklist_feeds (blocklist = collector and corpus URLs only)",
     )
     build.add_argument(
         "--origins-file",

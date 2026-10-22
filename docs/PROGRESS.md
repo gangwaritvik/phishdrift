@@ -974,3 +974,14 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   answer and whether our code raised the verdict; states: no backend, unreachable, no key (`disabled`), no opinion.
 - Checked with a stub backend in headless Chromium (layer 4 scene text read back); tests: pytest demo 2, `npm test` extension 69. Not run
   against the real Gemini.
+
+### 2026-10-22 — Blocklist grows with the Phishing.Database ACTIVE feed (cloud)
+- Ritvik: the blocklist was only 9,302 domains / 35,107 URLs (our collector's own URLs). Chose "add it" on the card.
+- Changed: `lists.blocklist_feeds` in `configs/backend.yaml` (ACTIVE, cached 1 day); `build-lists` blocklists those URLs by URL key
+  only (`exact_block_urls` in `backend/lists.py`), never by registrable domain; `--no-feeds` skips them; extension manifest gets
+  `unlimitedStorage` (storage.local default quota is 10 MB). Tests: stubbed feed, no network.
+- Measured (cloud, ACTIVE of 2026-10-22, 789k lines, no Tranco so no allowlist candidates): 862k URL hashes, 17.2 MB blocklist JSON;
+  Node parse 127 ms + Set build 446 ms, about 90 MB heap. Domain-level listing of the same feed would have blocked 51 of 3,493 natural
+  pages (inmotionhosting.com, getresponse.com, google.com.bh ...); URL-level blocks 1 (`https://google.by/`, the feed lists that address).
+- Not measured: extension start-up and memory in a real browser with this list, sync time on a slow link, effect on phishing recall.
+- Next: Ritvik runs `python -m backend build-lists --tranco-file ...` on the PC and checks the extension loads; decide if the 17 MB is acceptable.
