@@ -537,6 +537,7 @@ def build_lists(
     sentinel_top_n: int = 1000,
     specific_segment_len: int = 16,
     popular_origins: Iterable[str] = (),
+    exact_block_urls: Iterable[str] = (),
 ) -> dict[str, dict]:
     """Return ``{"manifest", "blocklist", "allowlist"}`` documents (all sorted, deterministic
     except ``built_at``). ``extra_phishing_urls`` (for example the corpus's phishing URLs) only
@@ -548,15 +549,19 @@ def build_lists(
     collides with a trusted one. ``allow_candidates`` are in rank order; the hashes of the first
     ``sentinel_top_n`` allowlisted ones are listed in ``allowlist.top`` so the extension can
     refuse a synced list that would block or drop the most visited sites. ``popular_origins``
-    (most visited first) supply the tenant sites allowlisted by exact host (``tenant_sites``)."""
+    (most visited first) supply the tenant sites allowlisted by exact host (``tenant_sites``).
+    ``exact_block_urls`` (public feeds) are blocklisted by URL key only, never by registrable
+    domain: such a list names hacked and hosting sites too, and a domain hit would block their
+    legitimate pages."""
     allow_bytes = allow_prefix_bytes or prefix_bytes
     blocklist_urls = list(blocklist_urls)
+    exact_block_urls = list(exact_block_urls)
     extra_phishing_urls = list(extra_phishing_urls)
     ranked = list(dict.fromkeys(d for d in map(list_domain_key, allow_candidates) if d))
     ranked = [d for d in ranked if d not in shorteners]
     cand_domains = set(ranked)
     model = learn_zones(
-        [*blocklist_urls, *extra_phishing_urls],
+        [*blocklist_urls, *exact_block_urls, *extra_phishing_urls],
         cand_domains - platforms,
         min_tenant_children,
         min_children_per_url,
@@ -582,11 +587,19 @@ def build_lists(
         else:
             plain_block_domains.add(domain)
             block_domains.add(list_hash(domain, prefix_bytes))
+    for url in exact_block_urls:
+        if list_domain_key(url):
+            for key in block_url_keys(url, model, protected, specific_segment_len):
+                block_urls.add(list_hash(key, prefix_bytes))
     allowed_ranked = [
         d for d in ranked if d not in platforms and d not in zones and d not in plain_block_domains
     ]
     tenants = tenant_sites(
-        popular_origins, platforms, zones, [*blocklist_urls, *extra_phishing_urls], shorteners
+        popular_origins,
+        platforms,
+        zones,
+        [*blocklist_urls, *exact_block_urls, *extra_phishing_urls],
+        shorteners,
     )
     allow = {list_hash(d, allow_bytes) for d in [*allowed_ranked, *tenants]}
     top = [list_hash(d, allow_bytes) for d in allowed_ranked[:sentinel_top_n]]

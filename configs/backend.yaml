@@ -68,6 +68,10 @@ lists:
     capacity: 60                 # so a feedback burst cannot stop list syncs
     refill_per_s: 1.0
     max_clients: 10000
+  # Public phishing URL lists blocklisted as they are (one URL per line), on top of our own
+  # collector and corpus URLs. Dead links stay until the list drops them (cached 1 day).
+  blocklist_feeds:
+    - https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-ACTIVE.txt
   allowlist_top_n: 50000         # Tranco rank only cuts the list; never a model feature
   # Open hosting (backend/lists.py): a phishing host below an allowlisted domain makes the child
   # zone that contains it (cloudapp.azure.com, drive.google.com) open: no allowlist there, blocklist
@@ -102,7 +106,7 @@ lists:
 # The key stays in the backend machine's environment; only a host and a few path words are sent.
 llm:
   provider: gemini
-  model: gemini-2.5-flash-lite   # unverified default, check the current model list before first use
+  model: gemini-3.8-flash   # newest Flash per Google model list 2026-10-22; unmeasured here
   url: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
   api_key_env: GEMINI_API_KEY
   timeout_s: 4

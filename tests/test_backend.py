@@ -544,6 +544,7 @@ def test_cli_build_lists_without_tranco_continues(tmp_path, monkeypatch, caplog)
 
     monkeypatch.setattr(lists, "tranco_from_package", no_tranco)
     monkeypatch.setattr(cli, "fetch_popular_origins", lambda settings: [])
+    monkeypatch.setattr(cli, "fetch_url_lists", lambda settings, urls, what: [])
     out = tmp_path / "out"
     assert cli.main(["build-lists", "--out", str(out)]) == 0
     manifest = json.loads((out / "manifest.json").read_text())
@@ -552,6 +553,28 @@ def test_cli_build_lists_without_tranco_continues(tmp_path, monkeypatch, caplog)
     cli_file.write_text("google.com\n")
     assert cli.main(["build-lists", "--tranco-file", str(cli_file), "--out", str(out)]) == 0
     assert json.loads((out / "manifest.json").read_text())["counts"]["allowlist_domains"] == 1
+
+
+def test_cli_build_lists_blocklists_the_feed_urls(tmp_path, monkeypatch):
+    from backend import __main__ as cli
+
+    feed = ["http://evil-one.example/login", "http://evil-two.example/a"]
+    monkeypatch.setattr(lists, "tranco_from_package", lambda *a, **k: [])
+    monkeypatch.setattr(cli, "fetch_popular_origins", lambda settings: [])
+
+    def fake(settings, urls, what):
+        return feed if what == "blocklist-feed" else feed[:1]
+
+    monkeypatch.setattr(cli, "fetch_url_lists", fake)
+    out = tmp_path / "out"
+    assert cli.main(["build-lists", "--out", str(out)]) == 0
+    block = json.loads((out / "blocklist.json").read_text())
+    assert block["domains"] == []  # feed URLs are listed by URL key, never by domain
+    for url in feed:
+        assert lists.list_hash(lists.list_url_key(url), 8) in block["urls"]
+    out2 = tmp_path / "out2"
+    assert cli.main(["build-lists", "--no-feeds", "--out", str(out2)]) == 0
+    assert json.loads((out2 / "blocklist.json").read_text())["urls"] == []
 
 
 def test_live_checker_treats_a_broken_resolver_as_unknown():
