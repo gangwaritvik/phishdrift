@@ -959,3 +959,9 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Known loss: look-alikes the address model scores below the gray zone (the old rules caught `paypa1.com` style hosts) are now
   missed unless the LLM is asked; measure in `experiments/llm_eval.py` (not written yet).
 - Next: Ritvik creates a Gemini key and sets `GEMINI_API_KEY` on the backend machine; then `experiments/llm_eval.py` on the PC.
+
+### 2026-10-22 — Popup switch for the LLM brand check (cloud)
+- Changed: `extension/src/popup.{html,js}` checkbox writes `settings.llmCheck` (default off; read by `getSettings` on every check).
+  Found while delivering PR #47 to the PC: only `extension/src/address.js` there was older than main (missing `isLocalAddress`),
+  fixed by copying; other extension, js/src and backend files matched by size.
+- Not tested in a browser (no popup test harness); `npm test` extension passes.
