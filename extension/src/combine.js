@@ -19,6 +19,8 @@
 // - A page with no web address of its own (data:, sandboxed frames) is not scored by the address
 //   model; it is suspicious only if it asks for credentials.
 
+import { lookalikeReason } from "./lib/lookalike.js";
+
 export const SAFE = 0;
 export const SUSPICIOUS = 1;
 export const DANGEROUS = 2;
@@ -51,7 +53,20 @@ export const addressOnly = (result) => result?.verdict === DANGEROUS && result.l
 // llm: layers.llm = {raise, brand, brand_domain} | null, the backend's brand-impersonation opinion
 // (backend/llm.py). It only raises (see llmEscalate).
 export function combine(layers, page = null, pageModel = null) {
-  return llmEscalate(combineLayers(layers, page, pageModel), layers, page);
+  return lookalikeEscalate(llmEscalate(combineLayers(layers, page, pageModel), layers, page), layers, page);
+}
+
+// One step up for an offline look-alike hit (layers.lookalike = {brand, kind}, js/src/lookalike.js),
+// under the same limits as llmEscalate. Needs no backend.
+export function lookalikeEscalate(out, layers, page) {
+  const hit = layers.lookalike;
+  if (!hit || layers.trusted || layers.allow || layers.shortener) return out;
+  if (["blocklist", "none", "local", "allowlist", "shortener", "user-trusted"].includes(out.layer)) return out;
+  const cap = page?.asksCredentials ? DANGEROUS : SUSPICIOUS;
+  const verdict = Math.min(out.verdict + 1, Math.max(cap, out.verdict));
+  const reasons = [...new Set([lookalikeReason(hit), ...out.reasons])];
+  if (verdict <= out.verdict) return { ...out, reasons };
+  return { ...out, verdict, layer: "lookalike", reasons };
 }
 
 export const llmReason = (llm) =>

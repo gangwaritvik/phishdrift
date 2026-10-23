@@ -18,6 +18,7 @@ import { DOMAIN_FAILURE_MS, usableAnswer, usableLlmAnswer } from "./domain.js";
 import { addTrust, liveTrust } from "./trust.js";
 import { safeExit, worse } from "./navigation.js";
 import { loadHybrid } from "./lib/hybrid.js";
+import { lookalikeHit } from "./lib/lookalike.js";
 import { loadPage, scorePage } from "./lib/page.js";
 import { isIpHost } from "./lib/urlparts.js";
 import { ListSet, withBundledAllowlist } from "./lists.js";
@@ -279,6 +280,7 @@ async function layersFor(url) {
   // and the cached layers must not depend on it.
   if (!layers.allow && !layers.shortener && !layers.blocked && !layers.local) {
     layers.model = scoreAddress(model, url);
+    layers.lookalike = lookalikeHit(model, url);
   }
   cacheSet(verdictCache, key, { layers }, settings.verdictCacheMax);
   return { ...layers, trusted: trusted.has(listed.trustKey) };

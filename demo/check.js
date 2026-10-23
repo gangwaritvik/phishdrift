@@ -27,11 +27,12 @@ async function loadLists(read) {
 
 export async function loadChecker({ base, read }) {
   const mod = (path) => import(new URL(path, base).href);
-  const [combine, lists, address, hybrid, keys, pslMod, urlparts, explain, modelMod] = await Promise.all([
+  const [combine, lists, address, hybrid, look, keys, pslMod, urlparts, explain, modelMod] = await Promise.all([
     mod("combine.js"),
     mod("lists.js"),
     mod("address.js"),
     mod("lib/hybrid.js"),
+    mod("lib/lookalike.js"),
     mod("keys.js"),
     mod("lib/psl.js"),
     mod("lib/urlparts.js"),
@@ -51,6 +52,7 @@ export async function loadChecker({ base, read }) {
     combine,
     address,
     hybrid,
+    lookalikeHit: look.lookalikeHit,
     x: { keys, psl: pslMod, urlparts, explain, model: modelMod, hybrid, lists },
     model,
     lists: listSet,
@@ -79,6 +81,7 @@ const LAYER_WORD = {
   allowlist: "The allowlist decided.",
   blocklist: "The blocklist decided.",
   "url-model": "The address model decided.",
+  lookalike: "The look-alike check raised the verdict.",
   shortener: "A short link has nothing to judge until it is followed.",
   none: "Nothing to check.",
 };
@@ -187,6 +190,7 @@ export async function checkUrl(c, input) {
   };
   if (!layers.allow && !layers.shortener && !layers.blocked) {
     layers.model = c.address.scoreAddress(c.model, target);
+    layers.lookalike = c.lookalikeHit(c.model, target);
   }
   // The AI step runs only when the page was given a backend (`c.askLlm`), for every address the
   // allowlist, blocklist and short-link rules did not already decide (the extension asks only
