@@ -1003,3 +1003,16 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 ### 2026-10-22 — Gemini model chosen by timing on Ritvik's key (cloud, from his PowerShell test)
 - Same trivial request on his free key: `gemini-3.8-flash` HTTP 429 (0.4 s), `gemini-3.5-flash-lite` 22.3 s (the 15 s limit expired),
   `gemini-3.5-flash` answered "OK" in 2.1 s. Config model set to `gemini-3.5-flash`. One call each, so latency and quota are not characterised.
+
+### 2026-10-23 — Offline look-alike check (paypa1.com was missed)
+- Why it was missed: the address model scores `paypa1.com` below its suspicious cutoff, the allowlist does not list it,
+  and the only look-alike layer left after PR #47 is the Gemini check, which is off in the static demo and not working
+  live. So no layer fired.
+- Changed: `js/src/lookalike.js` (look-alike characters 1/l/i, 0/o, 3/e, rn/m, vv/w and Cyrillic/Greek letters folded
+  onto the brand list; brand word next to a lure word in a hyphenated name; brand in the subdomain), `combine.js`
+  `lookalikeEscalate` (one step up, never on allowlisted, trusted, blocklisted or short-link addresses, same cap as the
+  AI check), wired into `background.js` and `demo/check.js`. Tests in `extension/test/lookalike.test.js`,
+  `combine.test.js`; extension 72 pass, js tests pass.
+- Measured: 0 hits on 5,432 natural legitimate URLs (`data_share/ood`). The hyphen rule first fired on 16 (toyota-4runner,
+  slack-edge ...) and now needs a lure word. A brand's name on another suffix (`paypal.net`) is still not flagged.
+- Not measured: recall on real look-alike phishing, no Tranco allowlist enumeration (list is hashed).

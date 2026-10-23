@@ -197,3 +197,14 @@ test("the LLM opinion never acts on trusted, blocklisted, allowlisted or short-l
   assert.equal(combine({ ...base, allow: true, llm }).verdict, SAFE);
   assert.equal(combine({ ...base, shortener: true, llm }).verdict, SAFE);
 });
+
+test("look-alike hit raises one step offline, never on trusted or listed addresses", async () => {
+  const { combine, SAFE, SUSPICIOUS, DANGEROUS } = await import("../dist/combine.js");
+  const base = { allow: false, shortener: false, blocked: null, trusted: false, model: { verdict: SAFE, prob: 0.1, reasons: [] }, lookalike: { brand: "paypal", kind: "homoglyph" } };
+  const r = combine(base);
+  assert.deepEqual([r.verdict, r.layer], [SUSPICIOUS, "lookalike"]);
+  assert.equal(combine(base, { asksCredentials: true }).verdict, SUSPICIOUS);
+  assert.equal(combine({ ...base, model: { verdict: SUSPICIOUS, prob: 0.9, reasons: [] } }, { asksCredentials: true }).verdict, DANGEROUS);
+  assert.equal(combine({ ...base, allow: true }).verdict, SAFE);
+  assert.equal(combine({ ...base, trusted: true }).verdict, SAFE);
+});
