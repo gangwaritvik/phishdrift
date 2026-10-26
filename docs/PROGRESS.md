@@ -1046,3 +1046,6 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Changed: `demo/app.js` `read` retries once and names the file in the error; `demo/check.js` treats a failed 17 MB blocklist
   download as "no list" instead of stopping the page. The model file (11.7 MB) is still required.
 - Not tested on a phone or on Netlify.
+- 2026-10-26 later: the hosted page loaded on the phone; its AI step answered `provider_failed` (the function had a key, so it
+  is not "disabled"; the Gemini call itself failed: quota, model name or a timeout, not yet known). Changed: the function now returns
+  `detail` (Google's error text, never the key) and the page shows it, so the next screenshot names the cause.

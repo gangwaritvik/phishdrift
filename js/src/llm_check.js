@@ -108,8 +108,10 @@ export async function checkHost(host, words, { cfg, psl, provider }) {
   try {
     text = await provider(buildPrompt(host, cleanWords(words, cfg.max_path_words)));
   } catch (err) {
-    console.warn(`llm check failed: ${err?.name}: ${String(err?.message).slice(0, 200)}`);
-    return { ...NONE(), error: "provider_failed" };
+    const detail = `${err?.name}: ${String(err?.message).slice(0, 200)}`;
+    console.warn(`llm check failed: ${detail}`);
+    // the message is Google's own error text or ours, never the request, so the key cannot be in it
+    return { ...NONE(), error: "provider_failed", detail };
   }
   const answer = parse(text);
   if (answer === null) return { ...NONE(), error: "bad_answer" };

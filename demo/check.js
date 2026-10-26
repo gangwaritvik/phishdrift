@@ -87,7 +87,7 @@ function llmTrace(llm, decidedEarly, earlyWhy) {
   if (llm.state === "skipped") return { id: "llm", tone: "skip", label: "Skipped", detail: decidedEarly ? earlyWhy : "There is no host name to send." };
   if (llm.state === "off") return { id: "llm", tone: "na", label: "No backend here", detail: "The brand-impersonation check asks a language model through the backend. This page was not given a backend, so it does not run it." };
   if (llm.state === "unreachable") return { id: "llm", tone: "na", label: "AI check not reachable", detail: "The AI check did not answer, so it was not run." };
-  if (llm.error) return { id: "llm", tone: "na", label: "No opinion", detail: `The backend gave no opinion (${llm.error}).` };
+  if (llm.error) return { id: "llm", tone: "na", label: "No opinion", detail: `The AI check gave no opinion (${llm.error}${llm.detail ? `: ${llm.detail}` : ""}).` };
   if (llm.raise) return { id: "llm", tone: "warn", label: "Imitation", detail: `Looks like ${llm.brand}, whose real site is ${llm.brand_domain}.` };
   return { id: "llm", tone: "clear", label: "Nothing found", detail: "The model did not find a brand being imitated." };
 }
