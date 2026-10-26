@@ -114,6 +114,6 @@ export async function checkHost(host, words, { cfg, psl, provider }) {
     return { ...NONE(), error: "provider_failed", detail };
   }
   const answer = parse(text);
-  if (answer === null) return { ...NONE(), error: "bad_answer" };
+  if (answer === null) return { ...NONE(), error: "bad_answer", detail: String(text).slice(0, 160) };
   return { ...judge(host, answer, cfg.min_confidence, psl), error: null };
 }
