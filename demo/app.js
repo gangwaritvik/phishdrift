@@ -534,11 +534,19 @@ async function main() {
   go(start);
 }
 
+// One retry: a phone on a weak connection can drop the big model and list downloads. The error
+// names the file, so "Load failed" (Safari's wording for any network error) says which one.
 async function read(path) {
-  const res = await fetch(new URL(path, root));
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
-  return res.json();
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await fetch(new URL(path, root));
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      if (attempt === 2) throw new Error(`${path}: ${err.message}`);
+    }
+  }
 }
 
 main();

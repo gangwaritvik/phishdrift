@@ -17,7 +17,7 @@ const LABELS = ["safe", "suspicious", "dangerous"];
 async function loadLists(read) {
   const [allow, block, bundled] = await Promise.all([
     read("data/lists/allowlist.json"),
-    read("data/lists/blocklist.json"),
+    read("data/lists/blocklist.json").catch(() => null), // 17 MB: the page still works without it
     read("extension/data/allowlist.json"),
   ]);
   const synced = allow?.domains?.length || block ? { allowlist: allow ?? undefined, blocklist: block ?? undefined } : null;
