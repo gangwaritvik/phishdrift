@@ -1039,3 +1039,13 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   built site in headless Chromium with the function behind it: a fake "PayPal" answer shows "Imitation".
 - Not tested: a real Netlify deploy (build image, `rateLimit` behaviour), a real Gemini call (no key here).
 - Next: Ritvik connects the repo on Netlify and adds the key (docs/HOSTING.md, about 5 minutes).
+
+### 2026-10-26 — Hosted demo "Could not load the model: Load failed" on a phone (cloud)
+- Ritvik's screenshot of the Netlify site on an iPhone (Safari). "Load failed" is Safari's wording for a network-level fetch
+  error, not an HTTP status, so a model or list download was cut off (cause not confirmed: the cloud cannot reach netlify.app).
+- Changed: `demo/app.js` `read` retries once and names the file in the error; `demo/check.js` treats a failed 17 MB blocklist
+  download as "no list" instead of stopping the page. The model file (11.7 MB) is still required.
+- Not tested on a phone or on Netlify.
+- 2026-10-26 later: the hosted page loaded on the phone; its AI step answered `provider_failed` (the function had a key, so it
+  is not "disabled"; the Gemini call itself failed: quota, model name or a timeout, not yet known). Changed: the function now returns
+  `detail` (Google's error text, never the key) and the page shows it, so the next screenshot names the cause.

@@ -56,6 +56,7 @@ test("function: provider errors and bad answers give no opinion and are not cach
   const down = async () => new Response('{"error": {"message": "quota"}}', { status: 429 });
   const r1 = await (await handle(post({ domain: "a-down.com" }), { env, fetchFn: down })).json();
   assert.equal(r1.error, "provider_failed");
+  assert.match(r1.detail, /HTTP 429: quota/);
   assert.equal(r1.raise, false);
   const r2 = await (await handle(post({ domain: "a-down.com" }), { env, fetchFn: gemini("nonsense") })).json();
   assert.equal(r2.error, "bad_answer");
