@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import { handle, isPublicIp, isShortener, request } from "../../netlify/functions/expand.mjs";
-import { expand, metaRefresh } from "../src/short_links.js";
+import { expand, headerDestination, metaRefresh } from "../src/short_links.js";
 
 const cfg = JSON.parse(readFileSync(new URL("../data/short_links.json", import.meta.url), "utf8"));
 
@@ -32,6 +32,24 @@ test("HEAD without a redirect falls back to GET and reads a meta refresh", async
   const r = await expand("https://bit.ly/m", { isShortener, request: req, cfg });
   assert.deepEqual([r.final, r.complete], ["https://dest.example/p?a=1&b=2", true]);
   assert.equal(metaRefresh("<p>nothing</p>"), null);
+});
+
+test("a shortener's own warning-page redirect that names the destination in a header ends at the destination", async () => {
+  const calls = [];
+  const req = fake({ "https://tinyurl.com/t": { status: 301, location: "https://tinyurl.com/app/nospam/tinyurl.com/t", headers: { "X-Lighttpd-LongUrl": "http://dest.example/Docusign/page" } } }, calls);
+  const r = await expand("https://tinyurl.com/t", { isShortener, request: req, cfg });
+  assert.deepEqual([r.final, r.complete, r.hops.length], ["http://dest.example/Docusign/page", true, 1]);
+  assert.deepEqual(calls, ["HEAD https://tinyurl.com/t"]);
+  assert.equal(headerDestination({ "x-trace-id": "abc", location: "https://x.example" }), null);
+  assert.equal(headerDestination(undefined), null);
+  const bad = fake({ "https://tinyurl.com/b": { status: 301, location: "https://tinyurl.com/w", headers: { "x-lighttpd-longurl": "javascript:alert(1)" } } });
+  assert.equal((await expand("https://tinyurl.com/b", { isShortener, request: bad, cfg })).error, "bad_redirect");
+});
+
+test("a shortener that sends the link on to its own page that does not redirect is reported as service_page", async () => {
+  const req = fake({ "https://cutt.ly/a": { status: 302, location: "https://cutt.ly/guard/a" }, "https://cutt.ly/guard/a": { status: 403, body: "blocked" } });
+  const r = await expand("https://cutt.ly/a", { isShortener, request: req, cfg });
+  assert.deepEqual([r.complete, r.error, r.final], [false, "service_page", "https://cutt.ly/guard/a"]);
 });
 
 test("stops at the hop limit, on a page that does not redirect, and on errors", async () => {

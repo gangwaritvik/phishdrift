@@ -70,7 +70,7 @@ export function request(url, method, ms) {
       const location = res.headers.location ?? null;
       if (method === "HEAD" || location) {
         res.destroy();
-        return resolve({ status: res.statusCode, location, body: "" });
+        return resolve({ status: res.statusCode, location, body: "", headers: res.headers });
       }
       let body = "";
       res.setEncoding("latin1");
@@ -78,7 +78,7 @@ export function request(url, method, ms) {
         body += chunk;
         if (body.length >= cfg.max_body_bytes) res.destroy();
       });
-      res.on("close", () => resolve({ status: res.statusCode, location, body: body.slice(0, cfg.max_body_bytes) }));
+      res.on("close", () => resolve({ status: res.statusCode, location, body: body.slice(0, cfg.max_body_bytes), headers: res.headers }));
     });
     req.setTimeout(ms, () => req.destroy(new Error("timeout")));
     req.on("error", reject);
