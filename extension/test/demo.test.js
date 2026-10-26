@@ -127,3 +127,11 @@ test("addresses on this computer or the home network are not scored, as in the e
   }
   assert.notEqual((await checkUrl(c, "http://8.8.8.8/login")).layer, "local");
 });
+
+test("a look-alike of a brand is raised by the offline look-alike check, the brand's own name is not", async () => {
+  const c = await checker;
+  const r = await checkUrl(c, "https://paypai.com/signin");
+  assert.deepEqual([r.verdict, r.layer], ["suspicious", "lookalike"]);
+  assert.ok(r.evidence.combine.steps.some((s) => s.text.includes("look-alike check raises")));
+  assert.equal((await checkUrl(c, "https://www.paypal.de/")).layer, "url-model");
+});
