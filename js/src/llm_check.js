@@ -7,12 +7,12 @@
 import { buildTrie, splitHost } from "./psl.js";
 import { cpHead, pyLower, pyStrip } from "./pystr.js";
 
-const KEYS = ["brand", "brand_domain", "confidence", "reason"];
+const KEYS = ["brand", "brand_domain", "confidence", "phishing", "reason"];
 const HOST_RE = /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?\.[a-z]{2,}$/;
 const LABEL = "[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?";
 const HOSTNAME_RE = new RegExp(`^${LABEL}(?:\\.${LABEL})+$`); // backend/app.py clean_domain
 const IPV4 = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$/;
-const NONE = () => ({ raise: false, brand: null, brand_domain: null, confidence: 0.0 });
+const NONE = () => ({ raise: false, kind: null, brand: null, brand_domain: null, confidence: 0.0, phishing: 0.0 });
 
 // backend/app.py clean_domain: a lowercased bare hostname, or null.
 export function cleanHost(value) {
@@ -44,14 +44,15 @@ export function parse(text) {
   if (data === null || typeof data !== "object" || Array.isArray(data)) return null;
   const got = Object.keys(data);
   if (got.length !== KEYS.length || !KEYS.every((k) => Object.hasOwn(data, k))) return null;
-  const { brand, brand_domain: dom, confidence: conf, reason } = data;
-  if (typeof conf !== "number" || !(conf >= 0 && conf <= 1)) return null;
+  const { brand, brand_domain: dom, confidence: conf, phishing: phish, reason } = data;
+  for (const num of [conf, phish]) if (typeof num !== "number" || !(num >= 0 && num <= 1)) return null;
   if (typeof reason !== "string" || !(brand === null || typeof brand === "string")) return null;
   if (dom !== null && (typeof dom !== "string" || !HOST_RE.test(pyLower(pyStrip(dom))))) return null;
   return {
     brand: brand ? cpHead(pyStrip(brand), 60) : null,
     brand_domain: dom ? pyLower(pyStrip(dom)) : null,
     confidence: conf,
+    phishing: phish,
     reason: cpHead(pyStrip(reason), 140),
   };
 }
@@ -64,13 +65,19 @@ export function registrable(host, psl) {
   return label && suffix ? `${label}.${suffix}` : host;
 }
 
-export function judge(host, answer, minConfidence, psl) {
-  if (answer === null || !answer.brand || !answer.brand_domain) return NONE();
-  const out = { ...NONE(), brand: answer.brand, brand_domain: answer.brand_domain, confidence: answer.confidence };
-  if (answer.confidence < minConfidence) return out;
-  const claimed = registrable(answer.brand_domain, psl);
-  const visited = registrable(host, psl);
-  out.raise = Boolean(claimed) && Boolean(visited) && claimed !== visited;
+export function judge(host, answer, minConfidence, phishingMin, psl) {
+  const out = NONE();
+  if (answer === null) return out;
+  out.phishing = answer.phishing;
+  if (answer.brand && answer.brand_domain) {
+    Object.assign(out, { brand: answer.brand, brand_domain: answer.brand_domain, confidence: answer.confidence });
+    if (answer.confidence >= minConfidence) {
+      const claimed = registrable(answer.brand_domain, psl);
+      const visited = registrable(host, psl);
+      if (claimed && visited && claimed !== visited) Object.assign(out, { raise: true, kind: "brand" });
+    }
+  }
+  if (!out.raise && answer.phishing >= phishingMin) Object.assign(out, { raise: true, kind: "phishing" });
   return out;
 }
 
@@ -128,5 +135,5 @@ export async function checkHost(host, words, { cfg, psl, provider }) {
   }
   const answer = parse(text);
   if (answer === null) return { ...NONE(), error: "bad_answer", detail: String(text).slice(0, 160) };
-  return { ...judge(host, answer, cfg.min_confidence, psl), error: null };
+  return { ...judge(host, answer, cfg.min_confidence, cfg.phishing_min, psl), error: null };
 }

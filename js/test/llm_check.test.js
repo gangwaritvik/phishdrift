@@ -15,7 +15,7 @@ test("prompt, parse and verdict match backend/llm.py", () => {
     assert.equal(buildPrompt(c.host, cleanWords(c.words, cfg.max_path_words)), c.prompt, c.text);
     const parsed = parse(c.text);
     assert.deepEqual(parsed, c.parsed, c.text);
-    assert.deepEqual(judge(c.host, parsed, cfg.min_confidence, psl), c.judged, c.text);
+    assert.deepEqual(judge(c.host, parsed, cfg.min_confidence, cfg.phishing_min, psl), c.judged, c.text);
   }
 });
 
@@ -39,10 +39,10 @@ test("function: no key means disabled, and nothing is asked", async () => {
 
 test("function: asks Gemini with the key in a header, judges, caches", async () => {
   const calls = [];
-  const answer = '{"brand": "PayPal", "brand_domain": "paypal.com", "confidence": 0.9, "reason": "r"}';
+  const answer = '{"brand": "PayPal", "brand_domain": "paypal.com", "confidence": 0.9, "phishing": 0.3, "reason": "r"}';
   const opts = { env: { GEMINI_API_KEY: "k-test" }, fetchFn: gemini(answer, calls) };
   const first = await (await handle(post({ domain: "PayPa1-secure.com" }), opts)).json();
-  assert.deepEqual(first, { raise: true, brand: "PayPal", brand_domain: "paypal.com", confidence: 0.9, error: null, cached: false });
+  assert.deepEqual(first, { raise: true, kind: "brand", brand: "PayPal", brand_domain: "paypal.com", confidence: 0.9, phishing: 0.3, error: null, cached: false });
   assert.equal(calls[0].init.headers["x-goog-api-key"], "k-test");
   assert.ok(!calls[0].url.includes("k-test") && !calls[0].init.body.includes("k-test"));
   assert.ok(calls[0].url.includes(cfg.model));
@@ -89,7 +89,7 @@ test("function: daily cap per instance", async () => {
 
 test("function: a model without quota is replaced by the next fallback model", async () => {
   const urls = [];
-  const answer = '{"brand": null, "brand_domain": null, "confidence": 0.1, "reason": "r"}';
+  const answer = '{"brand": null, "brand_domain": null, "confidence": 0.1, "phishing": 0.1, "reason": "r"}';
   const fetchFn = async (url) => {
     urls.push(url);
     return urls.length === 1

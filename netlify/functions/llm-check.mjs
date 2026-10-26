@@ -19,7 +19,7 @@ const CORS = {
 };
 const json = (status, body) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...CORS } });
-const OFF = { raise: false, brand: null, brand_domain: null, confidence: 0.0 };
+const OFF = { raise: false, kind: null, brand: null, brand_domain: null, confidence: 0.0, phishing: 0.0 };
 
 export async function handle(request, { env = process.env, fetchFn = fetch, now = Date.now } = {}) {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
