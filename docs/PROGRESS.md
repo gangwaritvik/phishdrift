@@ -1025,3 +1025,15 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Not run on real data (the cloud cannot reach the feeds or probe hosts); thresholds are untuned defaults; yield unknown.
 - Probes send one HEAD per short URL from the PC's address to hosts that appear in phishing feeds; no page is fetched or followed.
 - Next on the PC: run it after a collector run, read the CSV, then rescrape the list, `export-js`, rebuild the extension.
+
+### 2026-10-26 — Gemini brand check: evaluation script, not yet run (cloud)
+- Ritvik asked about the Gemini fix; the 10-22 entry says no quality number exists. The cloud has no Gemini key (the key lives on
+  the backend machine), so nothing was asked of the model. The Google API itself is reachable from the cloud (403 without a key).
+- Changed: `experiments/llm_eval.py` (legitimate hosts = the natural pages `configs/eval/ood_urls.csv`, 2,555 ok rows; phishing = a
+  seeded sample of a feed file; look-alikes = `attacks` homoglyph and TLD swap applied to the legitimate URLs, 150 each; the
+  address layer via `js/bench/verdicts.mjs` splits every set by "address model passes / flags"; raise rate at confidence cutoffs
+  0.5-0.9 from cached answers; resumable, stops on HTTP 429), `.github/workflows/llm-eval.yml` (manual run, key from the
+  repository secret `GEMINI_API_KEY`), `tests/test_llm_eval.py` (stub provider).
+- Checked with a stub provider end to end (sets built, address layer run, report written); no real model answer exists.
+- Next: someone adds the secret `GEMINI_API_KEY` in the repository settings and starts the workflow (about 1,200 calls in all; the
+  free-key daily quota is not known, so the run resumes over days).
