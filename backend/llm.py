@@ -192,6 +192,7 @@ def js_config(cfg: dict) -> dict:
         "system": SYSTEM,
         "schema": SCHEMA,
         "model": cfg["model"],
+        "fallback_models": hosted.get("fallback_models", []),
         "url": cfg["url"],
         "max_output_tokens": cfg["max_output_tokens"],
         "max_path_words": cfg["max_path_words"],

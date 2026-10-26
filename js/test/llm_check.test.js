@@ -86,3 +86,18 @@ test("function: daily cap per instance", async () => {
   assert.equal(last.error, "daily_cap");
   assert.equal(calls.length, cfg.max_calls_per_day);
 });
+
+test("function: a model without quota is replaced by the next fallback model", async () => {
+  const urls = [];
+  const answer = '{"brand": null, "brand_domain": null, "confidence": 0.1, "reason": "r"}';
+  const fetchFn = async (url) => {
+    urls.push(url);
+    return urls.length === 1
+      ? new Response('{"error": {"message": "quota"}}', { status: 429 })
+      : new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: answer }] } }] }), { status: 200 });
+  };
+  const r = await (await handle(post({ domain: "fallback-test.com" }), { env: { GEMINI_API_KEY: "k" }, fetchFn })).json();
+  assert.equal(r.error, null);
+  assert.equal(urls.length, 2);
+  assert.ok(urls[0].includes(cfg.model) && urls[1].includes(cfg.fallback_models[0]));
+});
