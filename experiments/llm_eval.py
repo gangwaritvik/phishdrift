@@ -159,8 +159,9 @@ def main(argv: list[str] | None = None) -> int:
     note = (
         "# Gemini brand check\n\nRaise rate by set and cutoff. `raised@`/`rate@` = confident brand "
         "claim on a host that is not the brand's own; `any@` = that or a phishing probability "
-        "at or above the same cutoff (the shipped check uses both). `address_passes` = the address model and "
-        "allowlist say safe. `legit` rows are false alarms; `phishing` and `lookalike_*` rows are "
+        "at or above the same cutoff (the shipped check uses both). `address_passes` = the "
+        "address model and allowlist say safe. `legit` rows are false alarms; `phishing` and "
+        "`lookalike_*` rows are "
         "catches.\n\n"
     )
     head = "| " + " | ".join(table.columns) + " |\n|" + "---|" * len(table.columns) + "\n"
