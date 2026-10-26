@@ -1014,3 +1014,14 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   short-link and redirect cases 13 of 13 on the rebuilt extension, plus one host only on the new list.
 - Not done: the shipped model was trained with the 25-name list, so its "is a shortener" feature differs for the new names until
   the PC retrains; a list learned from feed data (hosts that only redirect) is not built.
+
+### 2026-10-26 — Learned shorteners: `python -m collector learn-shorteners` (cloud, code only)
+- Ritvik: "go" on learning the shortener list from feed data. `collector/shorteners.py`: candidates = registrable domains with at
+  least `min_short_urls` (20) one-segment, token-length <= 12 feed URLs (feed index plus optional `extra_url_files`); each gets
+  `probe_urls` (5) HEAD probes (`HttpClient.head`, redirects not followed, no body); a domain is a shortener when >= 3 probes
+  answered and >= 80% redirect to another registrable domain. Writes `data/interim/learned_shorteners.txt` and the evidence table
+  `reports/tables/learned_shorteners.csv`; `python -m features lists shorteners` merges the file (`shorteners_files`). All limits in
+  `configs/collector.yaml` `shorteners:`. Tests: `tests/test_collector_shorteners.py` (stubbed HEAD, no network).
+- Not run on real data (the cloud cannot reach the feeds or probe hosts); thresholds are untuned defaults; yield unknown.
+- Probes send one HEAD per short URL from the PC's address to hosts that appear in phishing feeds; no page is fetched or followed.
+- Next on the PC: run it after a collector run, read the CSV, then rescrape the list, `export-js`, rebuild the extension.

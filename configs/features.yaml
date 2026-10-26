@@ -108,6 +108,7 @@ lists:
   keywords_seed: [login, signin, sign-in, verify, verification, secure, security, update, account, kyc, wallet, bank, banking, otp, upi, password, confirm, suspend, suspended, unlock, restore, recover, billing, invoice, payment, refund, claim, reward, prize, gift, support, helpdesk, webscr, authenticate, validate, alert, urgent, limited, appeal, cashback, netbanking, ebanking, credential, free]
   keyword_urls: []
   shorteners_seed: [bit.ly, tinyurl.com, t.co, goo.gl, ow.ly, is.gd, buff.ly, cutt.ly, rebrand.ly, tiny.cc, shorturl.at, rb.gy, t.ly, lnkd.in, s.id, v.gd, bl.ink, soo.gd, clck.ru, qr.ae, shorte.st, adf.ly, bc.vc, linktr.ee, wa.me]
+  shorteners_files: [data/interim/learned_shorteners.txt]   # written by `python -m collector learn-shorteners`; skipped when absent
   shortener_urls:
     - https://raw.githubusercontent.com/PeterDaveHello/url-shorteners/master/list
     - https://raw.githubusercontent.com/boutetnico/url-shorteners/master/list.txt
