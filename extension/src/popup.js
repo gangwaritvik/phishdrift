@@ -43,3 +43,16 @@ $("llm").addEventListener("change", async () => {
   await chrome.storage.local.set({ settings: { ...current, llmCheck: $("llm").checked } });
   $("status").textContent = $("llm").checked ? "AI check on. It applies to the next page you open." : "AI check off.";
 });
+
+// Address of a hosted LLM check (settings.llmUrl); empty means the backend's own /llm-check.
+$("llmUrl").value = settings?.llmUrl ?? "";
+$("llmUrl").addEventListener("change", async () => {
+  const value = $("llmUrl").value.trim();
+  if (value && !/^https?:\/\//.test(value)) {
+    $("status").textContent = "Enter an address starting with https://";
+    return;
+  }
+  const current = (await chrome.storage.local.get("settings")).settings ?? {};
+  await chrome.storage.local.set({ settings: { ...current, llmUrl: value } });
+  $("status").textContent = value ? "AI check address saved." : "AI check uses your backend again.";
+});

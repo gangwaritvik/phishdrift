@@ -11,12 +11,13 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import json
 import logging
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from backend import lists
+from backend import lists, llm
 from backend.settings import Settings
 from features.lists import load_lists, read_platforms
 from phishdrift.config import resolve
@@ -134,6 +135,24 @@ def cmd_build_lists(args: argparse.Namespace) -> int:
     return 0
 
 
+def export_llm_js(cfg: dict) -> dict[Path, str]:
+    """File path -> text of the LLM check's JavaScript settings and parity fixture."""
+    lc = cfg["llm"]
+    root = resolve(".")
+    dump = lambda obj: json.dumps(obj, indent=1, ensure_ascii=False) + "\n"  # noqa: E731
+    return {
+        root / "js" / "data" / "llm_check.json": dump(llm.js_config(lc)),
+        root / "tests" / "fixtures" / "llm_parity.json": dump(llm.parity_cases(lc)),
+    }
+
+
+def cmd_export_llm_js(args: argparse.Namespace) -> int:
+    for path, text in export_llm_js(Settings.load().cfg).items():
+        path.write_text(text, encoding="utf-8")
+        log.info("wrote %s", path)
+    return 0
+
+
 def cmd_make_signing_key(args: argparse.Namespace) -> int:
     settings = Settings.load()
     private = Path(args.private) if args.private else settings.signing_key_path
@@ -185,6 +204,10 @@ def main(argv: list[str] | None = None) -> int:
         "pass the built extension's copy, e.g. extension/dist/lists_pubkey.js)",
     )
     keygen.set_defaults(func=cmd_make_signing_key)
+    export = sub.add_parser(
+        "export-llm-js", help="write js/data/llm_check.json and the LLM parity fixture"
+    )
+    export.set_defaults(func=cmd_export_llm_js)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     return args.func(args)

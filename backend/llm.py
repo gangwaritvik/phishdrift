@@ -182,3 +182,105 @@ class LlmChecker:
                 "error": "bad_answer",
             }
         return {**judge(host, answer, self.cfg["min_confidence"]), "error": None}
+
+
+def js_config(cfg: dict) -> dict:
+    """Settings for the JavaScript copy (js/src/llm_check.js) used by the hosted function.
+    ``cfg`` is the ``llm`` block of backend.yaml; ``hosted`` holds the function's own limits."""
+    hosted = cfg["hosted"]
+    return {
+        "system": SYSTEM,
+        "schema": SCHEMA,
+        "model": cfg["model"],
+        "url": cfg["url"],
+        "max_output_tokens": cfg["max_output_tokens"],
+        "max_path_words": cfg["max_path_words"],
+        "min_confidence": cfg["min_confidence"],
+        "cache_ttl_s": cfg["cache_ttl_s"],
+        "api_key_env": cfg["api_key_env"],
+        "timeout_ms": int(hosted["timeout_s"] * 1000),
+        "max_calls_per_day": hosted["max_calls_per_day"],
+        "cache_max_entries": hosted["cache_max_entries"],
+    }
+
+
+# (host, path words, model answer text) for tests/fixtures/llm_parity.json
+PARITY_CASES: list[tuple[str, list[str], str]] = [
+    (
+        "paypa1-login.com",
+        ["Sign-In", "verify"],
+        '{"brand": "PayPal", "brand_domain": "paypal.com", '
+        '"confidence": 0.95, "reason": "look-alike"}',
+    ),
+    (
+        "www.paypal.com",
+        [],
+        '{"brand": "PayPal", "brand_domain": "paypal.com", "confidence": 0.9, '
+        '"reason": "own site"}',
+    ),
+    (
+        "login.secure.paypal.co.uk",
+        [],
+        '{"brand": "PayPal", "brand_domain": "PayPal.co.uk ", "confidence": 1, "reason": "own"}',
+    ),
+    (
+        "sbi-kyc.web.app",
+        ["update", "KYC!!"],
+        '{"brand": " SBI ", "brand_domain": "onlinesbi.sbi", "confidence": 0.8, "reason": "bank"}',
+    ),
+    ("example.com", [], '{"brand": null, "brand_domain": null, "confidence": 0.1, "reason": "no"}'),
+    (
+        "examp1e.com",
+        [],
+        '{"brand": "Example", "brand_domain": "example.com", "confidence": 0.69, "reason": "low"}',
+    ),
+    ("x.com", [], '{"brand": "X", "brand_domain": "x.com", "confidence": true, "reason": "r"}'),
+    ("x.com", [], '{"brand": "X", "brand_domain": "x.com", "confidence": 1.5, "reason": "r"}'),
+    (
+        "x.com",
+        [],
+        '{"brand": "X", "brand_domain": "not a domain", "confidence": 0.9, "reason": ""}',
+    ),
+    ("x.com", [], '{"brand": "X", "brand_domain": "x.com", "confidence": 0.9}'),
+    (
+        "x.com",
+        [],
+        '{"brand": "X", "brand_domain": "x.com", "confidence": 0.9, "reason": "r", "extra": 1}',
+    ),
+    ("x.com", [], "not json"),
+    ("x.com", [], "[1, 2]"),
+    (
+        "bank.example.co.in",
+        ["a" * 40, "b2", "c_d"],
+        '{"brand": "' + "B" * 80 + '", "brand_domain": '
+        '"bank.co.in", "confidence": 0.7, "reason": "' + "r" * 200 + '"}',
+    ),
+    (
+        "192.0.2.1",
+        [],
+        '{"brand": "Apple", "brand_domain": "apple.com", "confidence": 0.9, "reason": "ip"}',
+    ),
+    (
+        "Ünïcode.com",
+        ["Straße", "İstanbul"],
+        '{"brand": "  ", "brand_domain": "x.com", "confidence": 0.9, "reason": " r "}',
+    ),
+]
+
+
+def parity_cases(cfg: dict) -> list[dict]:
+    """Python's prompt, parse and verdict for each PARITY_CASES entry."""
+    out = []
+    for host, words, text in PARITY_CASES:
+        answer = parse(text)
+        out.append(
+            {
+                "host": host,
+                "words": words,
+                "text": text,
+                "prompt": build_prompt(host, clean_words(words, cfg["max_path_words"])),
+                "parsed": answer,
+                "judged": judge(host, answer, cfg["min_confidence"]),
+            }
+        )
+    return out

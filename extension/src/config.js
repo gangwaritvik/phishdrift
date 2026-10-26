@@ -10,6 +10,7 @@ export const DEFAULTS = {
   llmCheck: false, // opt-in: ask the backend's LLM about borderline addresses (host name only)
   llmGrayLow: 0.5, // untuned: safe addresses with a model score from here up are borderline
   llmTimeoutMs: 20_000,
+  llmUrl: "", // full address of a hosted LLM check (e.g. https://<site>.netlify.app/llm-check); empty = backendUrl + /llm-check
   listSyncMinutes: 60, // the backend's remote config (list_sync_minutes) can change it, 15-1440
 };
 
@@ -30,16 +31,28 @@ export function sanitizeSettings(stored) {
     if (Number.isFinite(v) && v >= lo && v <= hi) out[key] = v;
   }
   if (typeof stored?.llmCheck === "boolean") out.llmCheck = stored.llmCheck;
-  const url = stored?.backendUrl;
-  if (typeof url === "string") {
-    try {
-      const u = new URL(url);
-      if ((u.protocol === "https:" || u.protocol === "http:") && !u.username && !u.password) {
-        out.backendUrl = url.replace(/\/+$/, "");
-      }
-    } catch {
-      // keep the default
-    }
+  for (const key of ["backendUrl", "llmUrl"]) {
+    const url = webUrl(stored?.[key]);
+    if (url !== null) out[key] = url;
   }
   return out;
+}
+
+// An http(s) address without credentials and trailing "/", or null.
+function webUrl(url) {
+  if (typeof url !== "string") return null;
+  try {
+    const u = new URL(url);
+    if ((u.protocol === "https:" || u.protocol === "http:") && !u.username && !u.password) {
+      return url.replace(/\/+$/, "");
+    }
+  } catch {
+    // not an address
+  }
+  return null;
+}
+
+// Where the LLM brand check is asked: the hosted check when set, else the backend's endpoint.
+export function llmEndpoint(settings) {
+  return settings.llmUrl || `${settings.backendUrl}/llm-check`;
 }

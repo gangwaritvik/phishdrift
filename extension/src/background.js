@@ -10,7 +10,7 @@
 // agrees, or no page check arrives within HOLD_MS (combine.js `addressOnly`). The backend is never
 // waited for: the verdict is shown at once and raised when (and if) the backend answers.
 
-import { sanitizeSettings } from "./config.js";
+import { llmEndpoint, sanitizeSettings } from "./config.js";
 import { addressOnly, combine, DANGEROUS, FRAME_PAGE_REASON, SAFE, SUSPICIOUS, framePageVerdict } from "./combine.js";
 import { listDomainKey, listUrlKey } from "./keys.js";
 import { MAX_URL_CHARS, effectiveUrl, isLocalAddress, scoreAddress } from "./address.js";
@@ -202,7 +202,7 @@ const llmInflight = new Map();
 async function fetchLlm(host, settings) {
   let answer = null;
   try {
-    const res = await fetch(`${settings.backendUrl}/llm-check`, {
+    const res = await fetch(llmEndpoint(settings), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ domain: host, path_words: [] }),
