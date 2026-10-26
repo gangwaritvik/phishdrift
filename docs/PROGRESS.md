@@ -1026,6 +1026,18 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Probes send one HEAD per short URL from the PC's address to hosts that appear in phishing feeds; no page is fetched or followed.
 - Next on the PC: run it after a collector run, read the CSV, then rescrape the list, `export-js`, rebuild the extension.
 
+### 2026-10-26 — Gemini brand check: evaluation script, not yet run (cloud)
+- Ritvik asked about the Gemini fix; the 10-22 entry says no quality number exists. The cloud has no Gemini key (the key lives on
+  the backend machine), so nothing was asked of the model. The Google API itself is reachable from the cloud (403 without a key).
+- Changed: `experiments/llm_eval.py` (legitimate hosts = the natural pages `configs/eval/ood_urls.csv`, 2,555 ok rows; phishing = a
+  seeded sample of a feed file; look-alikes = `attacks` homoglyph and TLD swap applied to the legitimate URLs, 150 each; the
+  address layer via `js/bench/verdicts.mjs` splits every set by "address model passes / flags"; raise rate at confidence cutoffs
+  0.5-0.9 from cached answers; resumable, stops on HTTP 429), `.github/workflows/llm-eval.yml` (manual run, key from the
+  repository secret `GEMINI_API_KEY`), `tests/test_llm_eval.py` (stub provider).
+- Checked with a stub provider end to end (sets built, address layer run, report written); no real model answer exists.
+- Next: someone adds the secret `GEMINI_API_KEY` in the repository settings and starts the workflow (about 1,200 calls in all; the
+  free-key daily quota is not known, so the run resumes over days).
+
 ### 2026-10-26 — AI brand check hosted on Netlify (cloud, code only)
 - Ritvik has no PC access, so the Gemini check moves off the PC. Netlify Drop cannot run functions, so the
   demo site is now built from the repository (`netlify.toml`, `deploy/netlify_build.sh`, `docs/HOSTING.md`).
@@ -1155,3 +1167,12 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   on the list and say nothing about brands outside it. Brands with no entry in the brand-to-domains map (about 170 of 899) are
   protected only by the "same name on another suffix is the brand's own" rule. A brand's name on another suffix (`paypal.xyz`) is not
   caught. Not run in a real browser (the e2e smoke test cannot start Chromium in this container); `npm test` extension 82, js 25, pytest, ruff pass.
+
+### 2026-10-26 — Retrain with the 1,793-name shortener list (PC run by Ritvik, read in the cloud)
+- Ritvik ran the learner (feed index alone: 0 candidates; with the Phishing.Database ACTIVE file: 61 probed, 3 kept: `fy9.in`, `th.link`,
+  `urlth.me`), merged the list (1,796 entries) and ran `refresh_brands.ps1 -Model`. Exported model dated 2026-10-26 21:24 IST.
+- Results (split 0, pasted by Ritvik, not re-run here): natural legitimate pages flagged 5 of 2,555 (0.2%, none dangerous), model alone
+  12 / 3, 5 of 1,579 outside the top 50,000: identical to 2026-10-22. Blend recall at FPR 1% test 74.2, held-out PhishStorm 71.0, time
+  slice 81.7: identical to 2026-10-21. Ritvik's answer to "is blend2.md dated today?" was "no change"; read as "no change in the
+  results" (the file's date was not confirmed), so either the shortener feature moved nothing or the report was not rewritten.
+- Not measured: whether the 10-split medians change; the learner finds few shorteners (most probed hosts gave no answer or no redirect).
