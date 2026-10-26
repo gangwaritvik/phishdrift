@@ -1074,3 +1074,11 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   cases (+4) regenerated. Input is still the host name only: path words are not sent (a path adds little for this judgment and costs privacy).
 - Tested: parity, backend, extension and demo tests with fake answers. Not measured: how good Gemini's phishing probability is; 0.85 is a
   guess. PR #55's cached answers lack the new field and are rejected by `parse`, so rerun its evaluation after both merge.
+
+### 2026-10-26 — URL check page: loading screen (cloud)
+- Ritvik: the hosted page takes a while to load the model. `demo/index.html` + `demo/app.js`: a loading card over the
+  page lists each file being fetched with MB received ("x of y MB" when the server sends an uncompressed size), a bar
+  (by bytes when all sizes are known, else by files finished), "retrying" on the second attempt and "failed"; hidden
+  once loading ends, and the old error text still shows on failure. `demo/check.js` now fetches the lists alongside
+  the model instead of after it. Checked in headless Chromium at 2 MB/s (390 px) and with the model download blocked;
+  not checked on Netlify (compressed responses: MB only, bar by files) or on a phone.
