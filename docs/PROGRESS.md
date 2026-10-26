@@ -1082,3 +1082,14 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   once loading ends, and the old error text still shows on failure. `demo/check.js` now fetches the lists alongside
   the model instead of after it. Checked in headless Chromium at 2 MB/s (390 px) and with the model download blocked;
   not checked on Netlify (compressed responses: MB only, bar by files) or on a phone.
+
+### 2026-10-26 — Hosted AI check timing out: each model gets its own share of the time (cloud)
+- Ritvik's page showed `provider_failed: TimeoutError` (9 s limit). Probed the live function from a GitHub runner with six fresh
+  hosts: all six answered `TimeoutError` after 9.15-9.27 s (earlier the same site answered in 1.0-1.6 s). So the main model
+  (`gemini-3.5-flash`) did not answer within 9 s on those calls; the fallback chain was never reached because a timeout is not an
+  HTTP error and the whole 9 s was one shared deadline. Why Gemini was slow is not known (overload, thinking time or a cold start;
+  not measured, the cloud has no key).
+- Changed: `askGemini` gives each model an equal share of the remaining time (3 s each for three models, whole milliseconds:
+  `AbortSignal.timeout` throws RangeError on fractions, which my first version hit), moves on after a timeout or HTTP 429/404/500/503,
+  and the error text lists every attempt with its time. Tests: slow first model replaced by the second; cap test unchanged.
+- Not measured: which model answers in time right now; a 3 s share may be short for a slow day.
