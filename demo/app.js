@@ -504,6 +504,8 @@ async function main() {
   } catch (err) {
     $("info").replaceChildren(Object.assign(document.createElement("span"), { className: "err", textContent: `Could not load the model: ${err.message}. Start the page with "python -m demo" from the repository folder.` }));
     return;
+  } finally {
+    $("loader").classList.add("gone");
   }
   const go = async (text) => {
     if (!text.trim()) return;
@@ -535,17 +537,67 @@ async function main() {
   go(start);
 }
 
+// Loading screen: one row per file with the bytes received so far. A compressed response's
+// Content-Length is not the size of the decoded body, so a total is shown only for uncompressed ones.
+const loads = new Map();
+const mb = (n) => (n / 1e6).toFixed(1);
+function showLoad(path, state, got = 0, total = 0) {
+  let row = loads.get(path);
+  if (!row) {
+    row = document.createElement("li");
+    row.append(Object.assign(document.createElement("code"), { textContent: path }), document.createElement("span"));
+    loads.set(path, row);
+    $("lfiles").append(row);
+  }
+  row.classList.toggle("done", state === "done");
+  if (state === "done") got = total = row.total || 1;
+  Object.assign(row, { got, total });
+  row.lastChild.textContent = state;
+  if (state === null) {
+    row.remove();
+    loads.delete(path);
+  }
+  const rows = [...loads.values()];
+  // by bytes when every size is known, else by files finished
+  const sum = (f) => rows.reduce((n, r) => n + f(r), 0);
+  const share = rows.every((r) => r.total) ? sum((r) => r.got) / sum((r) => r.total) : sum((r) => r.classList.contains("done")) / Math.max(rows.length, 1);
+  $("lbar").style.width = `${100 * share}%`;
+}
+async function body(path, res) {
+  const total = res.headers.get("content-encoding") ? 0 : Number(res.headers.get("content-length")) || 0;
+  if (!res.body) return res.json();
+  const reader = res.body.getReader();
+  const chunks = [];
+  for (let got = 0; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    got += value.length;
+    showLoad(path, total ? `${mb(got)} of ${mb(total)} MB` : `${mb(got)} MB`, Math.min(got, total), total);
+  }
+  return JSON.parse(await new Blob(chunks).text());
+}
+
 // One retry: a phone on a weak connection can drop the big model and list downloads. The error
 // names the file, so "Load failed" (Safari's wording for any network error) says which one.
 async function read(path) {
   for (let attempt = 1; ; attempt++) {
     try {
+      showLoad(path, attempt === 1 ? "starting" : "retrying");
       const res = await fetch(new URL(path, root));
-      if (res.status === 404) return null;
+      if (res.status === 404) {
+        showLoad(path, null); // optional file (lists built on the PC), not on every site
+        return null;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
+      const json = await body(path, res);
+      showLoad(path, "done");
+      return json;
     } catch (err) {
-      if (attempt === 2) throw new Error(`${path}: ${err.message}`);
+      if (attempt === 2) {
+        showLoad(path, "failed");
+        throw new Error(`${path}: ${err.message}`);
+      }
     }
   }
 }

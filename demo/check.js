@@ -38,10 +38,10 @@ export async function loadChecker({ base, read }) {
     mod("lib/explain.js"),
     mod("lib/model.js"),
   ]);
-  const [bundle, psl] = await Promise.all([read("js/data/tier_a_hybrid.json"), read("js/data/psl_icann.json")]);
+  const [bundle, psl, loaded] = await Promise.all([read("js/data/tier_a_hybrid.json"), read("js/data/psl_icann.json"), loadLists(read)]);
   if (!bundle || !psl) throw new Error("js/data is missing model files (tier_a_hybrid.json, psl_icann.json)");
   const model = hybrid.loadHybrid(bundle, psl);
-  const { synced, bundled, allowSource, block } = await loadLists(read);
+  const { synced, bundled, allowSource, block } = loaded;
   const listSet = new lists.ListSet(lists.withBundledAllowlist(synced, bundled), {
     platforms: model.lists.platforms,
     psl: model.lists.psl,

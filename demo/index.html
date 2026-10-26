@@ -162,6 +162,17 @@
 
   .err { margin-top: 14px; color: var(--bad); font-size: .9rem; }
 
+  .loader { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 16px; background: rgba(245,247,251,.92); backdrop-filter: blur(4px); transition: opacity .35s, visibility 0s .35s; }
+  .loader.gone { opacity: 0; visibility: hidden; }
+  .lcard { width: min(440px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 22px 24px; box-shadow: var(--shadow); }
+  .lcard h2 { margin: 0 0 12px; font-size: 1.1rem; }
+  .lbar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+  .lbar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: inherit; transition: width .3s var(--ease); }
+  .lfiles { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: .85rem; }
+  .lfiles li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 10px; border-radius: 10px; background: var(--surface-2); }
+  .lfiles code { overflow-wrap: anywhere; } .lfiles span { color: var(--muted); white-space: nowrap; }
+  .lfiles li.done span { color: var(--safe); }
+
   @media (max-width: 760px) {
     .steps b { font-size: .7rem; } .steps small { display: none; }
     .step .dot { width: 32px; height: 32px; } .steps::before, .steps .prog { top: 15px; }
@@ -181,6 +192,9 @@
 </style>
 </head>
 <body>
+<div class="loader" id="loader" role="status" aria-live="polite">
+  <div class="lcard"><h2>Loading the detector</h2><div class="lbar"><i id="lbar"></i></div><ul class="lfiles" id="lfiles"></ul></div>
+</div>
 <main>
   <header><div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 5 6v5c0 5 3 8.5 7 10 4-1.5 7-5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg></div><h1>Phish<span>Drift</span></h1></header>
 
