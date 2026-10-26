@@ -1109,3 +1109,18 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   `.github/workflows/short-link-probe.yml` follow real short links from a GitHub runner.
 - Tests: `npm test` js 25, extension 73, pytest pass, ruff clean. The e2e smoke test fails at its first step in this
   container on main as well (Chromium shows `chrome-error://`), so it was not run. Not tested: a real Netlify deploy.
+
+### 2026-10-26 — Claim check of the coverage checklist, quick wins and recent reports (cloud)
+- Ritvik: short links were reported as handled while the URL check page did not follow them. Re-checked every "covered / passed /
+  handled" claim against main 22582a1; table with labels (verified / reported only / wrong) in `audit/coverage_checklist.md`.
+- Verified: extension short-link and redirect cases 13 of 13 (headless Chromium, local pages); natural-page false alarms 5 of 2,555
+  with the shipped model (the committed `reports/shipped_verdicts.md` still showed 71, regenerated); tests js 25, extension 74,
+  pytest 560, ruff clean; hosted helper follows bit.ly, aka.ms, t.co, is.gd from a GitHub runner and the live page judges the destination.
+- Wrong or stale: the demo page called 192.168.0.1 dangerous (fixed: `demo/check.js` uses `isLocalAddress`, test added) and said "the
+  allowlist keeps it safe" for an unfollowed short link (fixed: `demo/app.js`); tinyurl.com and cutt.ly are not followed (preview page,
+  403), so the page still cannot judge those; the attack harness gives 23 of 35 on today's build (its "suspicious address" now scores
+  0.75 under the 0.904 cut-off) and 32 of 35 after swapping that one address; PR #55 (AI check evaluation) is still open.
+- Measured now: look-alike coverage with the AI check off: homoglyph 2%, one letter off 1%, brand + word 78%, TLD swap 54%,
+  punycode 87% warned. Live AI check: 4 of 6 then 2 of 2 hosts answered, 4-9 s per call.
+- Added `.github/workflows/audit-probe.yml` (live-site probe: files, `/api/expand`, `/api/llm-check`, short links in a browser).
+- Not done: tinyurl/cutt.ly following, recalibrating the harness in the repo, the AI-check accuracy set (PR #55), anything needing the PC.
