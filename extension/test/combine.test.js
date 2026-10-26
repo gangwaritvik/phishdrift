@@ -185,6 +185,11 @@ test("an LLM brand opinion raises safe to suspicious, and to dangerous only on a
   assert.deepEqual([login.verdict, login.layer], [DANGEROUS, "llm"]);
 });
 
+test("an LLM phishing opinion raises one step with its own reason", () => {
+  const r = combine({ ...base, llm: { raise: true, kind: "phishing", brand: null, brand_domain: null, phishing: 0.9 } });
+  assert.deepEqual([r.verdict, r.layer, r.reasons], [SUSPICIOUS, "llm", ["An AI check of the address thinks it looks like a phishing site (90% likely)."]]);
+});
+
 test("the LLM opinion never lowers, and no opinion or raise:false changes nothing", () => {
   assert.equal(combine({ ...base, model: model(DANGEROUS), llm }).verdict, DANGEROUS);
   assert.equal(combine({ ...base, llm: { ...llm, raise: false } }).verdict, SAFE);

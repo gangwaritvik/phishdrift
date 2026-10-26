@@ -110,11 +110,24 @@ llm:
   url: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
   api_key_env: GEMINI_API_KEY
   timeout_s: 15
-  max_output_tokens: 200
+  max_output_tokens: 1024     # 200 cut the JSON off on a thinking model (bad_answer on the hosted check)
   max_path_words: 12
-  min_confidence: 0.7            # not tuned yet: to be set from experiments/llm_eval.py
+  min_confidence: 0.7            # brand claim; not tuned yet: to be set from experiments/llm_eval.py
+  phishing_min: 0.85             # raise on the model's own phishing probability; untuned
   cache_ttl_s: 86400             # one question per host and path words per day
   max_calls_per_day: 2000        # hard daily cap on provider calls (cost bound)
+  hosted:                        # the Netlify Function copy (netlify/functions/llm-check.mjs)
+    fallback_models: [gemini-3.5-flash-lite, gemini-3.1-flash-lite]  # tried in order when the main model answers 429/404/503
+    timeout_s: 9                 # under the host's 10 s limit for a synchronous function
+    max_calls_per_day: 300       # per function instance (instances do not share memory)
+    cache_max_entries: 5000
+
+short_links:                     # online URL check page: netlify/functions/expand.mjs follows a short link
+  max_hops: 5                    # requests to shortener addresses at most; the destination itself is never requested
+  timeout_s: 8                   # for the whole chain (the host stops a synchronous function at 10 s)
+  max_body_bytes: 32768          # of a GET, read only to find a <meta http-equiv="refresh"> address
+  cache_ttl_s: 3600
+  cache_max_entries: 5000
 
 rules:                           # heuristics, see backend/checks.py and reports/domain_rules.md
   very_young_domain_days: 7

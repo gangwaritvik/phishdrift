@@ -1,0 +1,19 @@
+# Netlify site for the online URL check page and the hosted LLM brand check.
+# Setup (once, in the Netlify web app): import this GitHub repository, then add the environment
+# variable GEMINI_API_KEY (Site configuration > Environment variables). See docs/HOSTING.md.
+[build]
+  command = "bash deploy/netlify_build.sh"
+  publish = "site_dist"
+
+[build.environment]
+  PYTHON_VERSION = "3.12"
+  NODE_VERSION = "22"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

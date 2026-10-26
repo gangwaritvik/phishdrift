@@ -1037,3 +1037,102 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Checked with a stub provider end to end (sets built, address layer run, report written); no real model answer exists.
 - Next: someone adds the secret `GEMINI_API_KEY` in the repository settings and starts the workflow (about 1,200 calls in all; the
   free-key daily quota is not known, so the run resumes over days).
+
+### 2026-10-26 — AI brand check hosted on Netlify (cloud, code only)
+- Ritvik has no PC access, so the Gemini check moves off the PC. Netlify Drop cannot run functions, so the
+  demo site is now built from the repository (`netlify.toml`, `deploy/netlify_build.sh`, `docs/HOSTING.md`).
+- Changed: `netlify/functions/llm-check.mjs` (POST `/api/llm-check` and `/llm-check`; key from the site's
+  `GEMINI_API_KEY`; Netlify per-IP rate limit 20 a minute; per-instance day cache and daily cap
+  `llm.hosted` in `configs/backend.yaml`), `js/src/llm_check.js` (JavaScript copy of `backend/llm.py`),
+  `python -m backend export-llm-js` -> `js/data/llm_check.json` + `tests/fixtures/llm_parity.json`
+  (16 cases, checked by pytest and `npm test`); extension setting `llmUrl` with a popup field (empty = backend).
+- Tested here: parity, function with a fake Gemini (key only in a header, cache, errors, bad input, daily
+  cap), esbuild bundle of the function, the build script (30 MB site, blocklist 872,658 URL hashes), and the
+  built site in headless Chromium with the function behind it: a fake "PayPal" answer shows "Imitation".
+- Not tested: a real Netlify deploy (build image, `rateLimit` behaviour), a real Gemini call (no key here).
+- Next: Ritvik connects the repo on Netlify and adds the key (docs/HOSTING.md, about 5 minutes).
+
+### 2026-10-26 — Hosted demo "Could not load the model: Load failed" on a phone (cloud)
+- Ritvik's screenshot of the Netlify site on an iPhone (Safari). "Load failed" is Safari's wording for a network-level fetch
+  error, not an HTTP status, so a model or list download was cut off (cause not confirmed: the cloud cannot reach netlify.app).
+- Changed: `demo/app.js` `read` retries once and names the file in the error; `demo/check.js` treats a failed 17 MB blocklist
+  download as "no list" instead of stopping the page. The model file (11.7 MB) is still required.
+- Not tested on a phone or on Netlify.
+- 2026-10-26 later: the hosted page loaded on the phone; its AI step answered `provider_failed` (the function had a key, so it
+  is not "disabled"; the Gemini call itself failed: quota, model name or a timeout, not yet known). Changed: the function now returns
+  `detail` (Google's error text, never the key) and the page shows it, so the next screenshot names the cause.
+
+### 2026-10-26 — Hosted AI check: bad_answer; output limit raised (cloud)
+- Ritvik's next screenshot of the hosted page: the AI step now answers `bad_answer` (the call reached Gemini; the text did not parse
+  as the four-field JSON). Likely cause (inferred, not seen): `max_output_tokens: 200` cut the JSON off, since a thinking model spends
+  part of the limit on thinking. Changed: `llm.max_output_tokens` 200 -> 1024 (backend and hosted function share it), the function
+  returns the first 160 characters of an unparseable answer as `detail`, and the site's cache header is `max-age=0, must-revalidate`
+  (the screenshot still showed the old page text because of `max-age=3600`).
+- Not tested against real Gemini.
+
+### 2026-10-26 — Hosted AI check: real cause was Gemini quota (HTTP 429); model fallback (cloud)
+- Probed the live function from a GitHub runner (the cloud sandbox cannot reach netlify.app; `.github/workflows/hosted-check.yml`,
+  runs on push and by hand): both test hosts answered `provider_failed`, detail "HTTP 429: You exceeded your current quota" after 0.4-0.6 s.
+  So the key and the site work; the main model has no free quota on this key right now (the earlier `bad_answer` call did get through once).
+- Changed: `llm.hosted.fallback_models` (`gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`; names unverified); the function tries them in order on
+  429/404/503 within one timeout; the error text names the model. Test added. Not measured: which model has quota on his key.
+
+### 2026-10-26 — AI check prompt made general, with a phishing judgment (cloud)
+- Ritvik: not only brand impersonation and not only banks. `backend/llm.py` `SYSTEM` now asks for a phishing judgment of any kind of site;
+  the answer has a fifth field `phishing` (0 to 1) next to `brand`, `brand_domain`, `confidence` (brand claim) and `reason`. `judge`
+  raises with kind "brand" (as before) or kind "phishing" when `phishing >= llm.phishing_min` (0.85, untuned; `phishing_min` is optional in
+  `judge` so the PR #55 evaluation script keeps working, with the phishing rule off). One step up only, never lowers (extension unchanged
+  apart from the reason text). Same change in `js/src/llm_check.js`, the Netlify function, the extension reason, the demo page; parity
+  cases (+4) regenerated. Input is still the host name only: path words are not sent (a path adds little for this judgment and costs privacy).
+- Tested: parity, backend, extension and demo tests with fake answers. Not measured: how good Gemini's phishing probability is; 0.85 is a
+  guess. PR #55's cached answers lack the new field and are rejected by `parse`, so rerun its evaluation after both merge.
+
+### 2026-10-26 — URL check page: loading screen (cloud)
+- Ritvik: the hosted page takes a while to load the model. `demo/index.html` + `demo/app.js`: a loading card over the
+  page lists each file being fetched with MB received ("x of y MB" when the server sends an uncompressed size), a bar
+  (by bytes when all sizes are known, else by files finished), "retrying" on the second attempt and "failed"; hidden
+  once loading ends, and the old error text still shows on failure. `demo/check.js` now fetches the lists alongside
+  the model instead of after it. Checked in headless Chromium at 2 MB/s (390 px) and with the model download blocked;
+  not checked on Netlify (compressed responses: MB only, bar by files) or on a phone.
+
+### 2026-10-26 — Hosted AI check timing out: each model gets its own share of the time (cloud)
+- Ritvik's page showed `provider_failed: TimeoutError` (9 s limit). Probed the live function from a GitHub runner with six fresh
+  hosts: all six answered `TimeoutError` after 9.15-9.27 s (earlier the same site answered in 1.0-1.6 s). So the main model
+  (`gemini-3.5-flash`) did not answer within 9 s on those calls; the fallback chain was never reached because a timeout is not an
+  HTTP error and the whole 9 s was one shared deadline. Why Gemini was slow is not known (overload, thinking time or a cold start;
+  not measured, the cloud has no key).
+- Changed: `askGemini` gives each model an equal share of the remaining time (3 s each for three models, whole milliseconds:
+  `AbortSignal.timeout` throws RangeError on fractions, which my first version hit), moves on after a timeout or HTTP 429/404/500/503,
+  and the error text lists every attempt with its time. Tests: slow first model replaced by the second; cap test unchanged.
+- Not measured: which model answers in time right now; a 3 s share may be short for a slow day.
+
+### 2026-10-26 — Short links followed to their destination (cloud)
+- Ritvik: short links were skipped, not opened. Checked what happened: the URL check page never followed a short link
+  (it showed "short link" and stopped). The extension does see the destination (the browser follows the redirect and
+  `onCommitted` scores the landing address before the page renders), but its shortener layer used the model bundle's
+  25 names, not the 1,793 of `js/data/lists.json` (PR #54), so e.g. `aka.ms` was scored or allowlisted as a site of its own.
+- Changed: `js/src/short_links.js` (follow hops while the address is on a shortener; HEAD, then GET with a 32 KB read for
+  `<meta refresh>`; the first address off a shortener is returned without being requested) and
+  `netlify/functions/expand.mjs` (`POST /api/expand`; only shortener addresses accepted; ports 80/443; connections to
+  private, loopback, link-local and reserved addresses refused at connect time; 5 hops, 8 s; 20 a minute per IP;
+  `short_links` in `configs/backend.yaml`, exported to `js/data/short_links.json`). `demo/check.js` checks the destination
+  instead of stopping ("Short link X leads to Y"); `withShorteners` in `extension/src/lists.js` gives the extension and the
+  page the full list (the model keeps the list it was trained with). `js/bench/expand_probe.mjs` +
+  `.github/workflows/short-link-probe.yml` follow real short links from a GitHub runner.
+- Tests: `npm test` js 25, extension 73, pytest pass, ruff clean. The e2e smoke test fails at its first step in this
+  container on main as well (Chromium shows `chrome-error://`), so it was not run. Not tested: a real Netlify deploy.
+
+### 2026-10-26 — Claim check of the coverage checklist, quick wins and recent reports (cloud)
+- Ritvik: short links were reported as handled while the URL check page did not follow them. Re-checked every "covered / passed /
+  handled" claim against main 22582a1; table with labels (verified / reported only / wrong) in `audit/coverage_checklist.md`.
+- Verified: extension short-link and redirect cases 13 of 13 (headless Chromium, local pages); natural-page false alarms 5 of 2,555
+  with the shipped model (the committed `reports/shipped_verdicts.md` still showed 71, regenerated); tests js 25, extension 74,
+  pytest 560, ruff clean; hosted helper follows bit.ly, aka.ms, t.co, is.gd from a GitHub runner and the live page judges the destination.
+- Wrong or stale: the demo page called 192.168.0.1 dangerous (fixed: `demo/check.js` uses `isLocalAddress`, test added) and said "the
+  allowlist keeps it safe" for an unfollowed short link (fixed: `demo/app.js`); tinyurl.com and cutt.ly are not followed (preview page,
+  403), so the page still cannot judge those; the attack harness gives 23 of 35 on today's build (its "suspicious address" now scores
+  0.75 under the 0.904 cut-off) and 32 of 35 after swapping that one address; PR #55 (AI check evaluation) is still open.
+- Measured now: look-alike coverage with the AI check off: homoglyph 2%, one letter off 1%, brand + word 78%, TLD swap 54%,
+  punycode 87% warned. Live AI check: 4 of 6 then 2 of 2 hosts answered, 4-9 s per call.
+- Added `.github/workflows/audit-probe.yml` (live-site probe: files, `/api/expand`, `/api/llm-check`, short links in a browser).
+- Not done: tinyurl/cutt.ly following, recalibrating the harness in the repo, the AI-check accuracy set (PR #55), anything needing the PC.

@@ -3,7 +3,8 @@
 // evaluate() in extension/src/background.js. Nothing is reimplemented: the modules are loaded from
 // `base`, a folder laid out like extension/dist (combine.js, lists.js, address.js and lib/).
 // Not applied: the page model (a web page cannot read another site's HTML), backend domain checks, the LLM check,
-// user trust and the remote config. A short link is not followed.
+// user trust and the remote config. A short link is followed by `c.expand` when the page has one
+// (the hosted function netlify/functions/expand.mjs) and its destination is checked instead.
 //
 // `read(path)` returns parsed JSON for a path relative to the repository root, or null when the
 // file does not exist.
@@ -17,7 +18,7 @@ const LABELS = ["safe", "suspicious", "dangerous"];
 async function loadLists(read) {
   const [allow, block, bundled] = await Promise.all([
     read("data/lists/allowlist.json"),
-    read("data/lists/blocklist.json"),
+    read("data/lists/blocklist.json").catch(() => null), // 17 MB: the page still works without it
     read("extension/data/allowlist.json"),
   ]);
   const synced = allow?.domains?.length || block ? { allowlist: allow ?? undefined, blocklist: block ?? undefined } : null;
@@ -38,14 +39,19 @@ export async function loadChecker({ base, read }) {
     mod("lib/explain.js"),
     mod("lib/model.js"),
   ]);
-  const [bundle, psl] = await Promise.all([read("js/data/tier_a_hybrid.json"), read("js/data/psl_icann.json")]);
+  const [bundle, psl, loaded, extra] = await Promise.all([
+    read("js/data/tier_a_hybrid.json"),
+    read("js/data/psl_icann.json"),
+    loadLists(read),
+    read("js/data/lists.json").catch(() => null), // the full shortener list (the model keeps its own)
+  ]);
   if (!bundle || !psl) throw new Error("js/data is missing model files (tier_a_hybrid.json, psl_icann.json)");
   const model = hybrid.loadHybrid(bundle, psl);
-  const { synced, bundled, allowSource, block } = await loadLists(read);
+  const { synced, bundled, allowSource, block } = loaded;
   const listSet = new lists.ListSet(lists.withBundledAllowlist(synced, bundled), {
     platforms: model.lists.platforms,
     psl: model.lists.psl,
-    shorteners: model.lists.shorteners,
+    shorteners: lists.withShorteners(model.lists.shorteners, extra),
   });
   return {
     combine,
@@ -85,11 +91,12 @@ const LAYER_WORD = {
 
 function llmTrace(llm, decidedEarly, earlyWhy) {
   if (llm.state === "skipped") return { id: "llm", tone: "skip", label: "Skipped", detail: decidedEarly ? earlyWhy : "There is no host name to send." };
-  if (llm.state === "off") return { id: "llm", tone: "na", label: "No backend here", detail: "The brand-impersonation check asks a language model through the backend. This page was not given a backend, so it does not run it." };
-  if (llm.state === "unreachable") return { id: "llm", tone: "na", label: "Backend not reachable", detail: "The local backend did not answer, so the AI check was not run." };
-  if (llm.error) return { id: "llm", tone: "na", label: "No opinion", detail: `The backend gave no opinion (${llm.error}).` };
+  if (llm.state === "off") return { id: "llm", tone: "na", label: "No backend here", detail: "The AI check (brand imitation and phishing judgment) asks a language model through the backend. This page was not given a backend, so it does not run it." };
+  if (llm.state === "unreachable") return { id: "llm", tone: "na", label: "AI check not reachable", detail: "The AI check did not answer, so it was not run." };
+  if (llm.error) return { id: "llm", tone: "na", label: "No opinion", detail: `The AI check gave no opinion (${llm.error}${llm.detail ? `: ${llm.detail}` : ""}).` };
+  if (llm.raise && llm.kind === "phishing") return { id: "llm", tone: "warn", label: "Looks like phishing", detail: `The model rates this address ${Math.round(llm.phishing * 100)}% likely to be phishing.` };
   if (llm.raise) return { id: "llm", tone: "warn", label: "Imitation", detail: `Looks like ${llm.brand}, whose real site is ${llm.brand_domain}.` };
-  return { id: "llm", tone: "clear", label: "Nothing found", detail: "The model did not find a brand being imitated." };
+  return { id: "llm", tone: "clear", label: "Nothing found", detail: "The model found no imitated brand and no sign of phishing." };
 }
 
 // One entry per layer, in the order the extension runs them: what it found, for the page to
@@ -168,7 +175,22 @@ async function askLlm(c, target, layers) {
 // The extension's verdict for one address, plus the model's own score for display (the model is
 // skipped for allowlisted, blocklisted and short-link addresses, as in the extension; its score is
 // still shown so the page can say what it would have said), and the per-layer trace.
+// A short link is followed first when the page can (`c.expand`); the result is then the
+// destination's, with `shortLink` saying where it came from.
 export async function checkUrl(c, input) {
+  const first = await checkOne(c, input);
+  if (first.layer !== "shortener" || !c.expand) return first;
+  const ex = await c.expand(first.url);
+  if (!ex?.complete) {
+    const why = ex?.error ? ` (${ex.error})` : "";
+    return { ...first, shortLink: { from: first.url, ...ex }, notes: [`This short link could not be followed to its destination${why}, so there is nothing to judge here. The extension judges the page it leads to.`, ...first.notes.filter((n) => !n.includes("does not follow"))] };
+  }
+  const dest = await checkOne(c, ex.final);
+  const n = ex.hops.length;
+  return { ...dest, shortLink: { from: first.url, ...ex }, notes: [`Short link ${first.url} leads to ${ex.final} (${n} request${n === 1 ? "" : "s"}, destination not opened). Every check here is for that address.`, ...dest.notes] };
+}
+
+async function checkOne(c, input) {
   const url = normaliseInput(input);
   const target = c.address.effectiveUrl(url);
   if (target === null) {
@@ -184,15 +206,16 @@ export async function checkUrl(c, input) {
     blocked: listed.blocked,
     model: null,
     unscored: false,
+    local: c.address.isLocalAddress(target), // this computer or the home network: not scored, as in the extension
   };
-  if (!layers.allow && !layers.shortener && !layers.blocked) {
+  if (!layers.allow && !layers.shortener && !layers.blocked && !layers.local) {
     layers.model = c.address.scoreAddress(c.model, target);
   }
   // The AI step runs only when the page was given a backend (`c.askLlm`), for every address the
   // allowlist, blocklist and short-link rules did not already decide (the extension asks only
   // borderline ones; here it is asked always so its answer can be seen).
   const llm = await askLlm(c, target, layers);
-  if (llm.state === "answered" && !llm.error) layers.llm = { raise: llm.raise, brand: llm.brand, brand_domain: llm.brand_domain };
+  if (llm.state === "answered" && !llm.error) layers.llm = { raise: llm.raise, kind: llm.kind, brand: llm.brand, brand_domain: llm.brand_domain, phishing: llm.phishing };
   const result = c.combine.combine(layers);
   let modelAlone = null;
   if (target.length <= c.address.MAX_URL_CHARS) {

@@ -95,8 +95,8 @@ function countUp(node, to, ms, fmt = num) {
 const head = (n, name, title, lead) =>
   `<p class="kicker">Layer ${n} of 5 · ${name}</p><h2>${title}</h2>`;
 const chip = (tone, icon, text) => `<div class="result rv t-${tone}">${svg(I[icon])}<span>${text}</span></div>`;
-const skipScene = (n, name, title, why) => ({
-  html: `<p class="kicker">Layer ${n} of 5 · ${name}</p><h2>${title}</h2>${chip("skip", "dash", "Not needed here")}<p class="note rv">${esc(why)}</p>`,
+const skipScene = (n, name, title, why, label = "Not needed here") => ({
+  html: `<p class="kicker">Layer ${n} of 5 · ${name}</p><h2>${title}</h2>${chip("skip", "dash", label)}<p class="note rv">${esc(why)}</p>`,
   play: async (el, w) => {
     show(el.querySelector(".result"));
     await w(500);
@@ -240,20 +240,21 @@ function modelScene(r) {
 // The LLM brand check: what was sent, what the model answered, and what code made of it.
 function llmScene(r) {
   const e = r.evidence.llm;
-  const title = "Does the address pretend to be a known brand?";
-  if (e.state === "off") return skipScene(4, "LLM check", title, "In the extension, borderline addresses are sent (host name only) to the backend, which asks a language model which brand the address imitates. Code then checks that brand against the real domain. This page was not given a backend, so it does not run this step.");
+  const title = "Does the address imitate a brand or look like phishing?";
+  if (e.state === "off") return skipScene(4, "LLM check", title, "In the extension, borderline addresses are sent (host name only) to the backend, which asks a language model whether the address imitates a brand or looks like phishing. Code then checks the answer. This page was not given a backend, so it does not run this step.");
   if (e.state === "skipped") return skipScene(4, "LLM check", title, "An earlier layer already decided, or the address has no host name, so nothing is sent to the model.");
-  if (e.state === "unreachable") return skipScene(4, "LLM check", title, "The local backend did not answer. Start it (python -m uvicorn backend.app:create_app --factory --port 8000) and check again.");
-  if (e.error) return skipScene(4, "LLM check", title, e.error === "disabled" ? "The backend has no GEMINI_API_KEY, so the AI check is off there." : `The backend gave no opinion (${e.error}), so this step changes nothing.`);
+  if (e.state === "unreachable") return skipScene(4, "LLM check", title, "The AI check did not answer, so it was not run. Check again in a moment.", "No answer");
+  if (e.error) return skipScene(4, "LLM check", title, e.error === "disabled" ? "The AI check has no GEMINI_API_KEY, so it is off." : `The AI check gave no opinion (${e.error}${e.detail ? `: ${e.detail}` : ""}), so this step changes nothing.`, "No answer");
   const sent = `<div class="tstep rv">Sent to the backend: <b>${esc(e.host)}</b> (the host name only, no path and no page).</div>`;
   const said = e.brand
     ? `<div class="tstep rv">The model says this imitates <b>${esc(e.brand)}</b>, whose own site is <b>${esc(e.brand_domain ?? "unknown")}</b> (confidence ${Number(e.confidence).toFixed(2)}).</div>`
     : `<div class="tstep rv">The model found no brand being imitated.</div>`;
+  const phish = `<div class="tstep rv">Phishing likelihood from the model: <b>${Math.round(Number(e.phishing ?? 0) * 100)}%</b>.</div>`;
   const result = e.raise
-    ? chip("warn", "bang", `Code agrees: ${esc(e.host)} is not ${esc(e.brand_domain)}. The verdict goes up one step.`)
+    ? chip("warn", "bang", e.kind === "phishing" ? "The model's phishing likelihood is high enough. The verdict goes up one step." : `Code agrees: ${esc(e.host)} is not ${esc(e.brand_domain)}. The verdict goes up one step.`)
     : chip("clear", "ok", e.brand ? "Not raised: the site is the brand's own, or the model was not confident enough" : "Nothing to raise");
   return {
-    html: head(4, "LLM check", title, "A language model names the brand it thinks the address imitates. Our own code, not the model, decides whether that is a real imitation.") + sent + said + result + (e.reason ? `<p class="note rv">The model's words: ${esc(e.reason)}</p>` : ""),
+    html: head(4, "LLM check", title, "A language model names the brand it thinks the address imitates and rates how likely it is phishing. Our own code, not the model, decides whether that raises the verdict.") + sent + said + phish + result + (e.reason ? `<p class="note rv">The model's words: ${esc(e.reason)}</p>` : ""),
     play: async (el, w) => {
       show(el.querySelector(".lead"));
       await w(450);
@@ -301,9 +302,17 @@ function combineScene(r) {
 function verdictScene(r) {
   const short = r.layer === "shortener";
   const cls = short ? "" : `v-${r.verdict}`;
-  const reasons = r.reasons.length ? r.reasons : r.layer === "allowlist" ? [`${r.domain} is a widely used site on the allowlist.`] : ["No layer raised a concern about this address."];
+  const reasons = r.reasons.length
+    ? r.reasons
+    : r.layer === "allowlist"
+      ? [`${r.domain} is a widely used site on the allowlist.`]
+      : short
+        ? ["This short link was not followed to its destination, so there is nothing to judge."]
+        : r.layer === "local"
+          ? ["This address is on your computer or home network, which PhishDrift does not check."]
+          : ["No layer raised a concern about this address."];
   const model = r.evidence.model;
-  const compare = model && !model.used ? [`For comparison, the address model alone would score this ${model.prob.toFixed(3)}. The allowlist is what keeps it safe.`] : [];
+  const compare = model && !model.used && r.layer === "allowlist" ? [`For comparison, the address model alone would score this ${model.prob.toFixed(3)}. The allowlist is what keeps it safe.`] : [];
   return {
     cls,
     html:
@@ -418,7 +427,7 @@ async function run(r) {
   $("stage").classList.remove("fast");
   const w = waiter(tok);
   current = r;
-  $("addr").innerHTML = addressMarkup(r.url);
+  $("addr").innerHTML = r.shortLink?.complete ? `${esc(r.shortLink.from)} <span class="via">leads to</span> ${addressMarkup(r.url)}` : addressMarkup(r.url);
   resetSteps();
   setVerdictClass(null);
   $("skip").disabled = false;
@@ -500,9 +509,20 @@ async function main() {
         return null;
       }
     };
+    // the hosted site follows short links (netlify/functions/expand.mjs); without it nothing is followed
+    checker.expand = async (url) => {
+      try {
+        const res = await fetch("/api/expand", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+        return res.ok ? await res.json() : { complete: false, error: res.status === 404 ? "not available on this server" : `HTTP ${res.status}` };
+      } catch {
+        return { complete: false, error: "link check not reachable" };
+      }
+    };
   } catch (err) {
     $("info").replaceChildren(Object.assign(document.createElement("span"), { className: "err", textContent: `Could not load the model: ${err.message}. Start the page with "python -m demo" from the repository folder.` }));
     return;
+  } finally {
+    $("loader").classList.add("gone");
   }
   const go = async (text) => {
     if (!text.trim()) return;
@@ -534,11 +554,69 @@ async function main() {
   go(start);
 }
 
+// Loading screen: one row per file with the bytes received so far. A compressed response's
+// Content-Length is not the size of the decoded body, so a total is shown only for uncompressed ones.
+const loads = new Map();
+const mb = (n) => (n / 1e6).toFixed(1);
+function showLoad(path, state, got = 0, total = 0) {
+  let row = loads.get(path);
+  if (!row) {
+    row = document.createElement("li");
+    row.append(Object.assign(document.createElement("code"), { textContent: path }), document.createElement("span"));
+    loads.set(path, row);
+    $("lfiles").append(row);
+  }
+  row.classList.toggle("done", state === "done");
+  if (state === "done") got = total = row.total || 1;
+  Object.assign(row, { got, total });
+  row.lastChild.textContent = state;
+  if (state === null) {
+    row.remove();
+    loads.delete(path);
+  }
+  const rows = [...loads.values()];
+  // by bytes when every size is known, else by files finished
+  const sum = (f) => rows.reduce((n, r) => n + f(r), 0);
+  const share = rows.every((r) => r.total) ? sum((r) => r.got) / sum((r) => r.total) : sum((r) => r.classList.contains("done")) / Math.max(rows.length, 1);
+  $("lbar").style.width = `${100 * share}%`;
+}
+async function body(path, res) {
+  const total = res.headers.get("content-encoding") ? 0 : Number(res.headers.get("content-length")) || 0;
+  if (!res.body) return res.json();
+  const reader = res.body.getReader();
+  const chunks = [];
+  for (let got = 0; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    got += value.length;
+    showLoad(path, total ? `${mb(got)} of ${mb(total)} MB` : `${mb(got)} MB`, Math.min(got, total), total);
+  }
+  return JSON.parse(await new Blob(chunks).text());
+}
+
+// One retry: a phone on a weak connection can drop the big model and list downloads. The error
+// names the file, so "Load failed" (Safari's wording for any network error) says which one.
 async function read(path) {
-  const res = await fetch(new URL(path, root));
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
-  return res.json();
+  for (let attempt = 1; ; attempt++) {
+    try {
+      showLoad(path, attempt === 1 ? "starting" : "retrying");
+      const res = await fetch(new URL(path, root));
+      if (res.status === 404) {
+        showLoad(path, null); // optional file (lists built on the PC), not on every site
+        return null;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await body(path, res);
+      showLoad(path, "done");
+      return json;
+    } catch (err) {
+      if (attempt === 2) {
+        showLoad(path, "failed");
+        throw new Error(`${path}: ${err.message}`);
+      }
+    }
+  }
 }
 
 main();

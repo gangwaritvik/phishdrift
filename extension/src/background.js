@@ -10,7 +10,7 @@
 // agrees, or no page check arrives within HOLD_MS (combine.js `addressOnly`). The backend is never
 // waited for: the verdict is shown at once and raised when (and if) the backend answers.
 
-import { sanitizeSettings } from "./config.js";
+import { llmEndpoint, sanitizeSettings } from "./config.js";
 import { addressOnly, combine, DANGEROUS, FRAME_PAGE_REASON, SAFE, SUSPICIOUS, framePageVerdict } from "./combine.js";
 import { listDomainKey, listUrlKey } from "./keys.js";
 import { MAX_URL_CHARS, effectiveUrl, isLocalAddress, scoreAddress } from "./address.js";
@@ -20,7 +20,7 @@ import { safeExit, worse } from "./navigation.js";
 import { loadHybrid } from "./lib/hybrid.js";
 import { loadPage, scorePage } from "./lib/page.js";
 import { isIpHost } from "./lib/urlparts.js";
-import { ListSet, withBundledAllowlist } from "./lists.js";
+import { ListSet, withBundledAllowlist, withShorteners } from "./lists.js";
 import { LIST_PUBKEY } from "./lists_pubkey.js";
 import { fetchConfig, syncLists as fetchLists } from "./listsync.js";
 import { pageFlags } from "./pagefacts.js";
@@ -109,7 +109,9 @@ function getLists() {
     const model = await getModel();
     const { lists } = await chrome.storage.local.get("lists");
     const payload = withBundledAllowlist(lists ?? null, await getBundled());
-    return new ListSet(payload, { platforms: model.lists.platforms, psl: model.lists.psl, shorteners: model.lists.shorteners });
+    const names = await fetch(chrome.runtime.getURL("data/lists.json")).then((r) => r.json()).catch(() => null);
+    const shorteners = withShorteners(model.lists.shorteners, names);
+    return new ListSet(payload, { platforms: model.lists.platforms, psl: model.lists.psl, shorteners });
   })();
   return listsPromise;
 }
@@ -202,7 +204,7 @@ const llmInflight = new Map();
 async function fetchLlm(host, settings) {
   let answer = null;
   try {
-    const res = await fetch(`${settings.backendUrl}/llm-check`, {
+    const res = await fetch(llmEndpoint(settings), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ domain: host, path_words: [] }),

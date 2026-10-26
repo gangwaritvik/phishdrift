@@ -95,9 +95,35 @@ test("an AI answer from the backend raises the verdict and shows in the trace", 
   else assert.notEqual(r.verdict, "safe");
   assert.equal(r.trace[3].tone, "warn");
   const down = await checkUrl({ ...base, askLlm: async () => null }, url);
-  assert.equal(down.trace[3].label, "Backend not reachable");
+  assert.equal(down.trace[3].label, "AI check not reachable");
   assert.equal(down.verdict, plain.verdict);
   const allow = await checkUrl(c, "web.whatsapp.com");
   assert.equal(allow.trace[3].tone, "skip");
   assert.equal(asked.length, 1);
+});
+
+test("a followed short link is judged at its destination", async () => {
+  const c = Object.create(await checker);
+  c.expand = async (url) => ({ final: "https://web.whatsapp.com/", complete: true, hops: [{ url, status: 301, method: "HEAD" }], error: null });
+  const r = await checkUrl(c, "https://bit.ly/abc");
+  assert.deepEqual([r.layer, r.url, r.shortLink.from], ["allowlist", "https://web.whatsapp.com/", "https://bit.ly/abc"]);
+  c.expand = async () => ({ complete: false, error: "no_redirect" });
+  const stuck = await checkUrl(c, "https://bit.ly/abc");
+  assert.equal(stuck.layer, "shortener");
+  assert.ok(stuck.notes[0].includes("no_redirect"));
+});
+
+test("shorteners from js/data/lists.json count, not only the model's own 25", async () => {
+  const c = await checker;
+  assert.equal(c.model.lists.shorteners.has("aka.ms"), false);
+  assert.equal((await checkUrl(c, "https://aka.ms/xyz")).layer, "shortener");
+});
+
+test("addresses on this computer or the home network are not scored, as in the extension", async () => {
+  const c = await checker;
+  for (const url of ["http://192.168.0.1/", "http://localhost:3000/login"]) {
+    const r = await checkUrl(c, url);
+    assert.deepEqual([r.verdict, r.layer], ["safe", "local"]);
+  }
+  assert.notEqual((await checkUrl(c, "http://8.8.8.8/login")).layer, "local");
 });

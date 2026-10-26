@@ -48,16 +48,19 @@ export const addressOnly = (result) => result?.verdict === DANGEROUS && result.l
 // page: {hasPassword, credFormCrossDomain, credFormInsecure, asksCredentials} | null (pagefacts.js)
 // pageModel: {hasHtml, blended, verdict, pageDangerous, reasons:[{text}], allowedPageWarning?} | null
 //            (scorePage in page.js)
-// llm: layers.llm = {raise, brand, brand_domain} | null, the backend's brand-impersonation opinion
-// (backend/llm.py). It only raises (see llmEscalate).
+// llm: layers.llm = {raise, kind: "brand"|"phishing"|null, brand, brand_domain, phishing} | null, the
+// backend's AI opinion on the address (backend/llm.py). It only raises (see llmEscalate).
 export function combine(layers, page = null, pageModel = null) {
   return llmEscalate(combineLayers(layers, page, pageModel), layers, page);
 }
 
 export const llmReason = (llm) =>
-  `This address looks like it imitates ${llm.brand}, whose real site is ${llm.brand_domain}.`;
+  llm.kind === "phishing"
+    ? `An AI check of the address thinks it looks like a phishing site (${Math.round(llm.phishing * 100)}% likely).`
+    : `This address looks like it imitates ${llm.brand}, whose real site is ${llm.brand_domain}.`;
 
-// One step up when the LLM check says the address imitates a brand whose own domain it is not:
+// One step up when the LLM check says the address imitates a brand whose own domain it is not, or
+// looks like phishing on its own:
 // safe to suspicious, suspicious to dangerous only if the page asks for credentials. Never lowers
 // a verdict, never acts on blocklisted, trusted, allowlisted, short-link, local or unscored
 // addresses.

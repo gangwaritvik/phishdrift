@@ -689,8 +689,16 @@ def test_popular_origins_fall_back_to_an_older_month(monkeypatch):
 # --- LLM second opinion -------------------------------------------------------------------
 
 
-def _answer(brand="PayPal", dom="paypal.com", conf=0.95, reason="imitates PayPal"):
-    return json.dumps({"brand": brand, "brand_domain": dom, "confidence": conf, "reason": reason})
+def _answer(brand="PayPal", dom="paypal.com", conf=0.95, phishing=0.3, reason="imitates PayPal"):
+    return json.dumps(
+        {
+            "brand": brand,
+            "brand_domain": dom,
+            "confidence": conf,
+            "phishing": phishing,
+            "reason": reason,
+        }
+    )
 
 
 def llm_client(settings, reply):
@@ -730,6 +738,15 @@ def test_llm_same_domain_low_confidence_and_bad_output_do_not_raise(settings):
         host = "login.paypal.com" if reply == _answer() else "paypal-secure-login.xyz"
         client, _ = llm_client(settings, reply)
         assert client.post("/llm-check", json={"domain": host}).json()["raise"] is False
+
+
+def test_llm_phishing_probability_raises_without_a_brand(settings):
+    host = {"domain": "x7k2-qq9z.top"}
+    client, _ = llm_client(settings, _answer(brand=None, dom=None, conf=0, phishing=0.9))
+    out = client.post("/llm-check", json=host).json()
+    assert out["raise"] is True and out["kind"] == "phishing" and out["brand"] is None
+    client, _ = llm_client(settings, _answer(brand=None, dom=None, conf=0, phishing=0.8))
+    assert client.post("/llm-check", json=host).json()["raise"] is False
 
 
 def test_llm_provider_error_is_no_opinion_and_not_cached(settings):
