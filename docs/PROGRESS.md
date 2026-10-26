@@ -1149,4 +1149,4 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   kr3w.de, t.me, rdcu.be); the scraped list (PR #54) needs a quality pass. Not done here.
 - Not measured: a benign tinyurl or cutt.ly link (cannot create one without an account); whether tinyurl sends the header
   for unflagged links (then the ordinary Location redirect applies and was already followed). Tests: `npm test` js 27,
-  extension 75, ruff clean.
+  extension 74, ruff clean.
