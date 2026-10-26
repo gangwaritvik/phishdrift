@@ -1049,3 +1049,11 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - 2026-10-26 later: the hosted page loaded on the phone; its AI step answered `provider_failed` (the function had a key, so it
   is not "disabled"; the Gemini call itself failed: quota, model name or a timeout, not yet known). Changed: the function now returns
   `detail` (Google's error text, never the key) and the page shows it, so the next screenshot names the cause.
+
+### 2026-10-26 — Hosted AI check: bad_answer; output limit raised (cloud)
+- Ritvik's next screenshot of the hosted page: the AI step now answers `bad_answer` (the call reached Gemini; the text did not parse
+  as the four-field JSON). Likely cause (inferred, not seen): `max_output_tokens: 200` cut the JSON off, since a thinking model spends
+  part of the limit on thinking. Changed: `llm.max_output_tokens` 200 -> 1024 (backend and hosted function share it), the function
+  returns the first 160 characters of an unparseable answer as `detail`, and the site's cache header is `max-age=0, must-revalidate`
+  (the screenshot still showed the old page text because of `max-age=3600`).
+- Not tested against real Gemini.

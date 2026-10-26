@@ -27,7 +27,7 @@
  },
  "model": "gemini-3.5-flash",
  "url": "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
- "max_output_tokens": 200,
+ "max_output_tokens": 1024,
  "max_path_words": 12,
  "min_confidence": 0.7,
  "cache_ttl_s": 86400,
