@@ -85,11 +85,12 @@ const LAYER_WORD = {
 
 function llmTrace(llm, decidedEarly, earlyWhy) {
   if (llm.state === "skipped") return { id: "llm", tone: "skip", label: "Skipped", detail: decidedEarly ? earlyWhy : "There is no host name to send." };
-  if (llm.state === "off") return { id: "llm", tone: "na", label: "No backend here", detail: "The brand-impersonation check asks a language model through the backend. This page was not given a backend, so it does not run it." };
+  if (llm.state === "off") return { id: "llm", tone: "na", label: "No backend here", detail: "The AI check (brand imitation and phishing judgment) asks a language model through the backend. This page was not given a backend, so it does not run it." };
   if (llm.state === "unreachable") return { id: "llm", tone: "na", label: "AI check not reachable", detail: "The AI check did not answer, so it was not run." };
   if (llm.error) return { id: "llm", tone: "na", label: "No opinion", detail: `The AI check gave no opinion (${llm.error}${llm.detail ? `: ${llm.detail}` : ""}).` };
+  if (llm.raise && llm.kind === "phishing") return { id: "llm", tone: "warn", label: "Looks like phishing", detail: `The model rates this address ${Math.round(llm.phishing * 100)}% likely to be phishing.` };
   if (llm.raise) return { id: "llm", tone: "warn", label: "Imitation", detail: `Looks like ${llm.brand}, whose real site is ${llm.brand_domain}.` };
-  return { id: "llm", tone: "clear", label: "Nothing found", detail: "The model did not find a brand being imitated." };
+  return { id: "llm", tone: "clear", label: "Nothing found", detail: "The model found no imitated brand and no sign of phishing." };
 }
 
 // One entry per layer, in the order the extension runs them: what it found, for the page to
@@ -192,7 +193,7 @@ export async function checkUrl(c, input) {
   // allowlist, blocklist and short-link rules did not already decide (the extension asks only
   // borderline ones; here it is asked always so its answer can be seen).
   const llm = await askLlm(c, target, layers);
-  if (llm.state === "answered" && !llm.error) layers.llm = { raise: llm.raise, brand: llm.brand, brand_domain: llm.brand_domain };
+  if (llm.state === "answered" && !llm.error) layers.llm = { raise: llm.raise, kind: llm.kind, brand: llm.brand, brand_domain: llm.brand_domain, phishing: llm.phishing };
   const result = c.combine.combine(layers);
   let modelAlone = null;
   if (target.length <= c.address.MAX_URL_CHARS) {

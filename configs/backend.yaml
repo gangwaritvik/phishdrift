@@ -112,7 +112,8 @@ llm:
   timeout_s: 15
   max_output_tokens: 1024     # 200 cut the JSON off on a thinking model (bad_answer on the hosted check)
   max_path_words: 12
-  min_confidence: 0.7            # not tuned yet: to be set from experiments/llm_eval.py
+  min_confidence: 0.7            # brand claim; not tuned yet: to be set from experiments/llm_eval.py
+  phishing_min: 0.85             # raise on the model's own phishing probability; untuned
   cache_ttl_s: 86400             # one question per host and path words per day
   max_calls_per_day: 2000        # hard daily cap on provider calls (cost bound)
   hosted:                        # the Netlify Function copy (netlify/functions/llm-check.mjs)

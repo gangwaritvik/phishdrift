@@ -240,8 +240,8 @@ function modelScene(r) {
 // The LLM brand check: what was sent, what the model answered, and what code made of it.
 function llmScene(r) {
   const e = r.evidence.llm;
-  const title = "Does the address pretend to be a known brand?";
-  if (e.state === "off") return skipScene(4, "LLM check", title, "In the extension, borderline addresses are sent (host name only) to the backend, which asks a language model which brand the address imitates. Code then checks that brand against the real domain. This page was not given a backend, so it does not run this step.");
+  const title = "Does the address imitate a brand or look like phishing?";
+  if (e.state === "off") return skipScene(4, "LLM check", title, "In the extension, borderline addresses are sent (host name only) to the backend, which asks a language model whether the address imitates a brand or looks like phishing. Code then checks the answer. This page was not given a backend, so it does not run this step.");
   if (e.state === "skipped") return skipScene(4, "LLM check", title, "An earlier layer already decided, or the address has no host name, so nothing is sent to the model.");
   if (e.state === "unreachable") return skipScene(4, "LLM check", title, "The AI check did not answer, so it was not run. Check again in a moment.", "No answer");
   if (e.error) return skipScene(4, "LLM check", title, e.error === "disabled" ? "The AI check has no GEMINI_API_KEY, so it is off." : `The AI check gave no opinion (${e.error}${e.detail ? `: ${e.detail}` : ""}), so this step changes nothing.`, "No answer");
@@ -249,11 +249,12 @@ function llmScene(r) {
   const said = e.brand
     ? `<div class="tstep rv">The model says this imitates <b>${esc(e.brand)}</b>, whose own site is <b>${esc(e.brand_domain ?? "unknown")}</b> (confidence ${Number(e.confidence).toFixed(2)}).</div>`
     : `<div class="tstep rv">The model found no brand being imitated.</div>`;
+  const phish = `<div class="tstep rv">Phishing likelihood from the model: <b>${Math.round(Number(e.phishing ?? 0) * 100)}%</b>.</div>`;
   const result = e.raise
-    ? chip("warn", "bang", `Code agrees: ${esc(e.host)} is not ${esc(e.brand_domain)}. The verdict goes up one step.`)
+    ? chip("warn", "bang", e.kind === "phishing" ? "The model's phishing likelihood is high enough. The verdict goes up one step." : `Code agrees: ${esc(e.host)} is not ${esc(e.brand_domain)}. The verdict goes up one step.`)
     : chip("clear", "ok", e.brand ? "Not raised: the site is the brand's own, or the model was not confident enough" : "Nothing to raise");
   return {
-    html: head(4, "LLM check", title, "A language model names the brand it thinks the address imitates. Our own code, not the model, decides whether that is a real imitation.") + sent + said + result + (e.reason ? `<p class="note rv">The model's words: ${esc(e.reason)}</p>` : ""),
+    html: head(4, "LLM check", title, "A language model names the brand it thinks the address imitates and rates how likely it is phishing. Our own code, not the model, decides whether that raises the verdict.") + sent + said + phish + result + (e.reason ? `<p class="note rv">The model's words: ${esc(e.reason)}</p>` : ""),
     play: async (el, w) => {
       show(el.querySelector(".lead"));
       await w(450);

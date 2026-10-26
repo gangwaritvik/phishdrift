@@ -1064,3 +1064,13 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   So the key and the site work; the main model has no free quota on this key right now (the earlier `bad_answer` call did get through once).
 - Changed: `llm.hosted.fallback_models` (`gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`; names unverified); the function tries them in order on
   429/404/503 within one timeout; the error text names the model. Test added. Not measured: which model has quota on his key.
+
+### 2026-10-26 — AI check prompt made general, with a phishing judgment (cloud)
+- Ritvik: not only brand impersonation and not only banks. `backend/llm.py` `SYSTEM` now asks for a phishing judgment of any kind of site;
+  the answer has a fifth field `phishing` (0 to 1) next to `brand`, `brand_domain`, `confidence` (brand claim) and `reason`. `judge`
+  raises with kind "brand" (as before) or kind "phishing" when `phishing >= llm.phishing_min` (0.85, untuned; `phishing_min` is optional in
+  `judge` so the PR #55 evaluation script keeps working, with the phishing rule off). One step up only, never lowers (extension unchanged
+  apart from the reason text). Same change in `js/src/llm_check.js`, the Netlify function, the extension reason, the demo page; parity
+  cases (+4) regenerated. Input is still the host name only: path words are not sent (a path adds little for this judgment and costs privacy).
+- Tested: parity, backend, extension and demo tests with fake answers. Not measured: how good Gemini's phishing probability is; 0.85 is a
+  guess. PR #55's cached answers lack the new field and are rejected by `parse`, so rerun its evaluation after both merge.
