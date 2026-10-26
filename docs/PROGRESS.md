@@ -1057,3 +1057,10 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   returns the first 160 characters of an unparseable answer as `detail`, and the site's cache header is `max-age=0, must-revalidate`
   (the screenshot still showed the old page text because of `max-age=3600`).
 - Not tested against real Gemini.
+
+### 2026-10-26 — Hosted AI check: real cause was Gemini quota (HTTP 429); model fallback (cloud)
+- Probed the live function from a GitHub runner (the cloud sandbox cannot reach netlify.app; `.github/workflows/hosted-check.yml`,
+  runs on push and by hand): both test hosts answered `provider_failed`, detail "HTTP 429: You exceeded your current quota" after 0.4-0.6 s.
+  So the key and the site work; the main model has no free quota on this key right now (the earlier `bad_answer` call did get through once).
+- Changed: `llm.hosted.fallback_models` (`gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`; names unverified); the function tries them in order on
+  429/404/503 within one timeout; the error text names the model. Test added. Not measured: which model has quota on his key.

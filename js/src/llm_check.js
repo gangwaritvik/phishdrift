@@ -79,27 +79,40 @@ export function makeTrie(rules) {
 }
 
 // One Gemini generateContent call; resolves to the answer text or throws (message safe to log).
+// A model that answers 429/404/503 (no quota, unknown name, overloaded) is replaced by the next one
+// in cfg.fallback_models, all within one timeout.
 export async function askGemini(cfg, key, user, fetchFn = fetch) {
-  const res = await fetchFn(cfg.url.replace("{model}", cfg.model), {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: cfg.system }] },
-      contents: [{ role: "user", parts: [{ text: user }] }],
-      generationConfig: {
-        temperature: 0,
-        maxOutputTokens: cfg.max_output_tokens,
-        responseMimeType: "application/json",
-        responseSchema: cfg.schema,
-      },
-    }),
-    signal: AbortSignal.timeout(cfg.timeout_ms),
+  const deadline = Date.now() + cfg.timeout_ms;
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: cfg.system }] },
+    contents: [{ role: "user", parts: [{ text: user }] }],
+    generationConfig: {
+      temperature: 0,
+      maxOutputTokens: cfg.max_output_tokens,
+      responseMimeType: "application/json",
+      responseSchema: cfg.schema,
+    },
   });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${String(data?.error?.message ?? "no error message").slice(0, 200)}`);
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (typeof text !== "string") throw new Error(`no answer text (finishReason=${data?.candidates?.[0]?.finishReason || "none"})`);
-  return text;
+  const models = [cfg.model, ...(cfg.fallback_models ?? [])];
+  let last = "";
+  for (const model of models) {
+    const res = await fetchFn(cfg.url.replace("{model}", model), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body,
+      signal: AbortSignal.timeout(Math.max(1000, deadline - Date.now())),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      last = `${model} HTTP ${res.status}: ${String(data?.error?.message ?? "no error message").slice(0, 120)}`;
+      if ([429, 404, 503].includes(res.status) && model !== models.at(-1)) continue;
+      throw new Error(last);
+    }
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (typeof text !== "string") throw new Error(`${model} no answer text (finishReason=${data?.candidates?.[0]?.finishReason || "none"})`);
+    return text;
+  }
+  throw new Error(last);
 }
 
 // backend/llm.py LlmChecker: ask, parse, judge. Never throws: a failure is `error`, no opinion.

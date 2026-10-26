@@ -116,6 +116,7 @@ llm:
   cache_ttl_s: 86400             # one question per host and path words per day
   max_calls_per_day: 2000        # hard daily cap on provider calls (cost bound)
   hosted:                        # the Netlify Function copy (netlify/functions/llm-check.mjs)
+    fallback_models: [gemini-3.5-flash-lite, gemini-3.1-flash-lite]  # tried in order when the main model answers 429/404/503
     timeout_s: 9                 # under the host's 10 s limit for a synchronous function
     max_calls_per_day: 300       # per function instance (instances do not share memory)
     cache_max_entries: 5000
