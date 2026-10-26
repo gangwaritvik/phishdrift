@@ -1,0 +1,268 @@
+[
+ {
+  "host": "paypa1-login.com",
+  "words": [
+   "Sign-In",
+   "verify"
+  ],
+  "text": "{\"brand\": \"PayPal\", \"brand_domain\": \"paypal.com\", \"confidence\": 0.95, \"reason\": \"look-alike\"}",
+  "prompt": "{\"host\": \"paypa1-login.com\", \"path_words\": [\"sign\", \"in\", \"verify\"]}",
+  "parsed": {
+   "brand": "PayPal",
+   "brand_domain": "paypal.com",
+   "confidence": 0.95,
+   "reason": "look-alike"
+  },
+  "judged": {
+   "raise": true,
+   "brand": "PayPal",
+   "brand_domain": "paypal.com",
+   "confidence": 0.95
+  }
+ },
+ {
+  "host": "www.paypal.com",
+  "words": [],
+  "text": "{\"brand\": \"PayPal\", \"brand_domain\": \"paypal.com\", \"confidence\": 0.9, \"reason\": \"own site\"}",
+  "prompt": "{\"host\": \"www.paypal.com\", \"path_words\": []}",
+  "parsed": {
+   "brand": "PayPal",
+   "brand_domain": "paypal.com",
+   "confidence": 0.9,
+   "reason": "own site"
+  },
+  "judged": {
+   "raise": false,
+   "brand": "PayPal",
+   "brand_domain": "paypal.com",
+   "confidence": 0.9
+  }
+ },
+ {
+  "host": "login.secure.paypal.co.uk",
+  "words": [],
+  "text": "{\"brand\": \"PayPal\", \"brand_domain\": \"PayPal.co.uk \", \"confidence\": 1, \"reason\": \"own\"}",
+  "prompt": "{\"host\": \"login.secure.paypal.co.uk\", \"path_words\": []}",
+  "parsed": {
+   "brand": "PayPal",
+   "brand_domain": "paypal.co.uk",
+   "confidence": 1.0,
+   "reason": "own"
+  },
+  "judged": {
+   "raise": false,
+   "brand": "PayPal",
+   "brand_domain": "paypal.co.uk",
+   "confidence": 1.0
+  }
+ },
+ {
+  "host": "sbi-kyc.web.app",
+  "words": [
+   "update",
+   "KYC!!"
+  ],
+  "text": "{\"brand\": \" SBI \", \"brand_domain\": \"onlinesbi.sbi\", \"confidence\": 0.8, \"reason\": \"bank\"}",
+  "prompt": "{\"host\": \"sbi-kyc.web.app\", \"path_words\": [\"update\", \"kyc\"]}",
+  "parsed": {
+   "brand": "SBI",
+   "brand_domain": "onlinesbi.sbi",
+   "confidence": 0.8,
+   "reason": "bank"
+  },
+  "judged": {
+   "raise": true,
+   "brand": "SBI",
+   "brand_domain": "onlinesbi.sbi",
+   "confidence": 0.8
+  }
+ },
+ {
+  "host": "example.com",
+  "words": [],
+  "text": "{\"brand\": null, \"brand_domain\": null, \"confidence\": 0.1, \"reason\": \"no\"}",
+  "prompt": "{\"host\": \"example.com\", \"path_words\": []}",
+  "parsed": {
+   "brand": null,
+   "brand_domain": null,
+   "confidence": 0.1,
+   "reason": "no"
+  },
+  "judged": {
+   "raise": false,
+   "brand": null,
+   "brand_domain": null,
+   "confidence": 0.0
+  }
+ },
+ {
+  "host": "examp1e.com",
+  "words": [],
+  "text": "{\"brand\": \"Example\", \"brand_domain\": \"example.com\", \"confidence\": 0.69, \"reason\": \"low\"}",
+  "prompt": "{\"host\": \"examp1e.com\", \"path_words\": []}",
+  "parsed": {
+   "brand": "Example",
+   "brand_domain": "example.com",
+   "confidence": 0.69,
+   "reason": "low"
+  },
+  "judged": {
+   "raise": false,
+   "brand": "Example",
+   "brand_domain": "example.com",
+   "confidence": 0.69
+  }
+ },
+ {
+  "host": "x.com",
+  "words": [],
+  "text": "{\"brand\": \"X\", \"brand_domain\": \"x.com\", \"confidence\": true, \"reason\": \"r\"}",
+  "prompt": "{\"host\": \"x.com\", \"path_words\": []}",
+  "parsed": null,
+  "judged": {
+   "raise": false,
+   "brand": null,
+   "brand_domain": null,
+   "confidence": 0.0
+  }
+ },
+ {
+  "host": "x.com",
+  "words": [],
+  "text": "{\"brand\": \"X\", \"brand_domain\": \"x.com\", \"confidence\": 1.5, \"reason\": \"r\"}",
+  "prompt": "{\"host\": \"x.com\", \"path_words\": []}",
+  "parsed": null,
+  "judged": {
+   "raise": false,
+   "brand": null,
+   "brand_domain": null,
+   "confidence": 0.0
+  }
+ },
+ {
+  "host": "x.com",
+  "words": [],
+  "text": "{\"brand\": \"X\", \"brand_domain\": \"not a domain\", \"confidence\": 0.9, \"reason\": \"\"}",
+  "prompt": "{\"host\": \"x.com\", \"path_words\": []}",
+  "parsed": null,
+  "judged": {
+   "raise": false,
+   "brand": null,
+   "brand_domain": null,
+   "confidence": 0.0
+  }
+ },
+ {
+  "host": "x.com",
+  "words": [],
+  "text": "{\"brand\": \"X\", \"brand_domain\": \"x.com\", \"confidence\": 0.9}",
+  "prompt": "{\"host\": \"x.com\", \"path_words\": []}",
+  "parsed": null,
+  "judged": {
+   "raise": false,
+   "brand": null,
+   "brand_domain": null,
+   "confidence": 0.0
+  }
+ },
+ {
+  "host": "x.com",
+  "words": [],
+  "text": "{\"brand\": \"X\", \"brand_domain\": \"x.com\", \"confidence\": 0.9, \"reason\": \"r\", \"extra\": 1}",
+  "prompt": "{\"host\": \"x.com\", \"path_words\": []}",
+  "parsed": null,
+  "judged": {
+   "raise": false,
+   "brand": null,
+   "brand_domain": null,
+   "confidence": 0.0
+  }
+ },
+ {
+  "host": "x.com",
+  "words": [],
+  "text": "not json",
+  "prompt": "{\"host\": \"x.com\", \"path_words\": []}",
+  "parsed": null,
+  "judged": {
+   "raise": false,
+   "brand": null,
+   "brand_domain": null,
+   "confidence": 0.0
+  }
+ },
+ {
+  "host": "x.com",
+  "words": [],
+  "text": "[1, 2]",
+  "prompt": "{\"host\": \"x.com\", \"path_words\": []}",
+  "parsed": null,
+  "judged": {
+   "raise": false,
+   "brand": null,
+   "brand_domain": null,
+   "confidence": 0.0
+  }
+ },
+ {
+  "host": "bank.example.co.in",
+  "words": [
+   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "b2",
+   "c_d"
+  ],
+  "text": "{\"brand\": \"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\", \"brand_domain\": \"bank.co.in\", \"confidence\": 0.7, \"reason\": \"rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr\"}",
+  "prompt": "{\"host\": \"bank.example.co.in\", \"path_words\": [\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"aaaaaaaaaa\", \"b2\", \"c\", \"d\"]}",
+  "parsed": {
+   "brand": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+   "brand_domain": "bank.co.in",
+   "confidence": 0.7,
+   "reason": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr"
+  },
+  "judged": {
+   "raise": true,
+   "brand": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+   "brand_domain": "bank.co.in",
+   "confidence": 0.7
+  }
+ },
+ {
+  "host": "192.0.2.1",
+  "words": [],
+  "text": "{\"brand\": \"Apple\", \"brand_domain\": \"apple.com\", \"confidence\": 0.9, \"reason\": \"ip\"}",
+  "prompt": "{\"host\": \"192.0.2.1\", \"path_words\": []}",
+  "parsed": {
+   "brand": "Apple",
+   "brand_domain": "apple.com",
+   "confidence": 0.9,
+   "reason": "ip"
+  },
+  "judged": {
+   "raise": true,
+   "brand": "Apple",
+   "brand_domain": "apple.com",
+   "confidence": 0.9
+  }
+ },
+ {
+  "host": "Ünïcode.com",
+  "words": [
+   "Straße",
+   "İstanbul"
+  ],
+  "text": "{\"brand\": \"  \", \"brand_domain\": \"x.com\", \"confidence\": 0.9, \"reason\": \" r \"}",
+  "prompt": "{\"host\": \"\\u00dcn\\u00efcode.com\", \"path_words\": [\"stra\", \"e\", \"i\", \"stanbul\"]}",
+  "parsed": {
+   "brand": "",
+   "brand_domain": "x.com",
+   "confidence": 0.9,
+   "reason": "r"
+  },
+  "judged": {
+   "raise": false,
+   "brand": null,
+   "brand_domain": null,
+   "confidence": 0.0
+  }
+ }
+]

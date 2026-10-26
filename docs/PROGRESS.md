@@ -1025,3 +1025,17 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Not run on real data (the cloud cannot reach the feeds or probe hosts); thresholds are untuned defaults; yield unknown.
 - Probes send one HEAD per short URL from the PC's address to hosts that appear in phishing feeds; no page is fetched or followed.
 - Next on the PC: run it after a collector run, read the CSV, then rescrape the list, `export-js`, rebuild the extension.
+
+### 2026-10-26 — AI brand check hosted on Netlify (cloud, code only)
+- Ritvik has no PC access, so the Gemini check moves off the PC. Netlify Drop cannot run functions, so the
+  demo site is now built from the repository (`netlify.toml`, `deploy/netlify_build.sh`, `docs/HOSTING.md`).
+- Changed: `netlify/functions/llm-check.mjs` (POST `/api/llm-check` and `/llm-check`; key from the site's
+  `GEMINI_API_KEY`; Netlify per-IP rate limit 20 a minute; per-instance day cache and daily cap
+  `llm.hosted` in `configs/backend.yaml`), `js/src/llm_check.js` (JavaScript copy of `backend/llm.py`),
+  `python -m backend export-llm-js` -> `js/data/llm_check.json` + `tests/fixtures/llm_parity.json`
+  (16 cases, checked by pytest and `npm test`); extension setting `llmUrl` with a popup field (empty = backend).
+- Tested here: parity, function with a fake Gemini (key only in a header, cache, errors, bad input, daily
+  cap), esbuild bundle of the function, the build script (30 MB site, blocklist 872,658 URL hashes), and the
+  built site in headless Chromium with the function behind it: a fake "PayPal" answer shows "Imitation".
+- Not tested: a real Netlify deploy (build image, `rateLimit` behaviour), a real Gemini call (no key here).
+- Next: Ritvik connects the repo on Netlify and adds the key (docs/HOSTING.md, about 5 minutes).
