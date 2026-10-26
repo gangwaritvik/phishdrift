@@ -8,10 +8,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          for site in loquacious-starship-3425f0 deploy-preview-59--loquacious-starship-3425f0; do
-          for h in paypa1-login.com secure-paypal-verify.net; do
+          for h in a1-test-site.com b2-shop-login.net c3-bank-verify.top d4-news-daily.org e5-game-hub.io f6-mail-update.xyz; do
             curl -sS -m 40 -w '\nHTTP %{http_code} %{time_total}s\n' -X POST \
-              https://$site.netlify.app/api/llm-check \
+              https://loquacious-starship-3425f0.netlify.app/api/llm-check \
               -H 'Content-Type: application/json' -d "{\"domain\":\"$h\"}"
-          done
           done
