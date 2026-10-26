@@ -1124,3 +1124,18 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   punycode 87% warned. Live AI check: 4 of 6 then 2 of 2 hosts answered, 4-9 s per call.
 - Added `.github/workflows/audit-probe.yml` (live-site probe: files, `/api/expand`, `/api/llm-check`, short links in a browser).
 - Not done: tinyurl/cutt.ly following, recalibrating the harness in the repo, the AI-check accuracy set (PR #55), anything needing the PC.
+
+### 2026-10-26 — Attack harness in the repo, recalibrated at run time (cloud)
+- Ritvik: fix the gaps found by the claim check (PR #64); this one is "the harness reports 23 of 35". The harness was in the
+  project folder, with `evil-blocked.com` hard-coded as the "suspicious" address; after the retrain it scores 0.75, under the
+  0.904 cut-off, so the page-based cases lost their trigger. The extension had not broken.
+- Changed: `extension/e2e/attack/` (`harness.mjs`, `calibrate.mjs`, `pages/`, `run.sh`, `offline.sh`, `lo_up.py`,
+  `results.md`), `.github/workflows/attack-harness.yml` (manual). `calibrate.mjs` scores candidate hosts with the shipped
+  model and picks suspicious, dangerous, safe and "dangerous by address only" test hosts; it stops with an error if a band is
+  empty. Fake blocklist no longer contains `example.com` (the extension refuses a list with a top site, so the trust cases
+  never saw a blocklisted domain). "Back to safety" cases use a dangerous page that asks for a password; new case
+  `D-address-only-dangerous-is-banner` pins the 2026-10-20 behaviour. Each change is explained in `results.md`.
+- Results (measured, headless Chromium, local pages): 36 of 36 pass in 3 runs (one with the network cut off), 2 info lines.
+  Same harness with only the address swapped: 34 of 35. Old harness: 23 of 35.
+- Not done: the 2026-10-26 quick-win cases (short links, redirects, PDF) stay in the project folder; the workflow has not run on a GitHub runner yet.
+
