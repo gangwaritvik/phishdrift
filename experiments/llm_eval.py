@@ -84,11 +84,13 @@ def ask_all(hosts: list[str], provider, cache_path: Path, max_calls: int) -> dic
     return cache
 
 
-def raised(rec: dict | None, host: str, cutoff: float) -> bool | None:
+def raised(
+    rec: dict | None, host: str, cutoff: float, phishing_min: float | None = None
+) -> bool | None:
     """None = not asked or the provider failed (no opinion)."""
     if rec is None or rec["error"]:
         return None
-    return judge(host, rec["answer"], cutoff)["raise"]
+    return judge(host, rec["answer"], cutoff, phishing_min)["raise"]
 
 
 def summarise(d: pd.DataFrame, cache: dict) -> pd.DataFrame:
@@ -103,6 +105,9 @@ def summarise(d: pd.DataFrame, cache: dict) -> pd.DataFrame:
             hit = sum(bool(raised(r, h, c)) for h, r in answered)
             row[f"raised@{c}"] = hit
             row[f"rate@{c}"] = round(hit / len(answered), 4) if answered else None
+        for c in CUTOFFS:  # brand claim or phishing probability, both at the same cutoff
+            hit = sum(bool(raised(r, h, c, c)) for h, r in answered)
+            row[f"any@{c}"] = round(hit / len(answered), 4) if answered else None
         rows.append(row)
     return pd.DataFrame(rows)
 
@@ -152,8 +157,9 @@ def main(argv: list[str] | None = None) -> int:
     (out / "tables").mkdir(parents=True, exist_ok=True)
     table.to_csv(out / "tables" / "llm_eval.csv", index=False)
     note = (
-        "# Gemini brand check\n\nRaise rate by set and confidence cutoff (raise = confident brand "
-        "claim on a host that is not the brand's own). `address_passes` = the address model and "
+        "# Gemini brand check\n\nRaise rate by set and cutoff. `raised@`/`rate@` = confident brand "
+        "claim on a host that is not the brand's own; `any@` = that or a phishing probability "
+        "at or above the same cutoff (the shipped check uses both). `address_passes` = the address model and "
         "allowlist say safe. `legit` rows are false alarms; `phishing` and `lookalike_*` rows are "
         "catches.\n\n"
     )

@@ -6,7 +6,13 @@ import pandas as pd
 
 from experiments import llm_eval as ev
 
-ANSWER = {"brand": "Acme", "brand_domain": "acme.com", "confidence": 0.8, "reason": "x"}
+ANSWER = {
+    "brand": "Acme",
+    "brand_domain": "acme.com",
+    "confidence": 0.8,
+    "phishing": 0.6,
+    "reason": "x",
+}
 
 
 def test_sets_come_from_the_inputs_and_lookalikes_change_the_host():
@@ -52,3 +58,10 @@ def test_summary_counts_by_set_and_cutoff():
     row = ev.summarise(d, cache).iloc[0]
     assert row["hosts"] == 2 and row["answered"] == 1 and row["failed"] == 1
     assert row["raised@0.7"] == 1 and row["raised@0.9"] == 0
+
+
+def test_phishing_probability_raises_without_a_brand_claim():
+    rec = {"host": "h.com", "answer": {**ANSWER, "brand": "", "brand_domain": ""}, "error": None}
+    assert ev.raised(rec, "h.com", 0.7) is False
+    assert ev.raised(rec, "h.com", 0.7, 0.5) is True
+    assert ev.raised(rec, "h.com", 0.7, 0.9) is False
