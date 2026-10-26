@@ -5,8 +5,7 @@ Each URL goes through the bundled allowlist (Tranco top 50,000) and then the tie
 
 | set | URLs | domains | on allowlist | model alone: suspicious / dangerous | shipped: suspicious / dangerous | shipped flagged | not on allowlist: flagged |
 |---|---|---|---|---|---|---|---|
-| natural legitimate pages (ood_urls) | 2,555 | 562 | 1,072 (42.0%) | 97 / 18 (4.5%) | 64 / 7 | 71 (2.8%, 38 domains) | 71 of 1,483 (4.8%) |
-| Tranco top 1,000 homepages | 1,000 | 1,000 | 934 (93.4%) | 151 / 10 (16.1%) | 58 / 0 | 58 (5.8%, 58 domains) | 58 of 66 (87.9%) |
+| natural legitimate pages (ood_urls) | 2,555 | 562 | 976 (38.2%) | 12 / 3 (0.6%) | 5 / 0 | 5 (0.2%, 5 domains) | 5 of 1,579 (0.3%) |
 
 Caveats:
 - Some of the natural-page sites were seeded from Tranco, so the share on the allowlist is higher than for an average browsing history; the last column is the rate a visitor meets on sites outside the top 50,000.
@@ -17,41 +16,8 @@ Caveats:
 
 | domain | flagged URLs | worst verdict |
 |---|---|---|
-| aoscforums.com | 5 | dangerous |
-| indo126-x.com | 4 | dangerous |
-| icecreamapps.com | 2 | dangerous |
-| ptwebsite.com | 2 | dangerous |
-| hsound.ro | 1 | dangerous |
-| aquivocepode.com.br | 5 | suspicious |
-| mikro-zaim-online.ru | 5 | suspicious |
-| telegram.cn | 5 | suspicious |
-| fdownload.app | 3 | suspicious |
-| fps.ms | 3 | suspicious |
-| tkrgames.com | 3 | suspicious |
-| anphatpc.com.vn | 2 | suspicious |
-| biazzamedien.de | 2 | suspicious |
-| gruposancorseguros.com | 2 | suspicious |
-| kilkamoose.com | 2 | suspicious |
-| prodvizhenie-sajta-s-garantiej.ru | 2 | suspicious |
-| simpoll.ru | 2 | suspicious |
-| 2808oc-casino.sbs | 1 | suspicious |
-| cashinexch.com | 1 | suspicious |
-| cookie.fun | 1 | suspicious |
-| docma.info | 1 | suspicious |
-| dropmefiles.com | 1 | suspicious |
-| flippery.org.pl | 1 | suspicious |
-| gelisimmedya.com | 1 | suspicious |
-| jianshi8.cc | 1 | suspicious |
-| kaseyacenter.com | 1 | suspicious |
-| kuple.kr | 1 | suspicious |
-| meindate.de | 1 | suspicious |
-| mobasher.sa | 1 | suspicious |
-| pinkfilm.lol | 1 | suspicious |
-| qsrautomations.com | 1 | suspicious |
+| fxexchangerate.com | 1 | suspicious |
+| icecreamapps.com | 1 | suspicious |
+| ptwebsite.com | 1 | suspicious |
 | robinscanner.com | 1 | suspicious |
-| s10.wiki | 1 | suspicious |
-| semasaitajai.com.br | 1 | suspicious |
-| sharkninja.mx | 1 | suspicious |
-| van-peeren.de | 1 | suspicious |
-| volcanodiscovery.de | 1 | suspicious |
 | webandprint.host | 1 | suspicious |

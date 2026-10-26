@@ -1,3 +1,2 @@
 set,urls,domains,allowlisted_urls,model_suspicious,model_dangerous,shipped_suspicious,shipped_dangerous,shipped_flagged_domains,not_allowlisted_urls,not_allowlisted_flagged,model_flagged
-natural legitimate pages (ood_urls),2555,562,1072,97,18,64,7,38,1483,71,115
-"Tranco top 1,000 homepages",1000,1000,934,151,10,58,0,58,66,58,161
+natural legitimate pages (ood_urls),2555,562,976,12,3,5,0,5,1579,5,15

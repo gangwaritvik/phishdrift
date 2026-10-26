@@ -302,9 +302,17 @@ function combineScene(r) {
 function verdictScene(r) {
   const short = r.layer === "shortener";
   const cls = short ? "" : `v-${r.verdict}`;
-  const reasons = r.reasons.length ? r.reasons : r.layer === "allowlist" ? [`${r.domain} is a widely used site on the allowlist.`] : ["No layer raised a concern about this address."];
+  const reasons = r.reasons.length
+    ? r.reasons
+    : r.layer === "allowlist"
+      ? [`${r.domain} is a widely used site on the allowlist.`]
+      : short
+        ? ["This short link was not followed to its destination, so there is nothing to judge."]
+        : r.layer === "local"
+          ? ["This address is on your computer or home network, which PhishDrift does not check."]
+          : ["No layer raised a concern about this address."];
   const model = r.evidence.model;
-  const compare = model && !model.used ? [`For comparison, the address model alone would score this ${model.prob.toFixed(3)}. The allowlist is what keeps it safe.`] : [];
+  const compare = model && !model.used && r.layer === "allowlist" ? [`For comparison, the address model alone would score this ${model.prob.toFixed(3)}. The allowlist is what keeps it safe.`] : [];
   return {
     cls,
     html:

@@ -118,3 +118,12 @@ test("shorteners from js/data/lists.json count, not only the model's own 25", as
   assert.equal(c.model.lists.shorteners.has("aka.ms"), false);
   assert.equal((await checkUrl(c, "https://aka.ms/xyz")).layer, "shortener");
 });
+
+test("addresses on this computer or the home network are not scored, as in the extension", async () => {
+  const c = await checker;
+  for (const url of ["http://192.168.0.1/", "http://localhost:3000/login"]) {
+    const r = await checkUrl(c, url);
+    assert.deepEqual([r.verdict, r.layer], ["safe", "local"]);
+  }
+  assert.notEqual((await checkUrl(c, "http://8.8.8.8/login")).layer, "local");
+});

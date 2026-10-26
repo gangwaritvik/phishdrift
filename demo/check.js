@@ -206,8 +206,9 @@ async function checkOne(c, input) {
     blocked: listed.blocked,
     model: null,
     unscored: false,
+    local: c.address.isLocalAddress(target), // this computer or the home network: not scored, as in the extension
   };
-  if (!layers.allow && !layers.shortener && !layers.blocked) {
+  if (!layers.allow && !layers.shortener && !layers.blocked && !layers.local) {
     layers.model = c.address.scoreAddress(c.model, target);
   }
   // The AI step runs only when the page was given a backend (`c.askLlm`), for every address the
