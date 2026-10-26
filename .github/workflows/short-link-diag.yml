@@ -1,6 +1,8 @@
 name: Short-link diagnostic
 on:
   workflow_dispatch:
+  push:
+    paths: [".github/workflows/short-link-diag.yml"]
 jobs:
   diag:
     runs-on: ubuntu-latest
