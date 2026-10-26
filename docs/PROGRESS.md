@@ -1003,3 +1003,25 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 ### 2026-10-22 — Gemini model chosen by timing on Ritvik's key (cloud, from his PowerShell test)
 - Same trivial request on his free key: `gemini-3.8-flash` HTTP 429 (0.4 s), `gemini-3.5-flash-lite` 22.3 s (the 15 s limit expired),
   `gemini-3.5-flash` answered "OK" in 2.1 s. Config model set to `gemini-3.5-flash`. One call each, so latency and quota are not characterised.
+
+### 2026-10-26 — Shortener list scraped from public lists (cloud)
+- Ritvik: "scrape famous url shortener from internet" and no hand-written lists. `lists.shortener_urls` in `configs/features.yaml`
+  now points at two public lists (PeterDaveHello/url-shorteners, boutetnico/url-shorteners); `python -m features lists shorteners`
+  merges them with the old 25-name seed. `configs/lists/shorteners.txt` 25 -> 1,793 entries (90 are subdomains, which never match
+  a registrable domain); `js/data/lists.json` and `js/src/pydata.js` regenerated.
+- Measured: of 300 OpenPhish URLs 2 are on the list (same 2 as before); regional brand sites 0 of 116; of 3,493 natural legitimate
+  URLs 12 (aka.ms, blip.tv, eepurl.com, sched.co). pytest, `npm test` js 11 and extension 69 pass. Browser harness (local pages)
+  short-link and redirect cases 13 of 13 on the rebuilt extension, plus one host only on the new list.
+- Not done: the shipped model was trained with the 25-name list, so its "is a shortener" feature differs for the new names until
+  the PC retrains; a list learned from feed data (hosts that only redirect) is not built.
+
+### 2026-10-26 — Learned shorteners: `python -m collector learn-shorteners` (cloud, code only)
+- Ritvik: "go" on learning the shortener list from feed data. `collector/shorteners.py`: candidates = registrable domains with at
+  least `min_short_urls` (20) one-segment, token-length <= 12 feed URLs (feed index plus optional `extra_url_files`); each gets
+  `probe_urls` (5) HEAD probes (`HttpClient.head`, redirects not followed, no body); a domain is a shortener when >= 3 probes
+  answered and >= 80% redirect to another registrable domain. Writes `data/interim/learned_shorteners.txt` and the evidence table
+  `reports/tables/learned_shorteners.csv`; `python -m features lists shorteners` merges the file (`shorteners_files`). All limits in
+  `configs/collector.yaml` `shorteners:`. Tests: `tests/test_collector_shorteners.py` (stubbed HEAD, no network).
+- Not run on real data (the cloud cannot reach the feeds or probe hosts); thresholds are untuned defaults; yield unknown.
+- Probes send one HEAD per short URL from the PC's address to hosts that appear in phishing feeds; no page is fetched or followed.
+- Next on the PC: run it after a collector run, read the CSV, then rescrape the list, `export-js`, rebuild the extension.

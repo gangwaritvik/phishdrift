@@ -175,3 +175,16 @@ ood:                                   # `python -m collector crawl-ood`: legiti
   inner_pages_max: 5
   checkpoint_every: 25                 # results are saved and a progress line printed after every this many sites
   lock_stale_s: 3600                   # a lock not refreshed for this long was left by a killed run
+
+shorteners:                            # `python -m collector learn-shorteners`: hosts that only forward visitors
+  min_short_urls: 20                   # candidate = a registrable domain with this many one-segment, short-token feed URLs
+  max_token_len: 12                    # longest path token that counts as a short link code
+  probe_urls: 5                        # short URLs probed per candidate (HEAD, redirects not followed, no body)
+  min_answered: 3                      # fewer answered probes: no decision
+  min_redirect_share: 0.8              # share of answered probes that redirect to another registrable domain
+  max_candidates: 3000                 # probe the most-used candidates first
+  workers: 16
+  probe_timeout_s: 8
+  out_list: data/interim/learned_shorteners.txt
+  out_table: reports/tables/learned_shorteners.csv
+  extra_url_files: []                  # optional feed dumps, one URL per line (e.g. Phishing.Database ACTIVE)

@@ -19,7 +19,7 @@ from urllib.parse import quote
 import tldextract
 import yaml
 
-from features.lists import LISTS_DIR, MIN_BRAND_LEN, PLATFORMS_FILE
+from features.lists import LISTS_DIR, MIN_BRAND_LEN, PLATFORMS_FILE, read_list
 from phishdrift.config import load_config, resolve
 from phishdrift.domains import registered_domain
 from phishdrift.http import HttpClient
@@ -210,6 +210,13 @@ def run(only: list[str] | None = None) -> dict[str, int]:
                 entries |= set(lines_from_url(client, url))
             except Exception as exc:  # noqa: BLE001
                 log.warning("skipped %s: %s", url, exc)
-        _write_list(f"{name}.txt", sorted(entries), f"{name}_seed + {key} (configs/features.yaml)")
+        for f in cfg.get(f"{name}_files", []):
+            if resolve(f).exists():
+                entries |= set(read_list(resolve(f)))
+        _write_list(
+            f"{name}.txt",
+            sorted(entries),
+            f"{name}_seed + {key} + {name}_files (configs/features.yaml)",
+        )
         done[name] = len(entries)
     return done

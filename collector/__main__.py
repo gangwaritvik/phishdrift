@@ -317,14 +317,21 @@ def main(argv: list[str] | None = None) -> int:
     rr.add_argument("--retry-failed", action="store_true", default=None, help="retry failed pages")
     rr.add_argument("--browser", help="path to chrome.exe / msedge.exe (else searched)")
     rr.add_argument("--resample", action="store_true", help="draw a new sample")
+    ls = sub.add_parser(
+        "learn-shorteners", help="find link shorteners in the feed URLs (HEAD probes, no redirects)"
+    )
     ps = sub.add_parser("popular-summary", help="outcome counts of the popular-sites seed sets")
-    for p in (r, c, o, rr, ps):
+    for p in (r, c, o, rr, ps, ls):
         p.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    if args.cmd == "learn-shorteners":
+        from collector import shorteners
+
+        return shorteners.run()
     if args.cmd == "popular-summary":
         print(popular.summary_text(resolve(load_config("collector")["paths"]["crawl_dir"])))
         return 0

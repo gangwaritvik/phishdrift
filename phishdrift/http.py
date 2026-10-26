@@ -141,6 +141,12 @@ class HttpClient:
             _atomic_write(meta_path, json.dumps({"fetched_at": time.time()}).encode())
         return body
 
+    def head(self, url: str, *, timeout_s: float | None = None) -> tuple[int, str | None]:
+        """HEAD ``url`` without following redirects: (status, Location). No body is ever read."""
+        self._wait_for_host(url, self.default_min_interval_s)
+        resp = self._session.head(url, timeout=self._timeout(timeout_s), allow_redirects=False)
+        return resp.status_code, resp.headers.get("Location")
+
     @staticmethod
     def _read_cache(body_path: Path, meta_path: Path, cache_ttl_s: float) -> bytes | None:
         """The cached body if it is younger than ``cache_ttl_s``; None on a miss or when the
