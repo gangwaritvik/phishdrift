@@ -1,0 +1,36 @@
+name: llm-eval
+# Manual run of experiments/llm_eval.py with the Gemini key from the repository secret
+# GEMINI_API_KEY. Answers are cached between runs, so a quota-limited run resumes.
+on:
+  workflow_dispatch:
+    inputs:
+      max_calls:
+        description: Gemini calls in this run
+        default: "400"
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: pip install -e ".[dev,backend]"
+      - uses: actions/cache@v4
+        with:
+          path: data/interim/llm_eval_cache.jsonl
+          key: llm-eval-cache-${{ github.run_id }}
+          restore-keys: llm-eval-cache-
+      - run: curl -fsSL -o feed.txt https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-ACTIVE.txt
+      - run: python -m experiments.llm_eval --ood configs/eval/ood_urls.csv --phishing feed.txt --max-calls ${{ inputs.max_calls }}
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llm-eval
+          path: |
+            reports/llm_eval.md
+            reports/tables/llm_eval.csv
