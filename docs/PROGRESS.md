@@ -1003,3 +1003,14 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 ### 2026-10-22 — Gemini model chosen by timing on Ritvik's key (cloud, from his PowerShell test)
 - Same trivial request on his free key: `gemini-3.8-flash` HTTP 429 (0.4 s), `gemini-3.5-flash-lite` 22.3 s (the 15 s limit expired),
   `gemini-3.5-flash` answered "OK" in 2.1 s. Config model set to `gemini-3.5-flash`. One call each, so latency and quota are not characterised.
+
+### 2026-10-26 — Shortener list scraped from public lists (cloud)
+- Ritvik: "scrape famous url shortener from internet" and no hand-written lists. `lists.shortener_urls` in `configs/features.yaml`
+  now points at two public lists (PeterDaveHello/url-shorteners, boutetnico/url-shorteners); `python -m features lists shorteners`
+  merges them with the old 25-name seed. `configs/lists/shorteners.txt` 25 -> 1,793 entries (90 are subdomains, which never match
+  a registrable domain); `js/data/lists.json` and `js/src/pydata.js` regenerated.
+- Measured: of 300 OpenPhish URLs 2 are on the list (same 2 as before); regional brand sites 0 of 116; of 3,493 natural legitimate
+  URLs 12 (aka.ms, blip.tv, eepurl.com, sched.co). pytest, `npm test` js 11 and extension 69 pass. Browser harness (local pages)
+  short-link and redirect cases 13 of 13 on the rebuilt extension, plus one host only on the new list.
+- Not done: the shipped model was trained with the 25-name list, so its "is a shortener" feature differs for the new names until
+  the PC retrains; a list learned from feed data (hosts that only redirect) is not built.
