@@ -86,8 +86,8 @@ export function makeTrie(rules) {
 }
 
 // One Gemini generateContent call; resolves to the answer text or throws (message safe to log).
-// A model that answers 429/404/503 (no quota, unknown name, overloaded) is replaced by the next one
-// in cfg.fallback_models, all within one timeout.
+// A model that answers 429/404/500/503 (no quota, unknown name, overloaded) or does not answer in its
+// share of the time is replaced by the next one in cfg.fallback_models, all within one timeout.
 export async function askGemini(cfg, key, user, fetchFn = fetch) {
   const deadline = Date.now() + cfg.timeout_ms;
   const body = JSON.stringify({
@@ -101,25 +101,33 @@ export async function askGemini(cfg, key, user, fetchFn = fetch) {
     },
   });
   const models = [cfg.model, ...(cfg.fallback_models ?? [])];
-  let last = "";
-  for (const model of models) {
-    const res = await fetchFn(cfg.url.replace("{model}", model), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-      body,
-      signal: AbortSignal.timeout(Math.max(1000, deadline - Date.now())),
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok) {
-      last = `${model} HTTP ${res.status}: ${String(data?.error?.message ?? "no error message").slice(0, 120)}`;
-      if ([429, 404, 503].includes(res.status) && model !== models.at(-1)) continue;
-      throw new Error(last);
+  const failed = [];
+  for (const [i, model] of models.entries()) {
+    const started = Date.now();
+    const share = Math.max(1000, Math.floor((deadline - started) / (models.length - i)));
+    try {
+      const res = await fetchFn(cfg.url.replace("{model}", model), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+        body,
+        signal: AbortSignal.timeout(share),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        failed.push(`${model} HTTP ${res.status}: ${String(data?.error?.message ?? "no error message").slice(0, 100)}`);
+        if ([429, 404, 500, 503].includes(res.status)) continue;
+        break;
+      }
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (typeof text === "string") return text;
+      failed.push(`${model} no answer text (finishReason=${data?.candidates?.[0]?.finishReason || "none"})`);
+      break;
+    } catch (err) {
+      failed.push(`${model} ${err?.name ?? "error"} after ${Date.now() - started} ms`);
+      if (err?.name !== "TimeoutError" && err?.name !== "AbortError") break;
     }
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (typeof text !== "string") throw new Error(`${model} no answer text (finishReason=${data?.candidates?.[0]?.finishReason || "none"})`);
-    return text;
   }
-  throw new Error(last);
+  throw new Error(failed.join("; "));
 }
 
 // backend/llm.py LlmChecker: ask, parse, judge. Never throws: a failure is `error`, no opinion.

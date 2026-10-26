@@ -101,3 +101,20 @@ test("function: a model without quota is replaced by the next fallback model", a
   assert.equal(urls.length, 2);
   assert.ok(urls[0].includes(cfg.model) && urls[1].includes(cfg.fallback_models[0]));
 });
+
+test("function: a model that does not answer in its share of the time is replaced by the next one", async () => {
+  const seen = [];
+  const answer = '{"brand": null, "brand_domain": null, "confidence": 0, "phishing": 0.1, "reason": "r"}';
+  const fetchFn = async (url, init) => {
+    seen.push(url);
+    if (seen.length === 1) {
+      await new Promise((_, rej) => init.signal.addEventListener("abort", () => rej(init.signal.reason)));
+    }
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: answer }] } }] }), { status: 200 });
+  };
+  const keepAlive = setTimeout(() => {}, 15000); // AbortSignal.timeout timers do not hold the event loop
+  const r = await (await handle(post({ domain: "slow-first.com" }), { env: { GEMINI_API_KEY: "k" }, fetchFn })).json();
+  clearTimeout(keepAlive);
+  assert.equal(r.error, null);
+  assert.equal(seen.length, 2);
+});
