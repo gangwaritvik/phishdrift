@@ -24,6 +24,11 @@ jobs:
             echo "== $u"
             curl -sS -m 40 -w '\nHTTP %{http_code} %{time_total}s\n' -X POST "$SITE/api/expand" -H 'Content-Type: application/json' -d "{\"url\":\"$u\"}" | cut -c1-400
           done
+      - name: Live AI check
+        run: |
+          for h in a1-test-site.com secure-paypa1-login.top; do
+            curl -sS -m 40 -w '\nHTTP %{http_code} %{time_total}s\n' -X POST "$SITE/api/llm-check" -H 'Content-Type: application/json' -d "{\"domain\":\"$h\"}" | cut -c1-300
+          done
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - name: Live page in a browser
@@ -32,18 +37,19 @@ jobs:
           cat > run.mjs <<'JS'
           import { chromium } from "playwright";
           const b = await chromium.launch();
-          for (const u of ["https://aka.ms/vscode", "https://tinyurl.com/2wjsu676", "http://192.168.0.1/", "https://www.google.com/"]) {
+          for (const u of ["https://bit.ly/3", "https://aka.ms/vscode", "https://t.co/x", "https://is.gd/x", "http://www.cutt.ly/ZyWDEv25/"]) {
             const p = await b.newPage();
             const t0 = Date.now();
             await p.goto(process.env.SITE + "/demo/index.html");
             await p.waitForSelector("#go:not([disabled])", { timeout: 120000 });
             console.log("model loaded in", Date.now() - t0, "ms");
+            await p.waitForTimeout(6000);
             await p.fill("#url", u);
             await p.click("#go");
-            await p.waitForTimeout(25000);
+            await p.waitForTimeout(30000);
             if (await p.isEnabled("#skip")) await p.click("#skip");
             await p.waitForTimeout(2000);
-            const txt = (await p.innerText("#stage")).replace(/\s+/g, " ").slice(0, 700);
+            const txt = (await p.innerText("#stage")).replace(/\s+/g, " ").slice(0, 900);
             console.log("== " + u + "\n" + txt + "\n");
             await p.close();
           }
