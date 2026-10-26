@@ -1,0 +1,15 @@
+name: Hosted AI check probe
+on:
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/hosted-check.yml"]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          for h in paypa1-login.com example.com; do
+            curl -sS -m 40 -w '\nHTTP %{http_code} %{time_total}s\n' -X POST \
+              https://loquacious-starship-3425f0.netlify.app/api/llm-check \
+              -H 'Content-Type: application/json' -d "{\"domain\":\"$h\"}"
+          done
