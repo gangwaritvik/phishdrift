@@ -3,7 +3,8 @@
 // evaluate() in extension/src/background.js. Nothing is reimplemented: the modules are loaded from
 // `base`, a folder laid out like extension/dist (combine.js, lists.js, address.js and lib/).
 // Not applied: the page model (a web page cannot read another site's HTML), backend domain checks, the LLM check,
-// user trust and the remote config. A short link is not followed.
+// user trust and the remote config. A short link is followed by `c.expand` when the page has one
+// (the hosted function netlify/functions/expand.mjs) and its destination is checked instead.
 //
 // `read(path)` returns parsed JSON for a path relative to the repository root, or null when the
 // file does not exist.
@@ -38,14 +39,19 @@ export async function loadChecker({ base, read }) {
     mod("lib/explain.js"),
     mod("lib/model.js"),
   ]);
-  const [bundle, psl, loaded] = await Promise.all([read("js/data/tier_a_hybrid.json"), read("js/data/psl_icann.json"), loadLists(read)]);
+  const [bundle, psl, loaded, extra] = await Promise.all([
+    read("js/data/tier_a_hybrid.json"),
+    read("js/data/psl_icann.json"),
+    loadLists(read),
+    read("js/data/lists.json").catch(() => null), // the full shortener list (the model keeps its own)
+  ]);
   if (!bundle || !psl) throw new Error("js/data is missing model files (tier_a_hybrid.json, psl_icann.json)");
   const model = hybrid.loadHybrid(bundle, psl);
   const { synced, bundled, allowSource, block } = loaded;
   const listSet = new lists.ListSet(lists.withBundledAllowlist(synced, bundled), {
     platforms: model.lists.platforms,
     psl: model.lists.psl,
-    shorteners: model.lists.shorteners,
+    shorteners: lists.withShorteners(model.lists.shorteners, extra),
   });
   return {
     combine,
@@ -169,7 +175,22 @@ async function askLlm(c, target, layers) {
 // The extension's verdict for one address, plus the model's own score for display (the model is
 // skipped for allowlisted, blocklisted and short-link addresses, as in the extension; its score is
 // still shown so the page can say what it would have said), and the per-layer trace.
+// A short link is followed first when the page can (`c.expand`); the result is then the
+// destination's, with `shortLink` saying where it came from.
 export async function checkUrl(c, input) {
+  const first = await checkOne(c, input);
+  if (first.layer !== "shortener" || !c.expand) return first;
+  const ex = await c.expand(first.url);
+  if (!ex?.complete) {
+    const why = ex?.error ? ` (${ex.error})` : "";
+    return { ...first, shortLink: { from: first.url, ...ex }, notes: [`This short link could not be followed to its destination${why}, so there is nothing to judge here. The extension judges the page it leads to.`, ...first.notes.filter((n) => !n.includes("does not follow"))] };
+  }
+  const dest = await checkOne(c, ex.final);
+  const n = ex.hops.length;
+  return { ...dest, shortLink: { from: first.url, ...ex }, notes: [`Short link ${first.url} leads to ${ex.final} (${n} request${n === 1 ? "" : "s"}, destination not opened). Every check here is for that address.`, ...dest.notes] };
+}
+
+async function checkOne(c, input) {
   const url = normaliseInput(input);
   const target = c.address.effectiveUrl(url);
   if (target === null) {

@@ -1,0 +1,19 @@
+name: Short-link probe
+on:
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/short-link-probe.yml", "netlify/functions/expand.mjs", "js/src/short_links.js"]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      # two short links taken from the OpenPhish feed (list_tests/openphish_gh.txt), two Microsoft ones,
+      # one that is not a shortener (refused) and a local address (refused)
+      - run: >
+          node js/bench/expand_probe.mjs
+          http://www.cutt.ly/ZyWDEv25/ https://tinyurl.com/2wjsu676
+          https://aka.ms/windowsterminal https://aka.ms/vscode
+          https://example.com/ http://127.0.0.1/

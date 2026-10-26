@@ -1093,3 +1093,19 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   `AbortSignal.timeout` throws RangeError on fractions, which my first version hit), moves on after a timeout or HTTP 429/404/500/503,
   and the error text lists every attempt with its time. Tests: slow first model replaced by the second; cap test unchanged.
 - Not measured: which model answers in time right now; a 3 s share may be short for a slow day.
+
+### 2026-10-26 — Short links followed to their destination (cloud)
+- Ritvik: short links were skipped, not opened. Checked what happened: the URL check page never followed a short link
+  (it showed "short link" and stopped). The extension does see the destination (the browser follows the redirect and
+  `onCommitted` scores the landing address before the page renders), but its shortener layer used the model bundle's
+  25 names, not the 1,793 of `js/data/lists.json` (PR #54), so e.g. `aka.ms` was scored or allowlisted as a site of its own.
+- Changed: `js/src/short_links.js` (follow hops while the address is on a shortener; HEAD, then GET with a 32 KB read for
+  `<meta refresh>`; the first address off a shortener is returned without being requested) and
+  `netlify/functions/expand.mjs` (`POST /api/expand`; only shortener addresses accepted; ports 80/443; connections to
+  private, loopback, link-local and reserved addresses refused at connect time; 5 hops, 8 s; 20 a minute per IP;
+  `short_links` in `configs/backend.yaml`, exported to `js/data/short_links.json`). `demo/check.js` checks the destination
+  instead of stopping ("Short link X leads to Y"); `withShorteners` in `extension/src/lists.js` gives the extension and the
+  page the full list (the model keeps the list it was trained with). `js/bench/expand_probe.mjs` +
+  `.github/workflows/short-link-probe.yml` follow real short links from a GitHub runner.
+- Tests: `npm test` js 25, extension 73, pytest pass, ruff clean. The e2e smoke test fails at its first step in this
+  container on main as well (Chromium shows `chrome-error://`), so it was not run. Not tested: a real Netlify deploy.

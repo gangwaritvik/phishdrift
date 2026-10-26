@@ -9,7 +9,7 @@ mkdir -p "$OUT/demo" "$OUT/extension" "$OUT/js/data" "$OUT/data/lists"
 cp demo/index.html demo/app.js demo/check.js demo/evidence.js "$OUT/demo/"
 cp -r extension/src extension/data "$OUT/extension/"
 cp -r js/src "$OUT/js/"
-cp js/data/tier_a_hybrid.json js/data/psl_icann.json "$OUT/js/data/"
+cp js/data/tier_a_hybrid.json js/data/psl_icann.json js/data/lists.json "$OUT/js/data/"
 printf '%s' '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=demo/index.html"><a href="demo/index.html">Open the URL checker</a>' > "$OUT/index.html"
 
 LISTS=$(mktemp -d)

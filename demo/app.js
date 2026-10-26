@@ -419,7 +419,7 @@ async function run(r) {
   $("stage").classList.remove("fast");
   const w = waiter(tok);
   current = r;
-  $("addr").innerHTML = addressMarkup(r.url);
+  $("addr").innerHTML = r.shortLink?.complete ? `${esc(r.shortLink.from)} <span class="via">leads to</span> ${addressMarkup(r.url)}` : addressMarkup(r.url);
   resetSteps();
   setVerdictClass(null);
   $("skip").disabled = false;
@@ -499,6 +499,15 @@ async function main() {
         return res.ok ? await res.json() : null;
       } catch {
         return null;
+      }
+    };
+    // the hosted site follows short links (netlify/functions/expand.mjs); without it nothing is followed
+    checker.expand = async (url) => {
+      try {
+        const res = await fetch("/api/expand", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+        return res.ok ? await res.json() : { complete: false, error: res.status === 404 ? "not available on this server" : `HTTP ${res.status}` };
+      } catch {
+        return { complete: false, error: "link check not reachable" };
       }
     };
   } catch (err) {

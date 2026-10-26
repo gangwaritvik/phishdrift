@@ -12,6 +12,12 @@ from this repository. No computer of yours has to stay on.
   `tests/fixtures/llm_parity.json`). Its settings come from `js/data/llm_check.json`; after a change
   to the `llm` block of `configs/backend.yaml` or to `backend/llm.py`, run
   `python -m backend export-llm-js`.
+- `netlify/functions/expand.mjs` answers `POST /api/expand` `{url}`: for an address on a link
+  shortener (`js/data/lists.json`) it follows the redirects (`js/src/short_links.js`) and returns
+  the destination, which the page then checks like a typed address. It requests only shortener
+  addresses (never the destination), runs nothing, uses ports 80/443 only and refuses hosts that
+  resolve to private or local addresses. Limits: `short_links` in `configs/backend.yaml`
+  (5 hops, 8 s), exported with the same `python -m backend export-llm-js`.
 
 ## Setup (once, in a browser)
 
