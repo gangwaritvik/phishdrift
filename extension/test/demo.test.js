@@ -101,3 +101,20 @@ test("an AI answer from the backend raises the verdict and shows in the trace", 
   assert.equal(allow.trace[3].tone, "skip");
   assert.equal(asked.length, 1);
 });
+
+test("a followed short link is judged at its destination", async () => {
+  const c = Object.create(await checker);
+  c.expand = async (url) => ({ final: "https://web.whatsapp.com/", complete: true, hops: [{ url, status: 301, method: "HEAD" }], error: null });
+  const r = await checkUrl(c, "https://bit.ly/abc");
+  assert.deepEqual([r.layer, r.url, r.shortLink.from], ["allowlist", "https://web.whatsapp.com/", "https://bit.ly/abc"]);
+  c.expand = async () => ({ complete: false, error: "no_redirect" });
+  const stuck = await checkUrl(c, "https://bit.ly/abc");
+  assert.equal(stuck.layer, "shortener");
+  assert.ok(stuck.notes[0].includes("no_redirect"));
+});
+
+test("shorteners from js/data/lists.json count, not only the model's own 25", async () => {
+  const c = await checker;
+  assert.equal(c.model.lists.shorteners.has("aka.ms"), false);
+  assert.equal((await checkUrl(c, "https://aka.ms/xyz")).layer, "shortener");
+});

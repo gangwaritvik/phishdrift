@@ -39,6 +39,12 @@ export function withBundledAllowlist(payload, bundled) {
   return { ...(payload ?? {}), allowlist };
 }
 
+// The shortener names the list layer uses: the model's own (the ones it was trained with) plus
+// js/data/lists.json's full list (python -m features lists shorteners), which can be newer.
+export function withShorteners(modelShorteners, lists) {
+  return new Set([...modelShorteners, ...(lists?.shorteners ?? [])]);
+}
+
 export class ListSet {
   // payload: { blocklist: {prefix_bytes, domains, urls},
   //            allowlist: {prefix_bytes, domains, open_hosting} } | null

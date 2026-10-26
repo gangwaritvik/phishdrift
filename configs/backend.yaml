@@ -122,6 +122,13 @@ llm:
     max_calls_per_day: 300       # per function instance (instances do not share memory)
     cache_max_entries: 5000
 
+short_links:                     # online URL check page: netlify/functions/expand.mjs follows a short link
+  max_hops: 5                    # requests to shortener addresses at most; the destination itself is never requested
+  timeout_s: 8                   # for the whole chain (the host stops a synchronous function at 10 s)
+  max_body_bytes: 32768          # of a GET, read only to find a <meta http-equiv="refresh"> address
+  cache_ttl_s: 3600
+  cache_max_entries: 5000
+
 rules:                           # heuristics, see backend/checks.py and reports/domain_rules.md
   very_young_domain_days: 7
   young_domain_days: 30

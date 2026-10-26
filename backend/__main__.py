@@ -135,14 +135,26 @@ def cmd_build_lists(args: argparse.Namespace) -> int:
     return 0
 
 
+def short_links_js(sc: dict) -> dict:
+    """Settings of js/src/short_links.js (in milliseconds where JavaScript wants them)."""
+    return {
+        "max_hops": sc["max_hops"],
+        "timeout_ms": int(sc["timeout_s"] * 1000),
+        "max_body_bytes": sc["max_body_bytes"],
+        "cache_ttl_s": sc["cache_ttl_s"],
+        "cache_max_entries": sc["cache_max_entries"],
+    }
+
+
 def export_llm_js(cfg: dict) -> dict[Path, str]:
-    """File path -> text of the LLM check's JavaScript settings and parity fixture."""
+    """File path -> text of the hosted functions' JavaScript settings and the LLM parity fixture."""
     lc = cfg["llm"]
     root = resolve(".")
     dump = lambda obj: json.dumps(obj, indent=1, ensure_ascii=False) + "\n"  # noqa: E731
     return {
         root / "js" / "data" / "llm_check.json": dump(llm.js_config(lc)),
         root / "tests" / "fixtures" / "llm_parity.json": dump(llm.parity_cases(lc)),
+        root / "js" / "data" / "short_links.json": dump(short_links_js(cfg["short_links"])),
     }
 
 
@@ -205,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     keygen.set_defaults(func=cmd_make_signing_key)
     export = sub.add_parser(
-        "export-llm-js", help="write js/data/llm_check.json and the LLM parity fixture"
+        "export-llm-js", help="write js/data/{llm_check,short_links}.json and the LLM fixture"
     )
     export.set_defaults(func=cmd_export_llm_js)
     args = parser.parse_args(argv)
