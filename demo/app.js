@@ -95,8 +95,8 @@ function countUp(node, to, ms, fmt = num) {
 const head = (n, name, title, lead) =>
   `<p class="kicker">Layer ${n} of 5 · ${name}</p><h2>${title}</h2>`;
 const chip = (tone, icon, text) => `<div class="result rv t-${tone}">${svg(I[icon])}<span>${text}</span></div>`;
-const skipScene = (n, name, title, why) => ({
-  html: `<p class="kicker">Layer ${n} of 5 · ${name}</p><h2>${title}</h2>${chip("skip", "dash", "Not needed here")}<p class="note rv">${esc(why)}</p>`,
+const skipScene = (n, name, title, why, label = "Not needed here") => ({
+  html: `<p class="kicker">Layer ${n} of 5 · ${name}</p><h2>${title}</h2>${chip("skip", "dash", label)}<p class="note rv">${esc(why)}</p>`,
   play: async (el, w) => {
     show(el.querySelector(".result"));
     await w(500);
@@ -243,8 +243,8 @@ function llmScene(r) {
   const title = "Does the address pretend to be a known brand?";
   if (e.state === "off") return skipScene(4, "LLM check", title, "In the extension, borderline addresses are sent (host name only) to the backend, which asks a language model which brand the address imitates. Code then checks that brand against the real domain. This page was not given a backend, so it does not run this step.");
   if (e.state === "skipped") return skipScene(4, "LLM check", title, "An earlier layer already decided, or the address has no host name, so nothing is sent to the model.");
-  if (e.state === "unreachable") return skipScene(4, "LLM check", title, "The local backend did not answer. Start it (python -m uvicorn backend.app:create_app --factory --port 8000) and check again.");
-  if (e.error) return skipScene(4, "LLM check", title, e.error === "disabled" ? "The backend has no GEMINI_API_KEY, so the AI check is off there." : `The backend gave no opinion (${e.error}), so this step changes nothing.`);
+  if (e.state === "unreachable") return skipScene(4, "LLM check", title, "The AI check did not answer, so it was not run. Check again in a moment.", "No answer");
+  if (e.error) return skipScene(4, "LLM check", title, e.error === "disabled" ? "The AI check has no GEMINI_API_KEY, so it is off." : `The AI check gave no opinion (${e.error}${e.detail ? `: ${e.detail}` : ""}), so this step changes nothing.`, "No answer");
   const sent = `<div class="tstep rv">Sent to the backend: <b>${esc(e.host)}</b> (the host name only, no path and no page).</div>`;
   const said = e.brand
     ? `<div class="tstep rv">The model says this imitates <b>${esc(e.brand)}</b>, whose own site is <b>${esc(e.brand_domain ?? "unknown")}</b> (confidence ${Number(e.confidence).toFixed(2)}).</div>`
