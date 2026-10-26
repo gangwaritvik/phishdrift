@@ -1136,3 +1136,12 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   punycode 87% warned. Live AI check: 4 of 6 then 2 of 2 hosts answered, 4-9 s per call.
 - Added `.github/workflows/audit-probe.yml` (live-site probe: files, `/api/expand`, `/api/llm-check`, short links in a browser).
 - Not done: tinyurl/cutt.ly following, recalibrating the harness in the repo, the AI-check accuracy set (PR #55), anything needing the PC.
+
+### 2026-10-26 — Retrain with the 1,793-name shortener list (PC run by Ritvik, read in the cloud)
+- Ritvik ran the learner (feed index alone: 0 candidates; with the Phishing.Database ACTIVE file: 61 probed, 3 kept: `fy9.in`, `th.link`,
+  `urlth.me`), merged the list (1,796 entries) and ran `refresh_brands.ps1 -Model`. Exported model dated 2026-10-26 21:24 IST.
+- Results (split 0, pasted by Ritvik, not re-run here): natural legitimate pages flagged 5 of 2,555 (0.2%, none dangerous), model alone
+  12 / 3, 5 of 1,579 outside the top 50,000: identical to 2026-10-22. Blend recall at FPR 1% test 74.2, held-out PhishStorm 71.0, time
+  slice 81.7: identical to 2026-10-21. Ritvik's answer to "is blend2.md dated today?" was "no change"; read as "no change in the
+  results" (the file's date was not confirmed), so either the shortener feature moved nothing or the report was not rewritten.
+- Not measured: whether the 10-split medians change; the learner finds few shorteners (most probed hosts gave no answer or no redirect).
