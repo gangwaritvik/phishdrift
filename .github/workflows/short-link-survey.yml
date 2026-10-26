@@ -1,23 +1,15 @@
-name: Short-link diagnostic
+name: Short-link survey
 on:
   workflow_dispatch:
   push:
-    paths: [".github/workflows/short-link-diag.yml", "js/bench/shortener_survey.mjs", "netlify/functions/expand.mjs", "js/src/short_links.js"]
+    paths: [".github/workflows/short-link-survey.yml", "js/bench/shortener_survey.mjs", "netlify/functions/expand.mjs", "js/src/short_links.js"]
 jobs:
-  diag:
+  survey:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - name: cutt.ly guard page and tinyurl no-spam page (headers + first 1500 bytes, our own User-Agent)
-        run: |
-          UA="PhishDrift-link-check"
-          for u in https://cutt.ly/guard/ZyWDEv25 https://tinyurl.com/app/nospam/tinyurl.com/2wjsu676; do
-            echo "=== GET $u"
-            curl -sS -m 10 -A "$UA" -D - "$u" | head -c 1500 || true
-            echo
-          done
       - name: Sample of real short links from the Phishing.Database ACTIVE feed
         run: |
           curl -sS -m 120 -o feed.txt https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-ACTIVE.txt

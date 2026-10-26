@@ -1124,3 +1124,29 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   punycode 87% warned. Live AI check: 4 of 6 then 2 of 2 hosts answered, 4-9 s per call.
 - Added `.github/workflows/audit-probe.yml` (live-site probe: files, `/api/expand`, `/api/llm-check`, short links in a browser).
 - Not done: tinyurl/cutt.ly following, recalibrating the harness in the repo, the AI-check accuracy set (PR #55), anything needing the PC.
+
+### 2026-10-26 — tinyurl.com followed; cutt.ly and other shortener warning pages reported plainly (cloud)
+- Why: the claim check (PR #64) found the URL check page could not follow tinyurl.com (preview page) or cutt.ly (403).
+  Looked at the real answers from a GitHub runner (run 40404563171, request = our own User-Agent, no evasion):
+  tinyurl.com answers a link it has flagged with a redirect to its own `/app/nospam/...` page, but the same answer carries the
+  real long address in the response header `x-lighttpd-longurl`; `preview.tinyurl.com` is behind a Cloudflare challenge (403,
+  left alone). cutt.ly answers the one OpenPhish link we have with a redirect to `/guard/<code>`, whose page (HTTP 403) is titled
+  "Cuttly Safe Redirecting system blocked that redirect": the service itself blocked the link; no destination is given.
+- Changed: `js/src/short_links.js` reads a destination from a response header named `x-...longurl` (`headerDestination`;
+  the address is only checked, never requested, and must be a web address) and reports a shortener's own non-redirecting page as
+  `service_page` (was `no_redirect`); `netlify/functions/expand.mjs` returns response headers to `expand`; `demo/check.js`
+  words `service_page` as "the link's own service sent it to one of its pages (...): usually a warning, preview or removed-link
+  page". No verdict is raised from a service page: the destination is unknown. New `js/bench/shortener_survey.mjs` and
+  `.github/workflows/short-link-survey.yml` follow up to 3 real links for each of the 30 shortener domains most seen in the
+  Phishing.Database ACTIVE feed (789,054 lines on 2026-10-26) with the hosted function's own code.
+- Results (GitHub runner, 2026-10-26, run 40405109457): `https://tinyurl.com/2wjsu676` (before: stopped at the no-spam page)
+  now FOLLOWED to its destination in one HEAD request. `http://www.cutt.ly/ZyWDEv25/` stops with `service_page` (cutt.ly guard,
+  403): not followable by design of the service; I did not try to get around it. aka.ms (2 of 2) and short.gy (1 of 3) followed.
+  Survey of 12 shortener domains from the feed, 32 links: 5 followed in all (incl. the extra links), the rest 403/523 from the
+  service (short.gy, v.ht, 8u.cz, cutt.us: bot blocks), dead (bit.do timeouts, tiny.cc refused, rdcu.be no DNS), removed
+  (gg.gg back to its home page) or not shorteners at all.
+- Found: `js/data/lists.json` shorteners contains free-hosting and non-shortener names that do appear in feeds (x10.mx, 8u.cz,
+  kr3w.de, t.me, rdcu.be); the scraped list (PR #54) needs a quality pass. Not done here.
+- Not measured: a benign tinyurl or cutt.ly link (cannot create one without an account); whether tinyurl sends the header
+  for unflagged links (then the ordinary Location redirect applies and was already followed). Tests: `npm test` js 27,
+  extension 75, ruff clean.
