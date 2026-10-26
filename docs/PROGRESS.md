@@ -1137,6 +1137,37 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Added `.github/workflows/audit-probe.yml` (live-site probe: files, `/api/expand`, `/api/llm-check`, short links in a browser).
 - Not done: tinyurl/cutt.ly following, recalibrating the harness in the repo, the AI-check accuracy set (PR #55), anything needing the PC.
 
+### 2026-10-26 — Offline look-alike check (works with the AI check off) (cloud)
+- Why: the claim check (PR #64) measured that with the AI check off only 2% of `micr0soft.com`-style and 1% of `paypl.com`-style
+  look-alikes were warned. Ritvik asked for an offline check learned from data, no hand-typed lists.
+- Changed: `js/src/lookalike.js` (two escalate-only rules: `homograph` = the name equals a brand's name after look-alike characters are
+  folded, punycode decoded; `edit1` = one edit or neighbouring swap from a brand name of 6+ letters), `features/lookalike.py` +
+  `python -m features lookalike` -> `js/data/lookalike.json` from `configs/lists/brands.txt` (899 brands), the brand-to-own-domains map
+  (`configs/lists/brand_domains.json`, Wikidata + MISP) and the Unicode confusables table (`configs/lists/confusables.json`), both
+  restored from before the 10-22 removal; `configs/lookalike.yaml`; `extension/src/combine.js` `lookalikeEscalate` (one step up: safe to
+  suspicious, to dangerous only if the page asks for credentials; never lowers; never on trusted, blocklisted, allowlisted, short-link
+  or local addresses; shares `stepUp` with the AI check), `background.js` (computed per address, cached with the layers),
+  `demo/check.js` + `demo/evidence.js` (combiner step and model trace line; no new screen), `extension/build.mjs`, `deploy/netlify_build.sh`.
+  `js/bench/lookalike.mjs` + `experiments/lookalike_eval.py` -> `reports/lookalike.md`, `reports/tables/lookalike.csv`.
+- Not brought back: the old `embedded`, `combo` and brand-page rules, and the Python mirror of the browser rule (no parity fixture; the
+  JS rule is the only implementation and is tested in `extension/test/lookalike.test.js`).
+- Results (`reports/lookalike.md`, shipped address path with the bundled allowlist, no page/backend/blocklist; generated look-alikes of
+  894 brands on the list, warned before -> after): ASCII look-alike letters 0.2% -> 99.8%, punycode 68.3% -> 100%, one letter off
+  0.5% -> 79.0%, brand + word 77.0% (unchanged), TLD swap 23.4% (unchanged, not handled). The same families made from 241-455 site
+  names that are NOT on the brand list: unchanged (0% ASCII, 0% one letter), because the rule can only protect brands on the list.
+- False alarms (rule hits): natural legitimate pages 0 of 2,555; regional brand sites 0 of 114; `brand.com` of 894 brands 0. On two
+  public domain lists used only as test data (OpenDNS top 10k and random 10k, 15,948 not on the allowlist) the rule fired on 20
+  addresses, 14 of them not allowlisted; most are real typosquats (facobook.com, hpotmail.com, compcast.net); the clear legitimate ones
+  are blogher.org/.com, xiami.com, fenjer.org, mahindras.org, telegraf.biz (6 of 15,948, 0.04%), each a suspicious banner.
+  Real OpenPhish hosts (300): 199 -> 200 warned (4 rule hits).
+- Tuned on: `min_edit_len` 6 was chosen on these same legitimate sets (natural pages, regional sites, OpenDNS lists): 5 added false
+  alarms on bader.at (bayer) and vivacom.bg (viacom), 4 also on ocbc.com; 7 lost one-letter coverage (68%). So the false-alarm numbers
+  above are not an independent test of that choice.
+- Limits: the generated look-alikes are made from the same brand list the rule uses, so their catch rates are an upper bound for brands
+  on the list and say nothing about brands outside it. Brands with no entry in the brand-to-domains map (about 170 of 899) are
+  protected only by the "same name on another suffix is the brand's own" rule. A brand's name on another suffix (`paypal.xyz`) is not
+  caught. Not run in a real browser (the e2e smoke test cannot start Chromium in this container); `npm test` extension 82, js 25, pytest, ruff pass.
+
 ### 2026-10-26 — Retrain with the 1,793-name shortener list (PC run by Ritvik, read in the cloud)
 - Ritvik ran the learner (feed index alone: 0 candidates; with the Phishing.Database ACTIVE file: 61 probed, 3 kept: `fy9.in`, `th.link`,
   `urlth.me`), merged the list (1,796 entries) and ran `refresh_brands.ps1 -Model`. Exported model dated 2026-10-26 21:24 IST.

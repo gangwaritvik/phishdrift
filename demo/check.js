@@ -2,7 +2,7 @@
 // blocklist, the tier A model, the combiner), in the order of layersFor() and
 // evaluate() in extension/src/background.js. Nothing is reimplemented: the modules are loaded from
 // `base`, a folder laid out like extension/dist (combine.js, lists.js, address.js and lib/).
-// Not applied: the page model (a web page cannot read another site's HTML), backend domain checks, the LLM check,
+// Also applied: the offline look-alike check (js/data/lookalike.json). Not applied: the page model (a web page cannot read another site's HTML), backend domain checks, the LLM check,
 // user trust and the remote config. A short link is followed by `c.expand` when the page has one
 // (the hosted function netlify/functions/expand.mjs) and its destination is checked instead.
 //
@@ -28,7 +28,7 @@ async function loadLists(read) {
 
 export async function loadChecker({ base, read }) {
   const mod = (path) => import(new URL(path, base).href);
-  const [combine, lists, address, hybrid, keys, pslMod, urlparts, explain, modelMod] = await Promise.all([
+  const [combine, lists, address, hybrid, keys, pslMod, urlparts, explain, modelMod, lookalike] = await Promise.all([
     mod("combine.js"),
     mod("lists.js"),
     mod("address.js"),
@@ -38,12 +38,14 @@ export async function loadChecker({ base, read }) {
     mod("lib/urlparts.js"),
     mod("lib/explain.js"),
     mod("lib/model.js"),
+    mod("lib/lookalike.js"),
   ]);
-  const [bundle, psl, loaded, extra] = await Promise.all([
+  const [bundle, psl, loaded, extra, lookalikeData] = await Promise.all([
     read("js/data/tier_a_hybrid.json"),
     read("js/data/psl_icann.json"),
     loadLists(read),
     read("js/data/lists.json").catch(() => null), // the full shortener list (the model keeps its own)
+    read("js/data/lookalike.json").catch(() => null), // brand names for the look-alike check; without it that check is off
   ]);
   if (!bundle || !psl) throw new Error("js/data is missing model files (tier_a_hybrid.json, psl_icann.json)");
   const model = hybrid.loadHybrid(bundle, psl);
@@ -57,7 +59,8 @@ export async function loadChecker({ base, read }) {
     combine,
     address,
     hybrid,
-    x: { keys, psl: pslMod, urlparts, explain, model: modelMod, hybrid, lists },
+    x: { keys, psl: pslMod, urlparts, explain, model: modelMod, hybrid, lists, lookalike },
+    lookalike: lookalikeData ? lookalike.loadLookalike(lookalikeData, model.lists.psl, model.lists.platforms) : null,
     model,
     lists: listSet,
     info: {
@@ -85,6 +88,8 @@ const LAYER_WORD = {
   allowlist: "The allowlist decided.",
   blocklist: "The blocklist decided.",
   "url-model": "The address model decided.",
+  lookalike: "The look-alike check raised the verdict.",
+  llm: "The AI check raised the verdict.",
   shortener: "A short link has nothing to judge until it is followed.",
   none: "Nothing to check.",
 };
@@ -143,11 +148,12 @@ function buildTrace(c, listed, layers, result, label, llm) {
   } else if (m.prob === null) {
     trace.push({ id: "model", tone: "warn", label: "Suspicious", detail: m.reasons[0]?.text ?? "The address could not be scored." });
   } else {
+    const look = layers.lookalike ? ` The look-alike check also fired: ${layers.lookalike.text}` : "";
     trace.push({
       id: "model",
-      tone: TONE[m.verdict],
-      label: VERDICT_WORD[LABELS[m.verdict]],
-      detail: `Score ${m.prob.toFixed(3)}. It warns from ${info.thresholds.suspicious.toFixed(3)} and calls an address dangerous from ${info.thresholds.dangerous.toFixed(3)}.`,
+      tone: layers.lookalike ? "warn" : TONE[m.verdict],
+      label: layers.lookalike && m.verdict === 0 ? "Look-alike" : VERDICT_WORD[LABELS[m.verdict]],
+      detail: `Score ${m.prob.toFixed(3)}. It warns from ${info.thresholds.suspicious.toFixed(3)} and calls an address dangerous from ${info.thresholds.dangerous.toFixed(3)}.${look}`,
     });
   }
 
@@ -210,6 +216,7 @@ async function checkOne(c, input) {
   };
   if (!layers.allow && !layers.shortener && !layers.blocked && !layers.local) {
     layers.model = c.address.scoreAddress(c.model, target);
+    layers.lookalike = c.lookalike && target.length <= c.address.MAX_URL_CHARS ? c.x.lookalike.lookalikeSignal(c.lookalike, target) : null;
   }
   // The AI step runs only when the page was given a backend (`c.askLlm`), for every address the
   // allowlist, blocklist and short-link rules did not already decide (the extension asks only
