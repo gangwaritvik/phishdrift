@@ -1,0 +1,42 @@
+name: Tier C capture (legitimate)
+# Legitimate registrable domains for tier C, sampled from the Tranco list in rank bands
+# (rank only picks the sample and is never stored). Shards run in parallel, each on its own
+# runner, and write their own file on the orphan branch `tier-c-data`. Each run draws new
+# domains: earlier captures are excluded.
+on:
+  schedule:
+    - cron: "40 3 * * *"
+  workflow_dispatch:
+    inputs:
+      per_shard:
+        description: "domains per shard"
+        default: "4000"
+  push:
+    paths: [".github/workflows/tier-c-legit.yml"]
+permissions:
+  contents: write
+concurrency:
+  group: tier-c-capture-legit
+  cancel-in-progress: false
+jobs:
+  legit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      PER_SHARD: ${{ github.event.inputs.per_shard || '4000' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e .
+      - run: scripts/ci_data_branch.sh fetch
+      - run: python -u -m collector capture-legit --shard ${{ matrix.shard }}/8 --per-run "$PER_SHARD"
+      - if: always()
+        run: scripts/ci_data_branch.sh push "legit capture shard ${{ matrix.shard }}"

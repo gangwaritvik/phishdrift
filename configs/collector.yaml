@@ -126,13 +126,15 @@ popular:
 domain_capture:                        # tier C raw facts, captured once per new live domain
   enabled: true
   unit: domain                         # one record per registrable domain (all the deployed check knows); the apex is probed, www. when the apex does not resolve
-  max_domains_per_run: 1500            # domains per run: feed phishing first, then legitimate domains
+  max_domains_per_run: 3000            # domains per run: feed phishing first, then legitimate domains
   workers: 8                           # hosts captured at once (RDAP servers still get the 1 s politeness delay)
   job_deadline_s: 300                  # a host still being looked up after this is abandoned (retried next run)
   checkpoint_every: 25                 # captured hosts are appended to the JSONL after every this many
   time_budget_s: 5400                  # no new host is started after 1.5 h (the rest waits for the next run)
   backlog_hours: 48                    # hosts first seen within this window and not yet captured are retried
   rdap_url: "https://rdap.org/domain/{domain}"
+  rdap_bootstrap_url: https://data.iana.org/rdap/dns.json   # ask each registry's own RDAP server (rdap_url is the fallback)
+  rdap_min_interval_s: 0.25            # politeness delay per RDAP server (the general http delay is 1 s)
   rdap_retries: 2                      # a failed lookup (rate limit, timeout) is retried on up to 2 later runs
   dns_resolver: doh                    # DNS over HTTPS to public resolvers that do not filter: the PC's own
   doh_urls:                            # resolver answers 0.0.0.0 for known phishing hosts (a blocklist verdict)
@@ -150,6 +152,42 @@ domain_capture:                        # tier C raw facts, captured once per new
       - {from_rank: 1001, to_rank: 10000, share: 0.15}
       - {from_rank: 10001, to_rank: 100000, share: 0.25}
       - {from_rank: 100001, to_rank: 1000000, share: 0.60}
+
+capture_feeds:                         # `python -m collector capture-phishing` (hourly in CI): fresh phishing domains for tier C only, never the training index
+  state_dir: data/interim/capture_state   # polls.json and seen_<feed>.txt
+  backlog_hours: 14                    # a feed entry listed longer ago than this is not fresh (its capture would be too late)
+  feeds:
+    openphish:                         # community feed, non-commercial; polled every 12 h as its terms ask
+      kind: url_list
+      url: https://openphish.com/feed.txt
+      min_interval_h: 11.5
+    phishtank_open:                    # public online-valid list without an app key; entries carry their submission time
+      kind: phishtank_csv
+      url: http://data.phishtank.com/data/online-valid.csv
+      min_interval_h: 2
+      timeout_s: 120
+    phishstats:                        # JSON API, newest first, with the listing time
+      kind: phishstats_api
+      url: https://api.phishstats.info/api/phishing
+      pages: 30
+      page_size: 100
+      min_interval_h: 1
+    phishunt:
+      kind: url_list
+      url: https://phishunt.io/feed.txt
+      min_interval_h: 1
+      baseline: true                   # holds older entries: the first poll only records them
+    phishing_database_new:
+      kind: url_list
+      url: https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-NEW-today.txt
+      min_interval_h: 1
+      baseline: true
+    certpl:                            # CERT Polska domain warning list (domains only)
+      kind: domain_list
+      url: https://hole.cert.pl/domains/v2/domains.txt
+      min_interval_h: 2
+      baseline: true
+      timeout_s: 120
 
 ood:                                   # `python -m collector crawl-ood`: legitimate inner pages for the OOD false-positive set
   seed: 20261012                       # fixed: the same Tranco list and exclusions give the same sample

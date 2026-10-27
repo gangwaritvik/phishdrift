@@ -128,7 +128,7 @@ def host_flags(host_rec: dict, lists: Lists) -> dict[str, object]:
 def registration_group(domain_rec: dict | None, now: datetime | None) -> dict[str, float]:
     rdap = (domain_rec or {}).get("rdap")
     error = (domain_rec or {}).get("rdap_error")
-    found = 1.0 if rdap else 0.0 if error == "not_found" else NAN
+    found = 1.0 if rdap else 0.0 if error in ("not_found", "no_server") else NAN
     if not rdap:
         return dict.fromkeys(_GROUP["registration"], NAN) | {"rdap_found": found}
     registered, expires = parse_time(rdap.get("registered")), parse_time(rdap.get("expires"))
