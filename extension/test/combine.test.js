@@ -9,6 +9,7 @@ import {
   PICTURE_MIN_PROB,
   PICTURE_REASON,
   SAFE,
+  SHARED_HOST_NOTE,
   SUSPICIOUS,
   addressOnly,
   combine,
@@ -264,6 +265,25 @@ test("a look-alike hit never lowers a verdict and never acts on trusted, listed 
   assert.equal(combine({ ...base, allow: true, lookalike }).verdict, SAFE);
   assert.equal(combine({ ...base, shortener: true, lookalike }).verdict, SAFE);
   assert.equal(combine({ ...base, local: true, lookalike }).layer, "local");
+});
+
+test("on shared hosting the address model alone is capped at suspicious", () => {
+  const shared = { ...base, shared: true, model: model(DANGEROUS) };
+  const r = combine(shared);
+  assert.deepEqual([r.verdict, r.layer, r.notes], [SUSPICIOUS, "url-model", [SHARED_HOST_NOTE]]);
+  assert.equal(addressOnly(r), false);
+  assert.equal(combine({ ...base, model: model(DANGEROUS) }).verdict, DANGEROUS); // same score, own domain
+  assert.equal(combine({ ...shared, model: model(SUSPICIOUS) }).notes.length, 0); // nothing capped
+});
+
+test("on shared hosting a credential page, the page model, a list or domain evidence still reach dangerous", () => {
+  const shared = { ...base, shared: true, model: model(DANGEROUS) };
+  assert.equal(combine(shared, { asksCredentials: true, hasPassword: true }).verdict, DANGEROUS);
+  const pageModel = { hasHtml: true, blended: 0.99, verdict: DANGEROUS, pageDangerous: true, reasons: [{ text: "p" }] };
+  assert.deepEqual([combine(shared, { asksCredentials: false }, pageModel).verdict, combine(shared, { asksCredentials: false }, pageModel).layer], [DANGEROUS, "page-model"]);
+  assert.equal(combine({ ...shared, blocked: "url" }).layer, "blocklist");
+  const domain = { risk: "high", signals: [{ severity: "high", text: "Brand new domain." }] };
+  assert.deepEqual([combine({ ...shared, domain }).verdict, combine({ ...shared, domain }).layer], [DANGEROUS, "domain"]);
 });
 
 // --- tier C (domain age, DNS, certificate): raises suspicious to dangerous, nothing else ------

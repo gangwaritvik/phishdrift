@@ -1247,6 +1247,21 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   trigger a recheck); the rule needs layout (it runs in the content script, so it cannot be measured on stored HTML except as the upper and
   lower bounds above).
 
+### 2026-10-27 — Own demo site called dangerous: shared-host cap (cloud)
+- Ritvik pasted the Netlify demo's address into the URL check page and it said phishing. Reproduced locally with the
+  page's own checker (`demo/check.js` on the built extension): `https://loquacious-starship-3425f0.netlify.app/` scores
+  0.983, above the 0.980 dangerous cutoff, decided by the address model alone (not the blocklist, look-alike rules,
+  short-link rule; the AI check can only raise). Cause: the model has learned that a host on a free-hosting platform with
+  a tenant-chosen name (Netlify's default `adjective-noun-hex` names are common among phished sites) looks like phishing.
+- Changed: `extension/src/combine.js` caps the address model's verdict at suspicious on shared hosting (platforms and
+  open-hosting zones) unless the page asks for credentials; the page model, a list or domain evidence can still reach
+  dangerous. Tests in `extension/test/combine.test.js`. `js/bench/shared_hosts.mjs`, `experiments/shared_host_cap.py` ->
+  `reports/shared_host_cap.md`; `.github/workflows/shared-host-probe.yml` asks the live page.
+- Measured (Umbrella top 1M tenant hosts as a rough legitimate stand-in, 2,337 hosts; ACTIVE feed sample, 7,787 URLs; address
+  layers only): dangerous 21.7% -> 0 on Umbrella tenants, 55.6% -> 0 on feed phishing; warned (suspicious or worse) unchanged
+  at 49.0% and 83.1%. The site itself: dangerous -> suspicious. Not solved: half of ordinary tenant hosts still get the
+  suspicious banner; that needs the model calibrated on benign tenant hosts (retrain, needs the PC's pool).
+
 ### 2026-10-27 — Tier C without the PC: capture on GitHub Actions, domain rows, hosted check (cloud)
 - Ritvik: "start working on tier c and finish what is left", then "get a good number of figures" and "10k is low". Plan:
   `plans/tier_c_plan.md` (project folder). PR #72.
