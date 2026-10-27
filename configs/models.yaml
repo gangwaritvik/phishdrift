@@ -96,6 +96,11 @@ tier_c:                               # experiments/tier_c.py: domain/DNS/TLS fe
     - days_to_expiry
     - days_since_rdap_change
     - cert_age_days
+  serving:                            # hosted domain check (netlify/functions/domain-check.mjs), exported in the bundle
+    cache_ttl_s: 3600                 # answer kept per registrable domain
+    cache_max_entries: 2000
+    rdap_timeout_ms: 4000
+    total_timeout_ms: 9000            # the whole check; a part that did not finish is NaN, as in capture
   lightgbm:                           # small-data settings
     n_estimators: 300
     learning_rate: 0.05

@@ -79,7 +79,23 @@ def train(df: pd.DataFrame, cfg: dict, k: int = 0):
     return model, calib, {"train": train_df, "cal": cal, "test": test}
 
 
-def build_bundle(model: GBDT, calib: Calibrator, frames: dict, lists: Lists, cfg: dict) -> dict:
+def serving_settings(cfg: dict, capture: dict | None = None) -> dict:
+    """Settings of the hosted domain check (netlify/functions/domain-check.mjs): its own limits
+    (`tier_c.serving`) and the capture settings it shares so a live check asks the way the
+    training captures did."""
+    keys = ("rdap_bootstrap_url", "doh_urls", "dns_timeout_s", "tls_timeout_s")
+    shared = {k: (capture or {})[k] for k in keys if k in (capture or {})}
+    return dict(cfg["tier_c"]["serving"]) | shared
+
+
+def build_bundle(
+    model: GBDT,
+    calib: Calibrator,
+    frames: dict,
+    lists: Lists,
+    cfg: dict,
+    capture: dict | None = None,
+) -> dict:
     thresholds = {"suspicious": None, "dangerous": None} | dict(calib.thresholds)
     targets = cfg["eval"]["target_fprs"]
     test = frames["test"]
@@ -108,6 +124,7 @@ def build_bundle(model: GBDT, calib: Calibrator, frames: dict, lists: Lists, cfg
         "explain": dict(cfg["explain"]),
         "brands": sorted(lists.brands),
         "free_issuers": list(FREE_ISSUERS),
+        "serving": serving_settings(cfg, capture),
         "train": {
             k: {
                 "rows": len(f),
@@ -415,7 +432,8 @@ def main(argv: list[str] | None = None) -> int:
         pd.read_parquet(a.features), cc.get("max_capture_lag_h"), cc.get("require_resolving", True)
     )
     model, calib, frames = train(df, cfg, a.split)
-    bundle = build_bundle(model, calib, frames, load_lists(a.lists_dir), cfg)
+    capture = load_config("collector")["domain_capture"]
+    bundle = build_bundle(model, calib, frames, load_lists(a.lists_dir), cfg, capture)
     write_json(a.out, bundle, compact=True)
     write_json(a.parity_out, model_parity(bundle, model, frames))
     print(a.out, f"{a.out.stat().st_size / 1e6:.2f} MB", bundle["thresholds"], bundle["metrics"])

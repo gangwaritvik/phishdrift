@@ -13,6 +13,10 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
+# the tier C model is read at run time (not imported), so the bundle is shipped as a file
+[functions."domain-check"]
+  included_files = ["js/data/tier_c.json"]
+
 [[headers]]
   for = "/*"
   [headers.values]

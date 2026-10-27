@@ -18,6 +18,16 @@ export function usableLlmAnswer(json) {
   return { raise: json.raise, brand: json.brand, brand_domain: json.brand_domain };
 }
 
+// The hosted domain check's JSON (netlify/functions/domain-check.mjs) -> {verdict: 0|1|2, reasons:[{text}]},
+// or null when it did not check the domain (refused, no model, failed): that is no evidence either way.
+const TIER_C_VERDICTS = { safe: 0, suspicious: 1, dangerous: 2 };
+export function usableTierCAnswer(json) {
+  if (!json || typeof json !== "object" || json.error || json.checked !== true) return null;
+  const verdict = TIER_C_VERDICTS[json.verdict];
+  if (verdict === undefined || !Array.isArray(json.reasons)) return null;
+  return { verdict, reasons: json.reasons.filter((r) => typeof r?.text === "string").map((r) => ({ text: r.text })) };
+}
+
 // How long a cached lookup stays fresh.
 export function domainTtl(entry, okMs, failMs = DOMAIN_FAILURE_MS) {
   return entry.answer ? okMs : failMs;

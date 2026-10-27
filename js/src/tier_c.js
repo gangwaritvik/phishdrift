@@ -276,6 +276,7 @@ export function loadTierC(bundle, pslRules) {
     isotonic: bundle.isotonic,
     reasonRules: bundle.reasons,
     explainOptions: bundle.explain,
+    serving: bundle.serving,
     lists: { brands: bundle.brands, freeIssuers: bundle.free_issuers, psl: buildTrie(pslRules) },
   };
 }
