@@ -232,17 +232,13 @@ def render(ctx: dict) -> str:
     return "\n".join(lines)
 
 
-def run(args, cfg: dict | None = None, lists: Lists | None = None) -> int:
-    cfg = cfg or load_config("models")
-    cc = load_config("char_cnn")
-    cnn = dict(cc["char_cnn"])
+def build_ctx(args, cfg: dict, lists: Lists, cc: dict) -> dict:
+    """Split, fitted features and evaluation sets shared by the one-split tests."""
     reports = args.reports
     reports.mkdir(parents=True, exist_ok=True)
     tables = reports / "tables"
     tables.mkdir(exist_ok=True)
     k = cc["split"] if args.split is None else args.split
-    lists = lists or load_lists(args.lists_dir, args.platforms_file)
-    char_cnn.set_deadline(args.max_hours)
 
     # time_slice and natural are optional parts: a staged sample may have neither
     parts = [p for p in (*PARTS, "natural") if (args.processed / f"meta_{p}.parquet").exists()]
@@ -257,7 +253,6 @@ def run(args, cfg: dict | None = None, lists: Lists | None = None) -> int:
         pick = lambda f, m: f.sample(min(m, len(f)), random_state=0)  # noqa: E731
         train, cal, test = pick(train, n), pick(cal, n // 2), pick(test, n // 2)
         frames = {name: pick(f, n // 2) for name, f in frames.items()}
-        cnn["epochs"] = 1
     for name, other in {"cal": cal, "test": test, **frames}.items():
         assert_no_overlap(train, other, "train", name)
     for name, other in frames.items():
@@ -271,9 +266,8 @@ def run(args, cfg: dict | None = None, lists: Lists | None = None) -> int:
     nf = apply_fitted(norm.loc[td["domain"]].reset_index(drop=True), fitted)
     test_norm = pd.concat([td.reset_index(drop=True), nf], axis=1)
     sets_f = _sets(test, holdouts, test_norm)  # frames with all features (hybrid stage)
-    ctx = {
+    return {
         "cfg": cfg,
-        "cnn": cnn,
         "bar": cc["bar_points"],
         "k": k,
         "train": train,
@@ -286,6 +280,16 @@ def run(args, cfg: dict | None = None, lists: Lists | None = None) -> int:
         "tables": tables,
         "ckpt": reports / "ckpt",
     }
+
+
+def run(args, cfg: dict | None = None, lists: Lists | None = None) -> int:
+    cfg = cfg or load_config("models")
+    cc = load_config("char_cnn")
+    lists = lists or load_lists(args.lists_dir, args.platforms_file)
+    char_cnn.set_deadline(args.max_hours)
+    ctx = build_ctx(args, cfg, lists, cc)
+    ctx["cnn"] = dict(cc["char_cnn"], **({"epochs": 1} if args.smoke else {}))
+    reports = args.reports
     status = 0
     try:
         stage_alone(ctx)
