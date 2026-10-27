@@ -1264,6 +1264,27 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   trigger a recheck); the rule needs layout (it runs in the content script, so it cannot be measured on stored HTML except as the upper and
   lower bounds above).
 
+### 2026-10-27 — One-split CharCNN test for the tier A hybrid: no gain on a sample of the pool (cloud)
+- Why: the conference-paper plan (`/mnt/project-files/phishdrift/paper/conference_plan.md`) lists a deep member for the tier A
+  hybrid as an add-on experiment behind a stop rule. The PC was not reachable (Remote Control refused), so it ran in the cloud.
+- Changed (new files only; nothing shipped or configured for the shipped model is touched): `models/char_cnn.py` (multi-scale
+  character CNN, same fit/score interface as the other text scorers, checkpoint after every epoch, deadline), `configs/char_cnn.yaml`,
+  `experiments/char_cnn_a.py` (split 0: CNN against the char n-gram LR next to it, shuffled-label control, hybrid2 with and without
+  the CNN as a fifth out-of-fold scorer; test, per source, held-out source, natural pages, normalised URLs),
+  `experiments/char_cnn_stage.py` (builds the processed folder from a URL sample), `scripts/run_char_cnn.ps1` (the same run for the
+  PC, not used), `tests/test_char_cnn.py`, optional dependency `deep`.
+- Data (differs from the PC's pool; stated in the report): the 116k-URL sample staged for the prior-study run, deduplicated by uid:
+  84,938 pool URLs (PhreshPhish, PhiUSIIL, URL-Phish, Phishpedia, a few live), held-out PhishStorm 20,000, 2,555 natural pages;
+  per-source weights, one domain-grouped split (seed 0). No time slice (no dates), no HTML. About a fifth of the PC pool, so the
+  absolute numbers are not comparable with the 10-split tables.
+- Results (`reports/char_cnn_sample_split0/SUMMARY.md`, one split, 6 epochs, about 28 s per epoch on 4 cores): CNN alone against
+  the n-gram LR: test recall at FPR 1% 59.5 vs 61.4, held-out 53.3 vs 53.8, normalised URLs 36.4 vs 35.3; shuffled-label control
+  0.5000. Hybrid2 with the CNN scorer against hybrid2: test 71.3 vs 71.2, held-out 74.4 vs 75.3, normalised 42.2 vs 42.1. All changes
+  are within the 2-point bar (a proposal, not an approved rule): no gain from the deep member on this sample. Natural-page false
+  alarms at the cal 1% point 3.1% (hybrid2) and 3.2% (with CNN), higher than the PC's pool (the sample has few crawled deep benign pages).
+- Not done: the hybrid's own shuffled-label control, other splits, the full pool (PC data), a larger or different deep model.
+- Next: decision with Ritvik and the mentor on whether to keep the deep member in the paper as a "no gain at this size" row.
+
 ### 2026-10-27 — Own demo site called dangerous: shared-host cap (cloud)
 - Ritvik pasted the Netlify demo's address into the URL check page and it said phishing. Reproduced locally with the
   page's own checker (`demo/check.js` on the built extension): `https://loquacious-starship-3425f0.netlify.app/` scores

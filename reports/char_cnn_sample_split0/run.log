@@ -1,0 +1,70 @@
+2026-10-27 07:37:33,798 char_cnn: epoch 1 batch 200 loss 0.4648
+2026-10-27 07:37:43,165 char_cnn: epoch 1/6 loss 0.4514 watch ROC-AUC 0.9212 (49s)
+2026-10-27 07:38:20,028 char_cnn: epoch 2 batch 200 loss 0.3351
+2026-10-27 07:38:29,649 char_cnn: epoch 2/6 loss 0.3329 watch ROC-AUC 0.9345 (46s)
+2026-10-27 07:39:07,795 char_cnn: epoch 3 batch 200 loss 0.2913
+2026-10-27 07:39:17,883 char_cnn: epoch 3/6 loss 0.2923 watch ROC-AUC 0.9382 (48s)
+2026-10-27 07:39:55,931 char_cnn: epoch 4 batch 200 loss 0.2584
+2026-10-27 07:40:05,772 char_cnn: epoch 4/6 loss 0.2593 watch ROC-AUC 0.9404 (48s)
+2026-10-27 07:40:44,401 char_cnn: epoch 5 batch 200 loss 0.2371
+2026-10-27 07:40:54,036 char_cnn: epoch 5/6 loss 0.2365 watch ROC-AUC 0.9393 (48s)
+2026-10-27 07:41:32,562 char_cnn: epoch 6 batch 200 loss 0.2152
+2026-10-27 07:41:41,712 char_cnn: epoch 6/6 loss 0.2167 watch ROC-AUC 0.9407 (48s)
+2026-10-27 07:42:57,371 char_cnn: epoch 1 batch 200 loss 0.6960
+2026-10-27 07:43:04,032 char_cnn: epoch 1/6 loss 0.6955 (41s)
+2026-10-27 07:43:38,616 char_cnn: epoch 2 batch 200 loss 0.6925
+2026-10-27 07:43:45,303 char_cnn: epoch 2/6 loss 0.6926 (41s)
+2026-10-27 07:44:19,813 char_cnn: epoch 3 batch 200 loss 0.6925
+2026-10-27 07:44:26,304 char_cnn: epoch 3/6 loss 0.6925 (41s)
+2026-10-27 07:45:01,142 char_cnn: epoch 4 batch 200 loss 0.6925
+2026-10-27 07:45:07,611 char_cnn: epoch 4/6 loss 0.6925 (41s)
+2026-10-27 07:45:42,874 char_cnn: epoch 5 batch 200 loss 0.6926
+2026-10-27 07:45:49,829 char_cnn: epoch 5/6 loss 0.6925 (42s)
+2026-10-27 07:46:24,975 char_cnn: epoch 6 batch 200 loss 0.6925
+2026-10-27 07:46:31,845 char_cnn: epoch 6/6 loss 0.6925 (42s)
+2026-10-27 07:46:37,365 char_cnn_a: stage alone done
+2026-10-27 07:48:45,364 char_cnn_a: hybrid2 fitted and scored (128s)
+2026-10-27 07:51:13,437 char_cnn: epoch 1/6 loss 0.4600 (27s)
+2026-10-27 07:51:40,634 char_cnn: epoch 2/6 loss 0.3360 (27s)
+2026-10-27 07:52:07,694 char_cnn: epoch 3/6 loss 0.2904 (27s)
+2026-10-27 07:52:36,240 char_cnn: epoch 4/6 loss 0.2586 (29s)
+2026-10-27 07:53:02,491 char_cnn: epoch 5/6 loss 0.2359 (26s)
+2026-10-27 07:53:30,380 char_cnn: epoch 6/6 loss 0.2102 (28s)
+2026-10-27 07:54:03,175 char_cnn: epoch 1/6 loss 0.4695 (28s)
+2026-10-27 07:54:29,571 char_cnn: epoch 2/6 loss 0.3401 (26s)
+2026-10-27 07:54:56,634 char_cnn: epoch 3/6 loss 0.2957 (27s)
+2026-10-27 07:55:24,763 char_cnn: epoch 4/6 loss 0.2706 (28s)
+2026-10-27 07:55:52,614 char_cnn: epoch 5/6 loss 0.2346 (28s)
+2026-10-27 07:56:20,674 char_cnn: epoch 6/6 loss 0.2148 (28s)
+2026-10-27 07:56:53,406 char_cnn: epoch 1/6 loss 0.4771 (28s)
+2026-10-27 07:57:21,544 char_cnn: epoch 2/6 loss 0.3467 (28s)
+2026-10-27 07:57:50,448 char_cnn: epoch 3/6 loss 0.2981 (29s)
+2026-10-27 07:58:19,524 char_cnn: epoch 4/6 loss 0.2684 (29s)
+2026-10-27 07:58:48,785 char_cnn: epoch 5/6 loss 0.2403 (29s)
+2026-10-27 07:59:17,353 char_cnn: epoch 6/6 loss 0.2127 (29s)
+2026-10-27 07:59:49,188 char_cnn: epoch 1/6 loss 0.4540 (27s)
+2026-10-27 08:00:16,675 char_cnn: epoch 2/6 loss 0.3359 (27s)
+2026-10-27 08:00:44,807 char_cnn: epoch 3/6 loss 0.2972 (28s)
+2026-10-27 08:01:13,837 char_cnn: epoch 4/6 loss 0.2636 (29s)
+2026-10-27 08:01:41,431 char_cnn: epoch 5/6 loss 0.2379 (28s)
+2026-10-27 08:02:09,467 char_cnn: epoch 6/6 loss 0.2173 (28s)
+2026-10-27 08:02:42,441 char_cnn: epoch 1/6 loss 0.4622 (28s)
+2026-10-27 08:03:09,796 char_cnn: epoch 2/6 loss 0.3378 (27s)
+2026-10-27 08:03:37,193 char_cnn: epoch 3/6 loss 0.2946 (27s)
+2026-10-27 08:04:06,397 char_cnn: epoch 4/6 loss 0.2620 (29s)
+2026-10-27 08:04:37,035 char_cnn: epoch 5/6 loss 0.2352 (31s)
+2026-10-27 08:05:05,142 char_cnn: epoch 6/6 loss 0.2143 (28s)
+2026-10-27 08:05:40,372 char_cnn: epoch 1 batch 200 loss 0.4648
+2026-10-27 08:05:46,535 char_cnn: epoch 1/6 loss 0.4514 (36s)
+2026-10-27 08:06:17,557 char_cnn: epoch 2 batch 200 loss 0.3351
+2026-10-27 08:06:23,513 char_cnn: epoch 2/6 loss 0.3329 (37s)
+2026-10-27 08:06:54,219 char_cnn: epoch 3 batch 200 loss 0.2913
+2026-10-27 08:06:59,894 char_cnn: epoch 3/6 loss 0.2923 (36s)
+2026-10-27 08:07:30,158 char_cnn: epoch 4 batch 200 loss 0.2584
+2026-10-27 08:07:35,898 char_cnn: epoch 4/6 loss 0.2593 (36s)
+2026-10-27 08:08:05,511 char_cnn: epoch 5 batch 200 loss 0.2371
+2026-10-27 08:08:11,522 char_cnn: epoch 5/6 loss 0.2365 (36s)
+2026-10-27 08:08:42,143 char_cnn: epoch 6 batch 200 loss 0.2152
+2026-10-27 08:08:48,437 char_cnn: epoch 6/6 loss 0.2167 (37s)
+2026-10-27 08:09:30,252 char_cnn_a: hybrid2+cnn fitted and scored (1245s)
+2026-10-27 08:09:30,256 char_cnn_a: stage hybrid done

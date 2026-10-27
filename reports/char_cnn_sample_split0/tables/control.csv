@@ -1,0 +1,2 @@
+split,model,n_urls,n_pos,n_neg,roc_auc,pr_auc,op_1pct_resolution,op_1pct_granularity_limited,op_1pct_recall,op_1pct_achieved_fpr,op_1pct_threshold,op_0p1pct_resolution,op_0p1pct_granularity_limited,op_0p1pct_recall,op_0p1pct_achieved_fpr,op_0p1pct_threshold
+0,cnn_url,16988,8192,8796,0.5,0.48222274546738875,0.00011368804001819008,False,0.0,0.0,1.7976931348623157e+308,0.00011368804001819008,True,0.0,0.0,1.7976931348623157e+308
