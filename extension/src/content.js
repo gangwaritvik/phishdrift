@@ -102,7 +102,7 @@ function buildBanner(result) {
   bar.setAttribute("role", "alert");
   const text = document.createElement("div");
   const head = document.createElement("strong");
-  head.textContent = "PhishDrift: this page looks suspicious. Be careful with passwords and payments.";
+  head.textContent = result.headline ?? "PhishDrift: this page looks suspicious. Be careful with passwords and payments.";
   text.append(head);
   if (reasons.length) {
     const list = document.createElement("ul");

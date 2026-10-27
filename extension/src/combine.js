@@ -169,6 +169,15 @@ function combineLayers(layers, page = null, pageModel = null) {
   return out;
 }
 
+// A navigation that turns into a download never commits, so the page the user is on stays open. The
+// verdict for the file's address is shown there as a banner worded for a file (never the warning
+// page: nothing was opened, and the file is already on its way). Only a warning is returned.
+export function downloadWarning(result) {
+  if (result?.verdict !== SUSPICIOUS) return null;
+  const from = result.domain ? ` from ${result.domain}` : "";
+  return { ...result, headline: `PhishDrift: a file was just downloaded${from}, and that address looks suspicious. Be careful opening it.` };
+}
+
 // A frame that asks for credentials (a login form in an iframe, srcdoc or about:blank frame) is
 // judged on its own page score alone: the address model's agreement is not required, because the
 // frame's address (often the hosting page's) says little about the form inside it. Frames from
