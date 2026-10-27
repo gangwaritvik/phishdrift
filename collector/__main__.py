@@ -332,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--no-crawl", action="store_true", help="skip the benign inner-page crawl")
     r.add_argument("--no-capture", action="store_true", help="skip RDAP/DNS/TLS capture")
     r.add_argument("--no-benign", action="store_true", help="capture feed phishing only")
-    sub.add_parser("capture-phishing", help="fresh phishing feeds -> RDAP/DNS/TLS capture")
+    cp = sub.add_parser("capture-phishing", help="fresh phishing feeds -> RDAP/DNS/TLS capture")
     cl = sub.add_parser("capture-legit", help="RDAP/DNS/TLS capture of legitimate domains only")
     cl.add_argument("--shard", default="0/1", help="I/K: this run's slice of the sample")
     cl.add_argument("--per-run", type=int, required=True, help="domains for this shard")
@@ -370,7 +370,7 @@ def main(argv: list[str] | None = None) -> int:
         "learn-shorteners", help="find link shorteners in the feed URLs (HEAD probes, no redirects)"
     )
     ps = sub.add_parser("popular-summary", help="outcome counts of the popular-sites seed sets")
-    for p in (r, c, o, rr, ps, ls):
+    for p in (r, c, o, rr, ps, ls, cp, cl):
         p.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(

@@ -336,3 +336,14 @@ def test_capture_feeds_emit_fresh_entries_and_skip_the_baseline_of_bulk_lists(tm
     later = now.replace(hour=14)
     targets, counts = capture_feeds.poll(FakeClient(pages), cfg, later)
     assert counts["unt"] == 1 and "https://c.example/" in {t["url"] for t in targets}
+
+
+def test_new_capture_commands_reach_their_functions(monkeypatch):
+    seen = []
+    monkeypatch.setattr(collector_main, "capture_phishing", lambda: seen.append("p") or 0)
+    monkeypatch.setattr(
+        collector_main, "capture_legit", lambda shard, n: seen.append((shard, n)) or 0
+    )
+    assert collector_main.main(["capture-phishing"]) == 0
+    assert collector_main.main(["capture-legit", "--shard", "1/8", "--per-run", "5"]) == 0
+    assert seen == ["p", ((1, 8), 5)]
