@@ -1026,6 +1026,18 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Probes send one HEAD per short URL from the PC's address to hosts that appear in phishing feeds; no page is fetched or followed.
 - Next on the PC: run it after a collector run, read the CSV, then rescrape the list, `export-js`, rebuild the extension.
 
+### 2026-10-26 — Gemini brand check: evaluation script, not yet run (cloud)
+- Ritvik asked about the Gemini fix; the 10-22 entry says no quality number exists. The cloud has no Gemini key (the key lives on
+  the backend machine), so nothing was asked of the model. The Google API itself is reachable from the cloud (403 without a key).
+- Changed: `experiments/llm_eval.py` (legitimate hosts = the natural pages `configs/eval/ood_urls.csv`, 2,555 ok rows; phishing = a
+  seeded sample of a feed file; look-alikes = `attacks` homoglyph and TLD swap applied to the legitimate URLs, 150 each; the
+  address layer via `js/bench/verdicts.mjs` splits every set by "address model passes / flags"; raise rate at confidence cutoffs
+  0.5-0.9 from cached answers; resumable, stops on HTTP 429), `.github/workflows/llm-eval.yml` (manual run, key from the
+  repository secret `GEMINI_API_KEY`), `tests/test_llm_eval.py` (stub provider).
+- Checked with a stub provider end to end (sets built, address layer run, report written); no real model answer exists.
+- Next: someone adds the secret `GEMINI_API_KEY` in the repository settings and starts the workflow (about 1,200 calls in all; the
+  free-key daily quota is not known, so the run resumes over days).
+
 ### 2026-10-26 — AI brand check hosted on Netlify (cloud, code only)
 - Ritvik has no PC access, so the Gemini check moves off the PC. Netlify Drop cannot run functions, so the
   demo site is now built from the repository (`netlify.toml`, `deploy/netlify_build.sh`, `docs/HOSTING.md`).
@@ -1139,3 +1151,43 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   Same harness with only the address swapped: 34 of 35. Old harness: 23 of 35.
 - Not done: the 2026-10-26 quick-win cases (short links, redirects, PDF) stay in the project folder; the workflow has not run on a GitHub runner yet.
 
+
+### 2026-10-26 — Offline look-alike check (works with the AI check off) (cloud)
+- Why: the claim check (PR #64) measured that with the AI check off only 2% of `micr0soft.com`-style and 1% of `paypl.com`-style
+  look-alikes were warned. Ritvik asked for an offline check learned from data, no hand-typed lists.
+- Changed: `js/src/lookalike.js` (two escalate-only rules: `homograph` = the name equals a brand's name after look-alike characters are
+  folded, punycode decoded; `edit1` = one edit or neighbouring swap from a brand name of 6+ letters), `features/lookalike.py` +
+  `python -m features lookalike` -> `js/data/lookalike.json` from `configs/lists/brands.txt` (899 brands), the brand-to-own-domains map
+  (`configs/lists/brand_domains.json`, Wikidata + MISP) and the Unicode confusables table (`configs/lists/confusables.json`), both
+  restored from before the 10-22 removal; `configs/lookalike.yaml`; `extension/src/combine.js` `lookalikeEscalate` (one step up: safe to
+  suspicious, to dangerous only if the page asks for credentials; never lowers; never on trusted, blocklisted, allowlisted, short-link
+  or local addresses; shares `stepUp` with the AI check), `background.js` (computed per address, cached with the layers),
+  `demo/check.js` + `demo/evidence.js` (combiner step and model trace line; no new screen), `extension/build.mjs`, `deploy/netlify_build.sh`.
+  `js/bench/lookalike.mjs` + `experiments/lookalike_eval.py` -> `reports/lookalike.md`, `reports/tables/lookalike.csv`.
+- Not brought back: the old `embedded`, `combo` and brand-page rules, and the Python mirror of the browser rule (no parity fixture; the
+  JS rule is the only implementation and is tested in `extension/test/lookalike.test.js`).
+- Results (`reports/lookalike.md`, shipped address path with the bundled allowlist, no page/backend/blocklist; generated look-alikes of
+  894 brands on the list, warned before -> after): ASCII look-alike letters 0.2% -> 99.8%, punycode 68.3% -> 100%, one letter off
+  0.5% -> 79.0%, brand + word 77.0% (unchanged), TLD swap 23.4% (unchanged, not handled). The same families made from 241-455 site
+  names that are NOT on the brand list: unchanged (0% ASCII, 0% one letter), because the rule can only protect brands on the list.
+- False alarms (rule hits): natural legitimate pages 0 of 2,555; regional brand sites 0 of 114; `brand.com` of 894 brands 0. On two
+  public domain lists used only as test data (OpenDNS top 10k and random 10k, 15,948 not on the allowlist) the rule fired on 20
+  addresses, 14 of them not allowlisted; most are real typosquats (facobook.com, hpotmail.com, compcast.net); the clear legitimate ones
+  are blogher.org/.com, xiami.com, fenjer.org, mahindras.org, telegraf.biz (6 of 15,948, 0.04%), each a suspicious banner.
+  Real OpenPhish hosts (300): 199 -> 200 warned (4 rule hits).
+- Tuned on: `min_edit_len` 6 was chosen on these same legitimate sets (natural pages, regional sites, OpenDNS lists): 5 added false
+  alarms on bader.at (bayer) and vivacom.bg (viacom), 4 also on ocbc.com; 7 lost one-letter coverage (68%). So the false-alarm numbers
+  above are not an independent test of that choice.
+- Limits: the generated look-alikes are made from the same brand list the rule uses, so their catch rates are an upper bound for brands
+  on the list and say nothing about brands outside it. Brands with no entry in the brand-to-domains map (about 170 of 899) are
+  protected only by the "same name on another suffix is the brand's own" rule. A brand's name on another suffix (`paypal.xyz`) is not
+  caught. Not run in a real browser (the e2e smoke test cannot start Chromium in this container); `npm test` extension 82, js 25, pytest, ruff pass.
+
+### 2026-10-26 — Retrain with the 1,793-name shortener list (PC run by Ritvik, read in the cloud)
+- Ritvik ran the learner (feed index alone: 0 candidates; with the Phishing.Database ACTIVE file: 61 probed, 3 kept: `fy9.in`, `th.link`,
+  `urlth.me`), merged the list (1,796 entries) and ran `refresh_brands.ps1 -Model`. Exported model dated 2026-10-26 21:24 IST.
+- Results (split 0, pasted by Ritvik, not re-run here): natural legitimate pages flagged 5 of 2,555 (0.2%, none dangerous), model alone
+  12 / 3, 5 of 1,579 outside the top 50,000: identical to 2026-10-22. Blend recall at FPR 1% test 74.2, held-out PhishStorm 71.0, time
+  slice 81.7: identical to 2026-10-21. Ritvik's answer to "is blend2.md dated today?" was "no change"; read as "no change in the
+  results" (the file's date was not confirmed), so either the shortener feature moved nothing or the report was not rewritten.
+- Not measured: whether the 10-split medians change; the learner finds few shorteners (most probed hosts gave no answer or no redirect).

@@ -105,7 +105,7 @@ function modelEvidence(c, target, layers) {
 }
 
 // The steps the combiner took, as positions on the safe / suspicious / dangerous ladder.
-function combineEvidence(layers, result) {
+function combineEvidence(c, layers, result) {
   const names = ["safe", "suspicious", "dangerous"];
   const steps = [];
   let start;
@@ -122,6 +122,15 @@ function combineEvidence(layers, result) {
     start = layers.model?.verdict ?? 0;
     steps.push({ text: `The address model says ${names[start]}.`, to: start });
   }
+  // Escalate-only layers after the model: each is shown only if it moved the verdict.
+  const base = c.combine.combine({ ...layers, lookalike: null, llm: null }).verdict;
+  const withLookalike = c.combine.combine({ ...layers, llm: null }).verdict;
+  if (layers.lookalike && withLookalike > base) {
+    steps.push({ text: `${layers.lookalike.text} The look-alike check raises it to ${names[withLookalike]}.`, to: withLookalike });
+  }
+  if (layers.llm?.raise && result.verdict > withLookalike) {
+    steps.push({ text: `The AI check raises it to ${names[result.verdict]}.`, to: result.verdict });
+  }
   return { steps, start, end: result.verdict };
 }
 
@@ -132,6 +141,6 @@ export async function buildEvidence(c, target, listed, layers, result) {
     allowlist: await allowlistEvidence(c, target, listed, layers),
     blocklist: await blocklistEvidence(c, target, layers),
     model,
-    combine: combineEvidence(layers, result),
+    combine: combineEvidence(c, layers, result),
   };
 }
