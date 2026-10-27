@@ -30,6 +30,9 @@ export const LOCAL_NOTE = "This is an address on your computer or local network,
 export const ADDRESS_ONLY_NOTE =
   "The address looks like phishing, but this page does not ask for a password or payment details, so it was not blocked.";
 
+export const SHARED_HOST_NOTE =
+  "This site is on a shared hosting platform, where anyone can publish under a name of their choice, so its address alone is never called dangerous.";
+
 export const PICTURE_REASON =
   "This page is a single picture with almost no text, a way to hide a fake sign-in box from page checks, and its address looks somewhat suspicious.";
 // The address model's score from which a picture-only page is raised (see experiments/picture_only.py).
@@ -47,6 +50,7 @@ export const addressOnly = (result) => result?.verdict === DANGEROUS && result.l
 //   model: {verdict, prob, reasons:[{text}]} | null,
 //   domain: {risk, signals:[{severity,text}]} | null,   backend answer
 //   backendFailed: bool,
+//   shared: bool,                shared hosting platform or open-hosting zone (lists.js)
 //   unscored: bool,              the document has no web address (address.js effectiveUrl)
 //   local: bool,                 this computer or the local network (address.js isLocalAddress)
 // }
@@ -55,6 +59,8 @@ export const addressOnly = (result) => result?.verdict === DANGEROUS && result.l
 //            (scorePage in page.js)
 // lookalike: layers.lookalike = {rule, brand, text} | null, the offline look-alike check; it only
 // raises (see lookalikeEscalate).
+// tierC: layers.tierC = {verdict, reasons:[{text}]} | null, the hosted domain check (domain age, DNS,
+// certificate; js/src/domain_check.js). It can only raise suspicious to dangerous and add reasons.
 // llm: layers.llm = {raise, kind: "brand"|"phishing"|null, brand, brand_domain, phishing} | null, the
 // backend's AI opinion on the address (backend/llm.py). It only raises (see llmEscalate).
 export function combine(layers, page = null, pageModel = null) {
@@ -115,8 +121,14 @@ function combineLayers(layers, page = null, pageModel = null) {
     if (page?.asksCredentials) return { ...out, verdict: SUSPICIOUS, layer: "page", reasons: [NO_ADDRESS_REASON] };
     return { ...out, layer: "none", notes: [NO_ADDRESS_NOTE] };
   }
-  const model = layers.model;
-  if (!model) return { ...out, layer: "none", notes: ["The address could not be read."] };
+  if (!layers.model) return { ...out, layer: "none", notes: ["The address could not be read."] };
+  // Shared hosting: whoever publishes there picks the host name, and the model's prior for hosting
+  // platforms makes many ordinary tenants look like phishing (reports/shared_host_cap.md). The
+  // address alone is then capped at suspicious; a page that asks for credentials, the page model,
+  // a list or domain evidence can still take it to dangerous.
+  const capped = layers.shared && !page?.asksCredentials && layers.model.verdict > SUSPICIOUS;
+  const model = capped ? { ...layers.model, verdict: SUSPICIOUS } : layers.model;
+  if (capped) out.notes.push(SHARED_HOST_NOTE);
   out.verdict = model.verdict;
   out.prob = model.prob;
   out.reasons = model.reasons.map((r) => r.text);
@@ -166,6 +178,16 @@ function combineLayers(layers, page = null, pageModel = null) {
   } else if (layers.backendFailed) {
     out.notes.push("Domain checks were unavailable, so this uses the address check only.");
   }
+  // Tier C (domain age, DNS, certificate): like the backend's domain evidence it never turns a safe
+  // verdict into a warning and never lowers one; a dangerous call on a suspicious address raises it.
+  if (layers.tierC && layers.tierC.verdict >= SUSPICIOUS) {
+    out.reasons.push(...layers.tierC.reasons.map((r) => r.text));
+    if (layers.tierC.verdict === DANGEROUS && out.verdict === SUSPICIOUS) {
+      out.verdict = DANGEROUS;
+      out.layer = "tier-c";
+    }
+    out.reasons = [...new Set(out.reasons)];
+  }
   // The password-form rule, when the page model could not read the page or read it only as a bare
   // form (too little text for training pages).
   if ((!pageRead || pageModel.short) && page?.hasPassword && (page.credFormCrossDomain || page.credFormInsecure)) {
@@ -180,6 +202,15 @@ function combineLayers(layers, page = null, pageModel = null) {
     }
   }
   return out;
+}
+
+// A navigation that turns into a download never commits, so the page the user is on stays open. The
+// verdict for the file's address is shown there as a banner worded for a file (never the warning
+// page: nothing was opened, and the file is already on its way). Only a warning is returned.
+export function downloadWarning(result) {
+  if (result?.verdict !== SUSPICIOUS) return null;
+  const from = result.domain ? ` from ${result.domain}` : "";
+  return { ...result, headline: `PhishDrift: a file was just downloaded${from}, and that address looks suspicious. Be careful opening it.` };
 }
 
 // A frame that asks for credentials (a login form in an iframe, srcdoc or about:blank frame) is

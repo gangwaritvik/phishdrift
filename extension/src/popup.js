@@ -56,3 +56,16 @@ $("llmUrl").addEventListener("change", async () => {
   await chrome.storage.local.set({ settings: { ...current, llmUrl: value } });
   $("status").textContent = value ? "AI check address saved." : "AI check uses your backend again.";
 });
+
+// Address of the hosted domain check (settings.tierCUrl, domain age / DNS / certificate); empty = off.
+$("tierCUrl").value = settings?.tierCUrl ?? "";
+$("tierCUrl").addEventListener("change", async () => {
+  const value = $("tierCUrl").value.trim();
+  if (value && !/^https?:\/\//.test(value)) {
+    $("status").textContent = "Enter an address starting with https://";
+    return;
+  }
+  const current = (await chrome.storage.local.get("settings")).settings ?? {};
+  await chrome.storage.local.set({ settings: { ...current, tierCUrl: value } });
+  $("status").textContent = value ? "Domain check on. Only the site's domain is sent." : "Domain check off.";
+});

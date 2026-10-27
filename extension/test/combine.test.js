@@ -9,6 +9,7 @@ import {
   PICTURE_MIN_PROB,
   PICTURE_REASON,
   SAFE,
+  SHARED_HOST_NOTE,
   SUSPICIOUS,
   addressOnly,
   combine,
@@ -264,4 +265,58 @@ test("a look-alike hit never lowers a verdict and never acts on trusted, listed 
   assert.equal(combine({ ...base, allow: true, lookalike }).verdict, SAFE);
   assert.equal(combine({ ...base, shortener: true, lookalike }).verdict, SAFE);
   assert.equal(combine({ ...base, local: true, lookalike }).layer, "local");
+});
+
+test("a download from a suspicious address gets a file-worded banner; other verdicts get none", async () => {
+  const { downloadWarning, SAFE, SUSPICIOUS, DANGEROUS } = await import("../src/combine.js");
+  const warn = downloadWarning({ verdict: SUSPICIOUS, domain: "evil.example", reasons: ["r"], url: "http://evil.example/x" });
+  assert.equal(warn.verdict, SUSPICIOUS);
+  assert.match(warn.headline, /file was just downloaded from evil\.example/);
+  assert.deepEqual(warn.reasons, ["r"]);
+  assert.equal(downloadWarning({ verdict: SAFE, reasons: [] }), null);
+  assert.equal(downloadWarning({ verdict: DANGEROUS, layer: "blocklist", reasons: [] }), null); // the warning page handles it
+  assert.equal(downloadWarning(null), null);
+});
+
+test("on shared hosting the address model alone is capped at suspicious", () => {
+  const shared = { ...base, shared: true, model: model(DANGEROUS) };
+  const r = combine(shared);
+  assert.deepEqual([r.verdict, r.layer, r.notes], [SUSPICIOUS, "url-model", [SHARED_HOST_NOTE]]);
+  assert.equal(addressOnly(r), false);
+  assert.equal(combine({ ...base, model: model(DANGEROUS) }).verdict, DANGEROUS); // same score, own domain
+  assert.equal(combine({ ...shared, model: model(SUSPICIOUS) }).notes.length, 0); // nothing capped
+});
+
+test("on shared hosting a credential page, the page model, a list or domain evidence still reach dangerous", () => {
+  const shared = { ...base, shared: true, model: model(DANGEROUS) };
+  assert.equal(combine(shared, { asksCredentials: true, hasPassword: true }).verdict, DANGEROUS);
+  const pageModel = { hasHtml: true, blended: 0.99, verdict: DANGEROUS, pageDangerous: true, reasons: [{ text: "p" }] };
+  assert.deepEqual([combine(shared, { asksCredentials: false }, pageModel).verdict, combine(shared, { asksCredentials: false }, pageModel).layer], [DANGEROUS, "page-model"]);
+  assert.equal(combine({ ...shared, blocked: "url" }).layer, "blocklist");
+  const domain = { risk: "high", signals: [{ severity: "high", text: "Brand new domain." }] };
+  assert.deepEqual([combine({ ...shared, domain }).verdict, combine({ ...shared, domain }).layer], [DANGEROUS, "domain"]);
+});
+
+// --- tier C (domain age, DNS, certificate): raises suspicious to dangerous, nothing else ------
+const tierC = (verdict, text = "The domain was registered 3 days ago.") => ({ verdict, reasons: [{ text }] });
+
+test("tier C raises a suspicious address to dangerous and adds its reason", () => {
+  const r = combine({ ...base, model: model(SUSPICIOUS, ["m"]), tierC: tierC(DANGEROUS) });
+  assert.deepEqual([r.verdict, r.layer, r.reasons], [DANGEROUS, "tier-c", ["m", "The domain was registered 3 days ago."]]);
+});
+
+test("tier C suspicious adds a reason but does not raise; tier C safe changes nothing", () => {
+  const sus = combine({ ...base, model: model(SUSPICIOUS, ["m"]), tierC: tierC(SUSPICIOUS) });
+  assert.deepEqual([sus.verdict, sus.layer], [SUSPICIOUS, "url-model"]);
+  assert.ok(sus.reasons.includes("The domain was registered 3 days ago."));
+  const safe = combine({ ...base, model: model(SUSPICIOUS, ["m"]), tierC: tierC(SAFE) });
+  assert.deepEqual([safe.verdict, safe.reasons], [SUSPICIOUS, ["m"]]);
+});
+
+test("tier C never warns on a safe address, never lowers, never touches trusted or allowlisted sites", () => {
+  assert.equal(combine({ ...base, tierC: tierC(DANGEROUS) }).verdict, SAFE);
+  assert.equal(combine({ ...base, model: model(DANGEROUS), tierC: tierC(SAFE) }).verdict, DANGEROUS);
+  assert.equal(combine({ ...base, trusted: true, model: model(SUSPICIOUS), tierC: tierC(DANGEROUS) }).verdict, SAFE);
+  assert.equal(combine({ ...base, allow: true, model: model(SUSPICIOUS), tierC: tierC(DANGEROUS) }).verdict, SAFE);
+  assert.equal(combine({ ...base, blocked: "url", model: null, tierC: tierC(SAFE) }).layer, "blocklist");
 });

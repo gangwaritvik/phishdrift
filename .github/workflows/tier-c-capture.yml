@@ -1,0 +1,33 @@
+name: Tier C capture (phishing)
+# Hourly: poll the fresh phishing feeds (collector/capture_feeds.py, each feed at its own
+# interval) and capture RDAP / DNS / TLS facts of every new registrable domain, then append
+# them to the orphan branch `tier-c-data`. Datasets are never committed to main.
+# Scheduled runs use the default branch's copy of this file.
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/tier-c-capture.yml", "scripts/ci_data_branch.sh"]
+permissions:
+  contents: write
+concurrency:
+  group: tier-c-capture-phishing
+  cancel-in-progress: false
+jobs:
+  phishing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e .
+      - run: scripts/ci_data_branch.sh fetch
+      - run: python -u -m collector capture-phishing
+      - if: always()
+        run: scripts/ci_data_branch.sh push "phishing capture"

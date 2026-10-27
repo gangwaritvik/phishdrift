@@ -11,10 +11,10 @@
 // waited for: the verdict is shown at once and raised when (and if) the backend answers.
 
 import { llmEndpoint, sanitizeSettings } from "./config.js";
-import { addressOnly, combine, DANGEROUS, FRAME_PAGE_REASON, SAFE, SUSPICIOUS, framePageVerdict } from "./combine.js";
+import { addressOnly, combine, DANGEROUS, downloadWarning, FRAME_PAGE_REASON, SAFE, SUSPICIOUS, framePageVerdict } from "./combine.js";
 import { listDomainKey, listUrlKey } from "./keys.js";
 import { MAX_URL_CHARS, effectiveUrl, isLocalAddress, scoreAddress } from "./address.js";
-import { DOMAIN_FAILURE_MS, usableAnswer, usableLlmAnswer } from "./domain.js";
+import { DOMAIN_FAILURE_MS, usableAnswer, usableLlmAnswer, usableTierCAnswer } from "./domain.js";
 import { addTrust, liveTrust } from "./trust.js";
 import { safeExit, worse } from "./navigation.js";
 import { loadHybrid } from "./lib/hybrid.js";
@@ -246,6 +246,38 @@ function llmLookup(host, settings) {
   return { pending: llmInflight.get(host) };
 }
 
+// Tier C (hosted domain check): only the registrable domain is sent. A failed or refused check is
+// "no evidence", remembered briefly; it never raises or lowers anything.
+const tierCCache = new Map(); // domain -> { at, answer | null }
+const tierCInflight = new Map();
+
+async function fetchTierC(domain, settings) {
+  let answer = null;
+  try {
+    const res = await fetch(settings.tierCUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ domain }),
+      signal: AbortSignal.timeout(settings.tierCTimeoutMs),
+    });
+    if (res.ok) answer = usableTierCAnswer(await res.json());
+  } catch {
+    // fall through: no evidence
+  }
+  cacheSet(tierCCache, domain, { answer }, settings.verdictCacheMax);
+}
+
+function tierCLookup(domain, settings) {
+  const hit = tierCCache.get(domain);
+  if (hit && Date.now() - hit.at < (hit.answer ? settings.domainCacheMs : DOMAIN_FAILURE_MS)) {
+    return { answer: hit.answer };
+  }
+  if (!tierCInflight.has(domain)) {
+    tierCInflight.set(domain, fetchTierC(domain, settings).finally(() => tierCInflight.delete(domain)));
+  }
+  return { pending: tierCInflight.get(domain) };
+}
+
 function hostOf(target) {
   try {
     const host = new URL(target).hostname;
@@ -376,6 +408,17 @@ export async function evaluate(url, { facts = null, html = null, origin = null }
       answered = true;
     }
   }
+  // Tier C (domain age, DNS, certificate): same gate as the backend's domain evidence, because it can
+  // only raise suspicious to dangerous. Off until settings.tierCUrl is set.
+  if (settings.tierCUrl && result.verdict === SUSPICIOUS && askable(layers) && !layers.allow && !layers.shortener) {
+    const found = tierCLookup(layers.domainName, settings);
+    if (found.pending) {
+      waits.push(found.pending);
+    } else {
+      layers.tierC = found.answer;
+      answered = true;
+    }
+  }
   // The brand-impersonation opinion (opt-in, borderline addresses only; the host name is sent).
   const host = llmWanted(layers, result, page, settings) ? hostOf(target) : null;
   if (host) {
@@ -422,12 +465,16 @@ async function rememberSafe(tabId, result) {
 
 // `at` is the tab's navigation when the verdict was reached; the warning page is not opened if the
 // tab has moved on since (the awaits below leave room for "Take me back to safety" to run).
-async function applyResult(tabId, result, at = lastNav.get(tabId)) {
-  await session.set(`tab:${tabId}`, result);
+async function showBadge(tabId, result) {
   await chrome.action.setBadgeText({ tabId, text: BADGES[result.verdict] });
   if (BADGE_COLORS[result.verdict]) {
     await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLORS[result.verdict] });
   }
+}
+
+async function applyResult(tabId, result, at = lastNav.get(tabId)) {
+  await session.set(`tab:${tabId}`, result);
+  await showBadge(tabId, result);
   const bypass = await session.get(`bypass:${tabId}`);
   if (result.verdict === DANGEROUS && bypass !== listUrlKey(result.url) && lastNav.get(tabId) === at) {
     await chrome.tabs.update(tabId, { url: warningUrl(tabId) });
@@ -498,14 +545,54 @@ function holdForPage(tabId, url, result) {
 const lastNav = new Map();
 const stillAt = (tabId, url) => !lastNav.has(tabId) || lastNav.get(tabId) === url;
 
+// Navigations Chrome reported as aborted (a file download, or Stop pressed) whose verdict may not be
+// ready yet: tabId -> address. Whoever finishes second handles the download (see `downloaded`).
+const aborted = new Map();
+
 chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   if (details.frameId !== 0) return;
   const { tabId, url } = details;
   lastNav.set(tabId, url);
+  aborted.delete(tabId);
   guarded(async () => {
     const { result } = await evaluate(url);
     const early = result.verdict === DANGEROUS && result.layer !== "blocklist" ? held(result) : result;
-    if (stillAt(tabId, url)) await applyResult(tabId, early);
+    if (!stillAt(tabId, url)) return;
+    // kept in case this navigation turns into a download and the open page stays
+    const before = await session.get(`tab:${tabId}`);
+    if (before && before.url !== url) await session.set(`prev:${tabId}`, before);
+    await applyResult(tabId, early);
+    if (aborted.get(tabId) === url) await downloaded(tabId, url, early);
+  });
+}, navFilter);
+
+// A file download never commits: Chrome reports the navigation as aborted and the tab keeps the page
+// it was showing. That page gets back its own verdict (the file's address must not stand in for it),
+// and a suspicious file address is shown on it as a banner. A blocklisted address already opened the
+// warning page. A tab that shows no web page (a new tab sent straight to the file) has nowhere to
+// show a banner, so it keeps only the toolbar badge.
+async function downloaded(tabId, url, shown) {
+  aborted.delete(tabId);
+  if (shown.layer === "blocklist") return;
+  const [prev, doc] = await Promise.all([session.get(`prev:${tabId}`), session.get(`doc:${tabId}`)]);
+  if (doc?.url) lastNav.set(tabId, doc.url); // the open page is still the tab's current navigation
+  if (prev) {
+    await session.set(`tab:${tabId}`, prev);
+    await showBadge(tabId, prev);
+  }
+  const warning = downloadWarning(shown);
+  if (warning) notifyTab(tabId, warning);
+}
+
+chrome.webNavigation.onErrorOccurred.addListener((details) => {
+  if (details.frameId !== 0 || details.error !== "net::ERR_ABORTED") return;
+  const { tabId, url } = details;
+  if (lastNav.get(tabId) !== url) return; // replaced by a newer navigation
+  aborted.set(tabId, url);
+  guarded(async () => {
+    const shown = await session.get(`tab:${tabId}`);
+    // not applied yet: onBeforeNavigate's check finishes the job when its verdict is ready
+    if (shown?.url === url && aborted.get(tabId) === url) await downloaded(tabId, url, shown);
   });
 }, navFilter);
 
@@ -515,6 +602,7 @@ chrome.webNavigation.onCommitted.addListener((details) => {
   if (details.frameId !== 0) return;
   const { tabId, url } = details;
   lastNav.set(tabId, url);
+  aborted.delete(tabId);
   guarded(async () => {
     await session.set(`doc:${tabId}`, { url, floor: null, pageDone: false, frameCredentials: false });
     await check(url, {}, async (result, earlier) => {
@@ -553,7 +641,7 @@ chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   lastNav.delete(tabId);
-  for (const key of ["tab", "bypass", "doc", "safe"]) session.remove(`${key}:${tabId}`);
+  for (const key of ["tab", "bypass", "doc", "safe", "prev"]) session.remove(`${key}:${tabId}`);
 });
 
 // --- messages from the content script, popup and warning page -------------------------------

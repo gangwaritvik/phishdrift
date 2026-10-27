@@ -100,12 +100,16 @@ const routes = {
 };
 // The case page: the next navigation to a case address serves srv.current, so the address (and
 // with it the address model's verdict) stays fixed while the page changes.
-const srv = { current: null };
+const srv = { current: null, file: null };
 const CASE_PATHS = new Set(["/a", "/", "/app", "/login", "/b-other-page", "/again", "/home"]);
 const pages = createServer({ maxHeaderSize: 1 << 20 }, (req, res) => {
   const u = new URL(req.url, "http://x");
   let path = u.pathname;
   res.setHeader("Cache-Control", "no-store");
+  if (CASE_PATHS.has(path) && srv.file) {
+    for (const [k, v] of Object.entries(srv.file.headers)) res.setHeader(k, v);
+    return res.end(srv.file.body);
+  }
   if (CASE_PATHS.has(path) && srv.current && req.headers["sec-fetch-dest"] !== "iframe") {
     res.setHeader("Content-Type", "text/html");
     return res.end(srv.current);
@@ -169,6 +173,7 @@ async function waitSeen(page, minUi, ms = 8000) {
 }
 async function open(url, route = null) {
   srv.current = route ? routes[route]() : null;
+  srv.file = null;
   const page = await context.newPage();
   await page.goto(url, { timeout: 15000 }).catch(() => {});
   return page;
@@ -435,6 +440,111 @@ await record("X-backend-down", "backend refuses connections", "page loads; banne
   const s = await waitSeen(page, "banner", 6000);
   be.down = false;
   return { pass: warned(s), actual: `${desc(s)} notes=${JSON.stringify(s.notes)}` };
+});
+
+
+// ---------------- file types: PDFs and downloads ----------------
+// The body is chosen by the Content-Type / Content-Disposition headers, not by the path, so the address
+// (and its model score) is the same as for the page cases.
+const pdfBytes = (link) => {
+  const objs = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> /Annots [6 0 R] >>`,
+    "<< /Length 60 >>\nstream\nBT /F1 18 Tf 20 100 Td (Click here to sign in) Tj ET\nendstream",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Type /Annot /Subtype /Link /Rect [0 0 300 200] /Border [0 0 0] /A << /S /URI /URI (${link}) >> >>`,
+  ];
+  let out = "%PDF-1.4\n"; const offs = [];
+  objs.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+  const xref = out.length;
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map((o) => String(o).padStart(10, "0") + " 00000 n \n").join("");
+  return out + `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+};
+const FILES = {
+  pdf: () => ({ headers: { "Content-Type": "application/pdf" }, body: pdfBytes("http://example.test/") }),
+  exe: () => ({ headers: { "Content-Type": "application/octet-stream", "Content-Disposition": 'attachment; filename="setup.exe"' }, body: "MZ fake" }),
+  zip: () => ({ headers: { "Content-Type": "application/zip" }, body: "PK fake" }),
+  htmlAttachment: () => ({ headers: { "Content-Type": "text/html", "Content-Disposition": 'attachment; filename="invoice.html"' }, body: LURE }),
+  image: () => ({ headers: { "Content-Type": "image/svg+xml" }, body: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40"/></svg>' }),
+};
+async function openFile(url, kind) {
+  srv.current = null;
+  srv.file = FILES[kind]();
+  const page = await context.newPage();
+  const id = (await tabs()).find((t) => (t.url ?? "") === "" || t.url === "about:blank" || t.pending === "about:blank")?.id ?? null;
+  const nav = await page.goto(url, { timeout: 10000 }).then(() => "loaded", (e) => (/Download is starting/.test(e.message) ? "download" : "error"));
+  return { page, nav, id };
+}
+async function fileSeen(f) {
+  const { page, id } = f;
+  const tabId = (page.url().startsWith("http") ? await tabIdOf(page) : null) ?? id;
+  const st = tabId == null ? null : await worker.evaluate(async (k) => (await chrome.storage.session.get(k))[k] ?? null, `tab:${tabId}`);
+  const badge = tabId == null ? "" : await worker.evaluate((t) => chrome.action.getBadgeText({ tabId: t }), tabId);
+  const ui = isWarning(page) ? "warning" : (await bannerVisible(page)) ? "banner" : "none";
+  return { ui, verdict: ui === "warning" ? 2 : st?.verdict ?? null, layer: st?.layer, badge, nav: f.nav, at: page.isClosed() ? "closed" : page.url().slice(0, 50) };
+}
+const fdesc = (s) => `nav=${s.nav} ui=${s.ui} stored verdict=${s.verdict}${s.layer ? " layer=" + s.layer : ""} badge="${s.badge}" tab at ${s.at}`;
+const fileCase = (id, gap, expected, host, path, kind, okFn, wait = 8000) =>
+  record(id, gap, expected, async () => {
+    const f = await openFile(`http://${host}:8123${path}`, kind);
+    await sleep(wait);
+    const s = await fileSeen(f);
+    return { pass: okFn(s), actual: fdesc(s), shot: await shot(f.page, id) };
+  });
+const anyWarn = (s) => s.ui !== "none" || s.verdict >= 1;
+await record("F-pdf-control-safe-address", "PDF on an address the model passes", "no warning", async () => {
+  const f = await openFile(`${SAFEHOST}/`, "pdf"); await sleep(4000); const s = await fileSeen(f);
+  return { pass: s.ui === "none", actual: fdesc(s) };
+});
+await fileCase("F-pdf-suspicious-address", "PDF on a suspicious address", "banner (like a web page)", HOST, "/a", "pdf", (s) => s.ui === "banner" || s.ui === "warning");
+await fileCase("F-pdf-dangerous-address", "PDF on a dangerous address", "warning page or banner", DANGERHOST, "/home", "pdf", anyWarn);
+await fileCase("F-pdf-blocklisted", "PDF on a blocklisted address", "warning page", BLOCKEDHOST, "/", "pdf", (s) => s.ui === "warning");
+await fileCase("F-download-dangerous-address", "download (.exe) from a dangerous address, new tab with no page (toolbar badge only: nowhere to put a banner)", "info", DANGERHOST, "/home", "exe", () => null, 6000);
+await fileCase("F-download-blocklisted", "download (.exe) from a blocklisted address", "warning page", BLOCKEDHOST, "/", "exe", (s) => s.ui === "warning", 6000);
+await fileCase("F-download-zip-suspicious", "zip from a suspicious address", "info (badge only, new tab)", HOST, "/a", "zip", () => null, 6000);
+await fileCase("F-html-attachment-dangerous", "HTML file sent as a download from a dangerous address", "info (badge only, new tab)", DANGERHOST, "/home", "htmlAttachment", () => null, 6000);
+await fileCase("F-svg-image-dangerous", "image on a dangerous address (no HTML, no content script)", "info", DANGERHOST, "/home", "image", () => null, 6000);
+async function downloadFromSafePage(host, path) {
+  srv.current = routes["/news"](); srv.file = null;
+  const page = await context.newPage();
+  await page.goto(`${SAFEHOST}/`).catch(() => {});
+  await sleep(2500);
+  const before = await seen(page);
+  srv.file = FILES.exe();
+  const dl = page.waitForEvent("download", { timeout: 6000 }).catch(() => null);
+  await page.evaluate((u) => { const a = document.createElement("a"); a.href = u; a.textContent = "get"; document.body.append(a); a.click(); }, `http://${host}:8123${path}`);
+  const d = await dl;
+  await sleep(3500);
+  const after = await seen(page);
+  return { page, before, after, started: d !== null };
+}
+await record("F-download-link-from-safe-page-flagged", "safe page, the user clicks a download link to a dangerous address", "the page keeps its own verdict (safe) and shows a banner about the file", async () => {
+  const { page, before, after, started } = await downloadFromSafePage(DANGERHOST, "/home");
+  const text = await page.evaluate(() => document.querySelector("phishdrift-banner") ? "banner element present" : "no banner element").catch(() => "?");
+  return { pass: started && before.verdict === 0 && after.verdict === 0 && after.ui === "banner", actual: `download started=${started}; before: ${desc(before)} | after: ui=${after.ui} stored verdict=${after.verdict} (${text})`, shot: await shot(page, "F-download-from-page") };
+});
+await record("F-download-link-from-safe-page-control", "safe page, the user clicks a download link to a safe address", "no banner, the page keeps its verdict", async () => {
+  const { page, before, after, started } = await downloadFromSafePage(SAFEHOSTNAME + "", "/");
+  return { pass: started && after.verdict === before.verdict && after.ui === "none", actual: `download started=${started}; before: ${desc(before)} | after: ${desc(after)}` };
+});
+await record("F-download-link-blocklisted", "safe page, the user clicks a download link to a blocklisted address", "warning page (the download itself is not stopped)", async () => {
+  const { page, after, started } = await downloadFromSafePage(BLOCKEDHOST, "/");
+  return { pass: after.ui === "warning", actual: `download started=${started}; ${desc(after)}` };
+});
+await record("F-pdf-link-click", "link inside a PDF on a safe address, opened in the same tab, leads to a dangerous address", "the link target is checked like any navigation: warning page (the page it leads to asks for a password)", async () => {
+  srv.current = null;
+  srv.file = { headers: { "Content-Type": "application/pdf" }, body: pdfBytes(`http://${DANGERHOST}:8123/home`) };
+  const page = await context.newPage();
+  await page.goto(`${SAFEHOST}/`, { timeout: 10000 }).catch(() => {});
+  await sleep(4000);
+  srv.file = { headers: { "Content-Type": "text/html" }, body: TINY }; // what the link leads to
+  await page.mouse.click(790, 200);
+  for (let i = 0; i < 40 && !isWarning(page) && !page.url().includes(DANGERHOST); i++) await sleep(250);
+  await sleep(1500);
+  const u = page.isClosed() ? "closed" : page.url();
+  const s = await seen(page);
+  return { pass: isWarning(page) || (u.includes(DANGERHOST) && warned(s)), actual: `after click tab at ${u.slice(0, 60)} ${desc(s)}`, shot: await shot(page, "F-pdf-link") };
 });
 
 writeFileSync(join(out, "results.json"), JSON.stringify(results, null, 2));

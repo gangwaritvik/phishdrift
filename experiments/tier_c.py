@@ -82,18 +82,23 @@ def capture_lag_h(df: pd.DataFrame) -> pd.Series:
     return (captured - first).dt.total_seconds() / 3600
 
 
-def eligible(df: pd.DataFrame, max_lag_h: float | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+def eligible(
+    df: pd.DataFrame, max_lag_h: float | None = None, require_resolving: bool = True
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """(eligible rows, removals per filter and class). Filters run in this order.
     ``max_lag_h``: drop hosts captured more than this many hours after they were first seen,
     so both classes are measured at the same age (a host re-captured a day later, e.g. after
-    the PC's resolver blocked the first try, may already be suspended or taken down)."""
+    the PC's resolver blocked the first try, may already be suspended or taken down).
+    ``require_resolving`` False (domain-unit captures): a domain whose apex and www do not
+    resolve stays, because the deployed check meets such domains too and sees no DNS for them."""
     steps = [
         ("label not 0/1", lambda d: ~d["label"].isin([0, 1])),
         ("hosting platform", lambda d: d["is_hosting_platform"].astype(bool)),
         ("IP host", lambda d: d["is_ip"].astype(bool)),
         ("filtered by the PC's resolver", lambda d: d["filtered"].astype(bool)),
-        ("not resolving", lambda d: ~d["resolves"].fillna(False).astype(bool)),
     ]
+    if require_resolving:
+        steps.append(("not resolving", lambda d: ~d["resolves"].fillna(False).astype(bool)))
     if max_lag_h is not None:
         steps.append(
             (
@@ -253,11 +258,15 @@ def run_split(
                 {"split": k, "feature": n, "gain": float(g), "gain_share": float(g / total)}
                 for n, g in zip(gbdt.columns, gain, strict=True)
             ]
-    y_shuffled = np.random.default_rng(seed).permutation(train["label"].to_numpy())
-    gbdt = GBDT("lightgbm", cc["lightgbm"], list(NAMES_C), seed).fit(train, y_shuffled)
-    row = evaluate(test["label"], gbdt.score(test), targets, min_neg)
-    row |= {"n_domains": test["domain"].nunique(), "cal_n_neg": int((cal["label"] == 0).sum())}
-    runs.append(base | {"model": CONTROL[0], "features": CONTROL[1]} | row)
+    # with few positives one shuffle is a noisy draw (a test-side AUC has a wide spread when the
+    # scores of nearby rows are correlated), so the control repeats with several shuffles
+    for j in range(cc.get("control_shuffles", 1)):
+        shuffle_seed = seed + 1000 * j
+        y_shuffled = np.random.default_rng(shuffle_seed).permutation(train["label"].to_numpy())
+        gbdt = GBDT("lightgbm", cc["lightgbm"], list(NAMES_C), seed).fit(train, y_shuffled)
+        row = evaluate(test["label"], gbdt.score(test), targets, min_neg)
+        row |= {"n_domains": test["domain"].nunique(), "cal_n_neg": int((cal["label"] == 0).sum())}
+        runs.append(base | {"model": CONTROL[0], "features": CONTROL[1], "shuffle": j} | row)
     return runs, importance
 
 
@@ -307,7 +316,7 @@ def time_check(df: pd.DataFrame, cfg: dict, with_a: bool) -> tuple[pd.DataFrame 
 def summarise(runs: pd.DataFrame) -> pd.DataFrame:
     g = runs.groupby(["model", "features"], sort=False)
     out = g[["n_urls", "n_domains", "n_pos", "n_neg", "cal_n_neg"]].median()
-    out["n_splits"] = g.size()
+    out["n_splits"] = g["split"].nunique()
     for m in SUMMARY:
         col = runs[m] if m in runs else pd.Series(np.nan, index=runs.index)
         grouped = col.groupby([runs["model"], runs["features"]], sort=False)
@@ -359,11 +368,15 @@ CAVEATS = [
     "- Capture happens hours after a feed lists a host, so some phishing domains are already "
     "suspended (`rdap_client_hold`) or re-captured after a filtered first attempt; a deployed "
     "check sees the host earlier.",
-    "- `rdap_found = 0` mostly means rdap.org has no server for the TLD (many ccTLDs), so it "
-    "partly encodes the TLD.",
-    "- Benign hosts arrive as `<domain>` and `www.<domain>` pairs while phishing hosts are "
-    "mostly subdomains, so host-form features such as `has_cname` can separate the classes "
-    "by collection method; its importance is shown above.",
+    "- `rdap_found = 0` mostly means the registry has no RDAP server for the TLD (about a quarter "
+    "of Tranco domains sit on such TLDs), so it partly encodes the TLD.",
+    "- Rows captured as hosts before the domain unit (older files) are still in the data; in the "
+    "domain unit both classes are captured the same way (the apex, `www.` when the apex does "
+    "not resolve), so host-form features such as `has_cname` are less likely to separate the "
+    "classes by collection method. Their importance is shown above.",
+    "- Phishing domains come from fresh feed entries (first seen within hours), legitimate "
+    "domains from Tranco bands; age is the strongest feature and the two classes differ in how "
+    "they were found, so read the no-age variant first.",
     "",
 ]
 
@@ -392,8 +405,8 @@ def render(
         ]
     lines += [
         "Generated by `python -m experiments.tier_c`. Do not edit by hand.",
-        "Rows are hosts (one per host, latest capture). Hosts outnumber registrable domains: "
-        "a domain's hosts always stay on one side of a split.",
+        "Rows are captured hosts (one per host, latest capture); in the domain unit that is one "
+        "per registrable domain. A domain's hosts always stay on one side of a split.",
         "",
         "## Rows",
         "",
@@ -491,10 +504,17 @@ def control_lines(runs: pd.DataFrame, flag: float) -> list[str]:
         return []
     mean = float(ctrl.mean())
     flagged = abs(mean - 0.5) > flag
+    per_split = runs[runs["features"] == CONTROL[1]].groupby("split")["roc_auc"].mean()
+    # the spread of the split means is the honest uncertainty (shuffles of a split share a test set)
+    sem = (
+        float(per_split.std(ddof=1) / math.sqrt(len(per_split))) if len(per_split) > 1 else math.nan
+    )
     return [
         f"Shuffled-label control (labels permuted within train): mean test ROC-AUC {mean:.4f} "
-        f"[{ctrl.min():.4f}, {ctrl.max():.4f}] over {len(ctrl)} splits; "
-        f"{'**FLAGGED**' if flagged else 'not flagged'} (flag rule: |mean - 0.5| > {flag})."
+        f"[{ctrl.min():.4f}, {ctrl.max():.4f}] over {len(per_split)} splits x "
+        f"{len(ctrl) // max(len(per_split), 1)} shuffles (standard error of the split means "
+        f"{sem:.3f}); {'**FLAGGED**' if flagged else 'not flagged'} "
+        f"(flag rule: |mean - 0.5| > {flag})."
     ]
 
 
@@ -523,15 +543,32 @@ def run(
     with_a: bool = False,
     processed: Path | None = None,
     lists: Lists | None = None,
+    a_scores: Path | None = None,
 ) -> Path:
     cfg = cfg or load_config("models")
     cc = cfg["tier_c"]
     tables = reports / "tables"
     tables.mkdir(parents=True, exist_ok=True)
     out_md = reports / "tier_c.md"
-    df, filters = eligible(pd.read_parquet(features), cc.get("max_capture_lag_h"))
+    df, filters = eligible(
+        pd.read_parquet(features),
+        cc.get("max_capture_lag_h"),
+        cc.get("require_resolving", True),
+    )
     notes: list[str] = []
-    if with_a:
+    if with_a and a_scores is not None:
+        # scores of the shipped address model (js/bench/domain_scores.mjs): its training pool is
+        # not here, so domains it may have seen are not removed; that can only make the address
+        # model look better, i.e. the gain from tier C smaller
+        table = pd.read_csv(a_scores).drop_duplicates("domain").set_index("domain")["score"]
+        df = df[df["domain"].isin(table.index)].reset_index(drop=True)
+        df["a_host"] = df["domain"].map(table).to_numpy(dtype=float)
+        notes.append(
+            "The address score is the shipped model's on `https://<domain>/`, not retrained "
+            "on this split; pool overlap with its training data is unknown, which favours the "
+            "address model."
+        )
+    elif with_a:
         if processed is None:
             raise ValueError("--with-a needs --processed")
         seen = pool_domains(processed)
@@ -577,7 +614,7 @@ def run(
         log.info("not trained: %s", reason)
         return out_md
 
-    if with_a:
+    if with_a and a_scores is None:
         df["a_host"] = a_host_scores(df, processed, lists or load_lists(), cfg)
     splits = grouped_splits(df, cc["n_splits"], cc["test_fraction"], cc["cal_fraction"], cc["seed"])
     runs, imp = [], []
@@ -604,8 +641,46 @@ def run(
         notes=notes,
         control=control_lines(runs_df, cfg["eval"]["shuffled_label_flag"]),
     )
-    out_md.write_text(md, encoding="utf-8")
+    sens = lag_sensitivity(df, cfg, with_a)
+    out_md.write_text(md + "\n".join(sens) if sens else md, encoding="utf-8")
     return out_md
+
+
+def lag_sensitivity(df: pd.DataFrame, cfg: dict, with_a: bool) -> list[str]:
+    """The main model again on rows captured within ``sensitivity_lag_h`` of first seen, so the
+    effect of the looser lag limit used for volume can be read off. Empty when not configured or
+    too few rows."""
+    cc = cfg["tier_c"]
+    limit = cc.get("sensitivity_lag_h")
+    if limit is None:
+        return []
+    lag = (df["captured_at"] - df["first_seen"]).dt.total_seconds() / 3600
+    sub = df[(lag <= limit).fillna(False).to_numpy()].reset_index(drop=True)
+    n_pos, n_neg = int((sub["label"] == 1).sum()), int((sub["label"] == 0).sum())
+    head = ["", f"## Sensitivity: captured within {limit:g} h of first seen", ""]
+    if min(n_pos, n_neg) < cc["min_rows_per_class"]:
+        return head + [f"Too few rows ({n_pos} phishing, {n_neg} benign) for a separate run.", ""]
+    splits = grouped_splits(
+        sub, cc["n_splits"], cc["test_fraction"], cc["cal_fraction"], cc["seed"]
+    )
+    runs = []
+    for k in range(cc["n_splits"]):
+        r, _ = run_split(k, sub, splits[f"split_{k}"], cfg, with_a)
+        runs += r
+    summary = summarise(pd.DataFrame(runs))
+    lines = head + [
+        f"{n_pos:,} phishing and {n_neg:,} benign rows ({sub['domain'].nunique():,} domains). "
+        "Median over the same number of grouped splits [min, max].",
+        "",
+        "| model | features | ROC-AUC | recall @1% FPR |",
+        "|---|---|---|---|",
+    ]
+    for _, r in summary.iterrows():
+        lines.append(
+            f"| {r['model']} | {r['features']} | {_cell(r, 'roc_auc', False)} "
+            f"| {_cell(r, 'op_1pct_recall')} |"
+        )
+    return lines + [""]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -614,12 +689,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--reports", type=Path, default=Path("reports"))
     ap.add_argument("--with-a", action="store_true", help="add the tier A bare-host score")
     ap.add_argument("--processed", type=Path, default=Path("data/processed"))
+    ap.add_argument(
+        "--a-scores", type=Path, default=None, help="CSV domain,score from domain_scores.mjs"
+    )
     ap.add_argument("--lists-dir", default=None)
     ap.add_argument("--platforms-file", default=None)
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
-    lists = load_lists(a.lists_dir, a.platforms_file) if a.with_a else None
-    print(run(a.features, a.reports, with_a=a.with_a, processed=a.processed, lists=lists))
+    lists = load_lists(a.lists_dir, a.platforms_file) if a.with_a and not a.a_scores else None
+    print(
+        run(
+            a.features,
+            a.reports,
+            with_a=a.with_a,
+            processed=a.processed,
+            lists=lists,
+            a_scores=a.a_scores,
+        )
+    )
     return 0
 
 

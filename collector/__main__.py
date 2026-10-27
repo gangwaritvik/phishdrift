@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 
 import pandas as pd
 
-from collector import benign, domain_capture, feeds, ood, popular, store
+from collector import benign, capture_feeds, domain_capture, feeds, ood, popular, store
 from collector.lock import AlreadyRunning, run_lock
 from features.lists import load_lists
 from phishdrift.config import load_config, resolve
@@ -82,7 +82,9 @@ def capture_targets(new_feed_rows: pd.DataFrame, crawl_summary: dict) -> list[di
     return targets
 
 
-def benign_targets(cfg: dict, now: datetime) -> list[dict]:
+def benign_targets(
+    cfg: dict, now: datetime, shard: tuple[int, int] | None = None, per_run: int | None = None
+) -> list[dict]:
     """Legitimate hosts for tier C: a fresh Tranco sample each run (``domain_capture.benign``),
     excluding every domain in the corpus, the training crawl, the OOD set, the feed index and
     earlier captures. Each domain is captured as ``<domain>`` and ``www.<domain>``, because feed
@@ -106,25 +108,66 @@ def benign_targets(cfg: dict, now: datetime) -> list[dict]:
     top_n = max(b["to_rank"] for b in bcfg["bands"])
     ranked = benign.tranco_domains(top_n, resolve(cfg["crawler"]["tranco_cache_dir"]))
     run_cfg = {**bcfg, "seed": bcfg["seed"] + now.toordinal() * 2 + now.hour // 12}
-    picked = ood.sample_ood_domains(ranked, run_cfg, exclude, ood.load_platforms(), bcfg["per_run"])
+    n_shards = shard[1] if shard else 1
+    n = (per_run or bcfg["per_run"]) * n_shards
+    picked = ood.sample_ood_domains(ranked, run_cfg, exclude, ood.load_platforms(), n)
+    if shard:  # every shard draws the same list (same seed and exclusions) and keeps its slice
+        picked = picked[shard[0] :: shard[1]]
+    forms = (
+        (lambda d: (d,))
+        if cfg["domain_capture"].get("unit") == "domain"
+        else (lambda d: (d, f"www.{d}"))
+    )
     return [
-        {"url": f"https://{host}/", "label": 0, "first_seen": pd.Timestamp(now)}
+        {"url": f"https://{host}/", "label": 0, "source": "tranco", "first_seen": pd.Timestamp(now)}
         for d in picked
-        for host in (d, f"www.{d}")
+        for host in forms(d)
     ]
 
 
-def run(no_crawl: bool = False, no_capture: bool = False) -> int:
+def capture_phishing() -> int:
+    """Poll the fresh phishing feeds and capture their new domains (tier C only)."""
+    cfg = load_config("collector")
+    cf = {**cfg["capture_feeds"], "state_dir": resolve(cfg["capture_feeds"]["state_dir"])}
+    now = datetime.now(UTC)
+    client = HttpClient.from_config(cfg["http"], resolve(cfg["paths"]["http_cache_dir"]))
+    targets, counts = capture_feeds.poll(client, cf, now)
+    log.info("capture-phishing: %d targets %s", len(targets), counts)
+    dcfg = {**cfg["domain_capture"], "file_tag": "-phish"}
+    out = domain_capture.capture(
+        targets, client, dcfg, resolve(cfg["paths"]["domain_info_dir"]), now
+    )
+    log.info("capture-phishing: %s", out)
+    return 0
+
+
+def capture_legit(shard: tuple[int, int], per_run: int) -> int:
+    """Legitimate-domain capture only (one parallel shard of a bigger sample): no feeds."""
+    cfg = load_config("collector")
+    dcfg = {**cfg["domain_capture"], "file_tag": f"-legit{shard[0]}of{shard[1]}"}
+    dcfg["max_domains_per_run"] = per_run
+    now = datetime.now(UTC)
+    targets = benign_targets(cfg, now, shard, per_run)
+    log.info("legit capture shard %d/%d: %d domains", shard[0], shard[1], len(targets))
+    client = HttpClient.from_config(cfg["http"], resolve(cfg["paths"]["http_cache_dir"]))
+    out = domain_capture.capture(
+        targets, client, dcfg, resolve(cfg["paths"]["domain_info_dir"]), now
+    )
+    log.info("legit capture shard %d/%d: %s", shard[0], shard[1], out)
+    return 0
+
+
+def run(no_crawl: bool = False, no_capture: bool = False, no_benign: bool = False) -> int:
     cfg = load_config("collector")
     try:
         with run_lock(resolve(cfg["run"]["lock_path"]), cfg["run"]["lock_stale_s"]):
-            return _run(cfg, no_crawl, no_capture)
+            return _run(cfg, no_crawl, no_capture, no_benign)
     except AlreadyRunning as exc:
         log.warning("collector run skipped: %s", exc)
         return 0
 
 
-def _run(cfg: dict, no_crawl: bool, no_capture: bool) -> int:
+def _run(cfg: dict, no_crawl: bool, no_capture: bool, no_benign: bool = False) -> int:
     paths = cfg["paths"]
     client = HttpClient.from_config(cfg["http"], resolve(paths["http_cache_dir"]))
     now = datetime.now(UTC)
@@ -153,7 +196,8 @@ def _run(cfg: dict, no_crawl: bool, no_capture: bool) -> int:
             recent_rows(index, now, cfg["domain_capture"]["backlog_hours"]), crawl_summary
         )
         try:
-            targets += benign_targets(cfg, now)  # after the feed hosts: phishing goes first
+            if not no_benign:
+                targets += benign_targets(cfg, now)  # after the feed hosts: phishing goes first
         except Exception as exc:  # noqa: BLE001 - no benign sample must not stop phishing capture
             failures += 1
             log.error("benign capture targets: failed: %s", exc)
@@ -287,6 +331,11 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("run", help="feeds, benign crawl and first-seen domain capture")
     r.add_argument("--no-crawl", action="store_true", help="skip the benign inner-page crawl")
     r.add_argument("--no-capture", action="store_true", help="skip RDAP/DNS/TLS capture")
+    r.add_argument("--no-benign", action="store_true", help="capture feed phishing only")
+    cp = sub.add_parser("capture-phishing", help="fresh phishing feeds -> RDAP/DNS/TLS capture")
+    cl = sub.add_parser("capture-legit", help="RDAP/DNS/TLS capture of legitimate domains only")
+    cl.add_argument("--shard", default="0/1", help="I/K: this run's slice of the sample")
+    cl.add_argument("--per-run", type=int, required=True, help="domains for this shard")
     c = sub.add_parser("crawl", help="benign inner-page crawl only")
     c.add_argument("--seeds", nargs="+", help="seed sets to crawl (default: all scheduled ones)")
     c.add_argument(
@@ -321,7 +370,7 @@ def main(argv: list[str] | None = None) -> int:
         "learn-shorteners", help="find link shorteners in the feed URLs (HEAD probes, no redirects)"
     )
     ps = sub.add_parser("popular-summary", help="outcome counts of the popular-sites seed sets")
-    for p in (r, c, o, rr, ps, ls):
+    for p in (r, c, o, rr, ps, ls, cp, cl):
         p.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(
@@ -385,7 +434,12 @@ def main(argv: list[str] | None = None) -> int:
         except KeyboardInterrupt:
             log.warning("render-ood interrupted; finished pages are saved, rerun to continue")
             return 130
-    return run(no_crawl=args.no_crawl, no_capture=args.no_capture)
+    if args.cmd == "capture-phishing":
+        return capture_phishing()
+    if args.cmd == "capture-legit":
+        i, k = (int(x) for x in args.shard.split("/"))
+        return capture_legit((i, k), args.per_run)
+    return run(no_crawl=args.no_crawl, no_capture=args.no_capture, no_benign=args.no_benign)
 
 
 if __name__ == "__main__":
