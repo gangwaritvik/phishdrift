@@ -283,7 +283,9 @@ def test_rdap_goes_to_the_registry_server_and_unsupported_tlds_are_final(tmp_pat
     assert "shop.zz" in domains and not failures  # a TLD without a server is never retried
 
 
-def test_capture_feeds_emit_fresh_entries_and_skip_the_baseline_of_bulk_lists(tmp_path):
+def test_capture_feeds_emit_fresh_entries_and_skip_the_baseline_of_bulk_lists(
+    tmp_path, monkeypatch
+):
     from collector import capture_feeds
 
     now = datetime(2026, 10, 27, 12, 0, tzinfo=UTC)
@@ -326,6 +328,7 @@ def test_capture_feeds_emit_fresh_entries_and_skip_the_baseline_of_bulk_lists(tm
             },
         },
     }
+    monkeypatch.setattr(capture_feeds, "_get_plain", lambda url, ua, timeout: pages[url])
     targets, counts = capture_feeds.poll(FakeClient(pages), cfg, now)
     assert counts == {"tank": 1, "stats": 1, "unt": 0}  # baseline poll emits nothing
     assert {t["url"] for t in targets} == {"http://new.example/a", "http://s1.example/"}

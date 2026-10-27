@@ -182,6 +182,18 @@ capture_feeds:                         # `python -m collector capture-phishing` 
       url: https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-NEW-today.txt
       min_interval_h: 1
       baseline: true
+    phishing_database_domains:         # all domains it lists as active phishing: a domain new to the list is new here
+      kind: domain_list
+      url: https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-domains-ACTIVE.txt
+      min_interval_h: 3
+      baseline: true
+      timeout_s: 120
+    phishing_army:
+      kind: domain_list
+      url: https://phishing.army/download/phishing_army_blocklist.txt
+      min_interval_h: 3
+      baseline: true
+      timeout_s: 120
     certpl:                            # CERT Polska domain warning list (domains only)
       kind: domain_list
       url: https://hole.cert.pl/domains/v2/domains.txt

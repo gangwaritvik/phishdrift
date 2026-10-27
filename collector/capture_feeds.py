@@ -19,10 +19,12 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
+import requests
 
 from collector import feeds
 from phishdrift.domains import registered_domain
@@ -69,6 +71,19 @@ def _fresh(times: list[pd.Timestamp], now: datetime, hours: float) -> list[bool]
     return [t >= cut for t in times]
 
 
+def _get_plain(url: str, user_agent: str, timeout_s: float, attempts: int = 3) -> bytes:
+    error: Exception | None = None
+    for i in range(attempts):
+        try:
+            resp = requests.get(url, timeout=timeout_s, headers={"User-Agent": user_agent})
+            resp.raise_for_status()
+            return resp.content
+        except requests.RequestException as exc:
+            error = exc
+            time.sleep(2 * (i + 1))
+    raise RuntimeError(f"{url}: {error}")
+
+
 def fetch_feed(
     client: HttpClient, name: str, fcfg: dict, now: datetime, hours: float
 ) -> list[tuple[str, pd.Timestamp | None]]:
@@ -79,9 +94,11 @@ def fetch_feed(
     if kind == "phishstats_api":
         out: list[tuple[str, pd.Timestamp]] = []
         for page in range(int(fcfg.get("pages", 10))):
-            body = client.get(
+            # plain requests, not the client's streamed download: this API cuts its replies short
+            body = _get_plain(
                 f"{url}?_sort=-date&_size={int(fcfg.get('page_size', 100))}&_p={page}",
-                timeout_s=timeout,
+                client.user_agent,
+                timeout or 60,
             )
             rows = parse_phishstats(body)
             if not rows:
