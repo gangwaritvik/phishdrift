@@ -50,3 +50,22 @@ tick the AI check box. Only the website name is sent. Empty means the backend at
 - Make the key in a Google project without billing (the AI Studio default). Then the worst a stranger
   can do is use up the free daily quota; it can never cost money. The check then answers
   "no opinion" until the quota resets.
+
+## The domain check (tier C)
+
+`netlify/functions/domain-check.mjs` answers `POST /api/domain-check {"domain": "example.com"}` with a
+verdict from the domain's age (registry RDAP), DNS and TLS certificate. It needs no key. It reads the model
+`js/data/tier_c.json` at run time (`netlify.toml` ships it with the function); without that file it answers
+`{"checked": false, "reason": "no_model"}` and nothing is guessed. The file exists only after
+`python -m models.tier_c train` has run on captured data and the gates in `reports/tier_c.md` passed.
+
+- It refuses IP addresses, local names, hosting platforms and link shorteners, and the TLS handshake goes only
+  to a public address it looked up itself (the same guard as `expand.mjs`). No page is fetched.
+- Netlify blocks more than 20 checks a minute from one IP address; each instance keeps an answer for an hour
+  (`tier_c.serving` in `configs/models.yaml`) and gives up after `total_timeout_ms`.
+- In the extension popup, put `https://<your-site>.netlify.app/api/domain-check` in **Domain check address**.
+  Empty means off. Only the registrable domain is sent, and only for addresses the address model already finds
+  suspicious. The answer can raise suspicious to dangerous and add reasons; it never lowers a verdict or warns
+  on an address that looked safe.
+- Not tested on a real Netlify deploy (build image, function time limit, `rateLimit`); the logic is tested with a
+  fake network in `js/test/domain_check.test.js`.

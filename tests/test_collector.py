@@ -61,7 +61,16 @@ class FakeClient:
         self.user_agent = UA
         self.calls: list[tuple[str, float | None]] = []
 
-    def get(self, url, *, cache_ttl_s=0, headers=None, max_bytes=None, min_interval_s=None):
+    def get(
+        self,
+        url,
+        *,
+        cache_ttl_s=0,
+        headers=None,
+        max_bytes=None,
+        min_interval_s=None,
+        timeout_s=None,
+    ):
         self.calls.append((url, min_interval_s))
         body = self.pages.get(url, 404)
         if isinstance(body, int):

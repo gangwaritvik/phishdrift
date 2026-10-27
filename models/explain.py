@@ -17,7 +17,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 import numpy as np
 
-from features.registry import NAMES_B, REGISTRY, REGISTRY_B
+from features.registry import NAMES_B, REGISTRY, REGISTRY_B, REGISTRY_C
 
 ZERO_THRESHOLD = 1e-35
 
@@ -366,6 +366,60 @@ REASONS_B: dict[str, tuple[str, float, float]] = {
     "n_tags": (f"The page structure ({{v}} elements) is {PAGE_TYPICAL}.", -math.inf, math.inf),
 }
 REASONS |= REASONS_B
+
+# Domain (tier C) features: what the hosted domain check tells about the registered domain.
+REASONS_C: dict[str, tuple[str, float, float]] = {
+    "domain_age_days": ("The domain was registered only {v} days ago.", -math.inf, 60),
+    "days_since_rdap_change": (
+        "The domain's registration record changed only {v} days ago.",
+        -math.inf,
+        30,
+    ),
+    "days_to_expiry": (
+        "The domain is registered for a short time (it expires in {v} days).",
+        -math.inf,
+        400,
+    ),
+    "registration_length_days": (
+        "The domain was registered for a short term ({v} days).",
+        -math.inf,
+        400,
+    ),
+    "rdap_client_hold": ("The registry has put the domain on hold (suspended).", 1, 1),
+    "whois_redacted": ("The owner's registration details are hidden.", 1, 1),
+    "has_mx": ("The domain has no mail server records.", 0, 0),
+    "has_spf": ("The domain has no mail sender policy (SPF).", 0, 0),
+    "has_dmarc": ("The domain has no mail protection policy (DMARC).", 0, 0),
+    "ns_cloudflare": ("The domain hides behind a Cloudflare name server.", 1, 1),
+    "ns_in_own_domain": ("The domain runs its own name server.", 1, 1),
+    "cert_free_issuer": ("The certificate is a free, automatically issued one.", 1, 1),
+    "cert_age_days": ("The security certificate was issued only {v} days ago.", -math.inf, 30),
+    "cert_validity_days": ("The certificate is valid for a short time ({v} days).", -math.inf, 100),
+    "cert_san_count": (
+        "The certificate covers an unusual number of names ({v}).",
+        -math.inf,
+        math.inf,
+    ),
+    "cert_wildcard": ("The certificate covers every sub-address of the domain (wildcard).", 1, 1),
+    "cert_cn_matches_host": (
+        "The certificate was issued for a different name than this site.",
+        0,
+        0,
+    ),
+    "brand_in_cert_sans": ("The certificate names a well-known brand that this site is not.", 1, 1),
+    "tls_verified": ("The site's certificate does not verify.", 0, 0),
+    "tls_ok": ("The site does not answer on a secure connection.", 0, 0),
+    "n_a": ("The domain has an unusual number of address records ({v}).", -math.inf, math.inf),
+    "n_ns": ("The domain has an unusual number of name servers ({v}).", -math.inf, math.inf),
+    "min_ttl_s": (
+        "The domain's DNS records change quickly (cache time {v} seconds).",
+        -math.inf,
+        600,
+    ),
+    "has_cname": ("The address is an alias for another name.", 1, 1),
+    "rdap_found": ("", 2, 1),  # never shown: 0 mostly means the TLD has no RDAP server
+}
+REASONS |= REASONS_C
 # Page amounts that say little on their own: shown only after the specific page reasons.
 LATE_REASONS = frozenset(
     ("visible_text_len", "page_size", "n_tags", "n_links", "link_external_ratio")
@@ -381,7 +435,7 @@ def fmt(v: float) -> str:
     return str(Decimal(float(v)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
-REGISTRY_BY_NAME = {f.name: f for f in (*REGISTRY, *REGISTRY_B)}
+REGISTRY_BY_NAME = {f.name: f for f in (*REGISTRY, *REGISTRY_B, *REGISTRY_C)}
 
 
 def reason_rules(names: list[str]) -> dict[str, dict]:

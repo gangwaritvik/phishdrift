@@ -12,3 +12,10 @@ test("the LLM check goes to the hosted address when set, else the backend", () =
     assert.equal(sanitizeSettings({ llmUrl: bad }).llmUrl, "", String(bad));
   }
 });
+
+test("the domain check is off until its address is set, and a bad address is ignored", () => {
+  assert.equal(sanitizeSettings({}).tierCUrl, "");
+  assert.equal(sanitizeSettings({ tierCUrl: "https://demo.netlify.app/api/domain-check/" }).tierCUrl, "https://demo.netlify.app/api/domain-check");
+  for (const bad of ["ftp://x/y", "https://u:p@x.com/a", "not a url", 5]) assert.equal(sanitizeSettings({ tierCUrl: bad }).tierCUrl, "", String(bad));
+  assert.equal(sanitizeSettings({ tierCTimeoutMs: 100 }).tierCTimeoutMs, 12_000);
+});

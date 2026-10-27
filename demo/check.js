@@ -189,7 +189,10 @@ export async function checkUrl(c, input) {
   const ex = await c.expand(first.url);
   if (!ex?.complete) {
     const why = ex?.error ? ` (${ex.error})` : "";
-    return { ...first, shortLink: { from: first.url, ...ex }, notes: [`This short link could not be followed to its destination${why}, so there is nothing to judge here. The extension judges the page it leads to.`, ...first.notes.filter((n) => !n.includes("does not follow"))] };
+    const head = ex?.error === "service_page"
+      ? `The link's own service sent it to one of its pages (${ex.final}) instead of on to a destination. That is usually a warning, preview or removed-link page, so the destination is unknown and there is nothing to judge here.`
+      : `This short link could not be followed to its destination${why}, so there is nothing to judge here. The extension judges the page it leads to.`;
+    return { ...first, shortLink: { from: first.url, ...ex }, notes: [head, ...first.notes.filter((n) => !n.includes("does not follow"))] };
   }
   const dest = await checkOne(c, ex.final);
   const n = ex.hops.length;

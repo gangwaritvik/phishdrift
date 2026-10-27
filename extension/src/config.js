@@ -11,6 +11,8 @@ export const DEFAULTS = {
   llmGrayLow: 0.5, // untuned: safe addresses with a model score from here up are borderline
   llmTimeoutMs: 20_000,
   llmUrl: "", // full address of a hosted LLM check (e.g. https://<site>.netlify.app/llm-check); empty = backendUrl + /llm-check
+  tierCUrl: "", // full address of the hosted domain check (…/api/domain-check, tier C: domain age, DNS, certificate); empty = off, nothing is sent
+  tierCTimeoutMs: 12_000, // the check looks up a registry and DNS live; nobody waits for it
   listSyncMinutes: 60, // the backend's remote config (list_sync_minutes) can change it, 15-1440
 };
 
@@ -21,6 +23,7 @@ const RANGES = {
   domainCacheMs: [0, 24 * 60 * 60 * 1000],
   llmGrayLow: [0.05, 0.99],
   llmTimeoutMs: [500, 30_000],
+  tierCTimeoutMs: [500, 30_000],
   listSyncMinutes: [15, 24 * 60],
 };
 
@@ -31,7 +34,7 @@ export function sanitizeSettings(stored) {
     if (Number.isFinite(v) && v >= lo && v <= hi) out[key] = v;
   }
   if (typeof stored?.llmCheck === "boolean") out.llmCheck = stored.llmCheck;
-  for (const key of ["backendUrl", "llmUrl"]) {
+  for (const key of ["backendUrl", "llmUrl", "tierCUrl"]) {
     const url = webUrl(stored?.[key]);
     if (url !== null) out[key] = url;
   }

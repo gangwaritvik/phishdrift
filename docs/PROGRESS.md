@@ -1137,6 +1137,32 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Added `.github/workflows/audit-probe.yml` (live-site probe: files, `/api/expand`, `/api/llm-check`, short links in a browser).
 - Not done: tinyurl/cutt.ly following, recalibrating the harness in the repo, the AI-check accuracy set (PR #55), anything needing the PC.
 
+### 2026-10-26 — tinyurl.com followed; cutt.ly and other shortener warning pages reported plainly (cloud)
+- Why: the claim check (PR #64) found the URL check page could not follow tinyurl.com (preview page) or cutt.ly (403).
+  Looked at the real answers from a GitHub runner (run 40404563171, request = our own User-Agent, no evasion):
+  tinyurl.com answers a link it has flagged with a redirect to its own `/app/nospam/...` page, but the same answer carries the
+  real long address in the response header `x-lighttpd-longurl`; `preview.tinyurl.com` is behind a Cloudflare challenge (403,
+  left alone). cutt.ly answers the one OpenPhish link we have with a redirect to `/guard/<code>`, whose page (HTTP 403) is titled
+  "Cuttly Safe Redirecting system blocked that redirect": the service itself blocked the link; no destination is given.
+- Changed: `js/src/short_links.js` reads a destination from a response header named `x-...longurl` (`headerDestination`;
+  the address is only checked, never requested, and must be a web address) and reports a shortener's own non-redirecting page as
+  `service_page` (was `no_redirect`); `netlify/functions/expand.mjs` returns response headers to `expand`; `demo/check.js`
+  words `service_page` as "the link's own service sent it to one of its pages (...): usually a warning, preview or removed-link
+  page". No verdict is raised from a service page: the destination is unknown. New `js/bench/shortener_survey.mjs` and
+  `.github/workflows/short-link-survey.yml` follow up to 3 real links for each of the 30 shortener domains most seen in the
+  Phishing.Database ACTIVE feed (789,054 lines on 2026-10-26) with the hosted function's own code.
+- Results (GitHub runner, 2026-10-26, run 40405109457): `https://tinyurl.com/2wjsu676` (before: stopped at the no-spam page)
+  now FOLLOWED to its destination in one HEAD request. `http://www.cutt.ly/ZyWDEv25/` stops with `service_page` (cutt.ly guard,
+  403): not followable by design of the service; I did not try to get around it. aka.ms (2 of 2) and short.gy (1 of 3) followed.
+  Survey of 12 shortener domains from the feed, 32 links: 5 followed in all (incl. the extra links), the rest 403/523 from the
+  service (short.gy, v.ht, 8u.cz, cutt.us: bot blocks), dead (bit.do timeouts, tiny.cc refused, rdcu.be no DNS), removed
+  (gg.gg back to its home page) or not shorteners at all.
+- Found: `js/data/lists.json` shorteners contains free-hosting and non-shortener names that do appear in feeds (x10.mx, 8u.cz,
+  kr3w.de, t.me, rdcu.be); the scraped list (PR #54) needs a quality pass. Not done here.
+- Not measured: a benign tinyurl or cutt.ly link (cannot create one without an account); whether tinyurl sends the header
+  for unflagged links (then the ordinary Location redirect applies and was already followed). Tests: `npm test` js 27,
+  extension 74, ruff clean.
+
 ### 2026-10-26 — Attack harness in the repo, recalibrated at run time (cloud)
 - Ritvik: fix the gaps found by the claim check (PR #64); this one is "the harness reports 23 of 35". The harness was in the
   project folder, with `evil-blocked.com` hard-coded as the "suspicious" address; after the retrain it scores 0.75, under the
@@ -1235,3 +1261,27 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   layers only): dangerous 21.7% -> 0 on Umbrella tenants, 55.6% -> 0 on feed phishing; warned (suspicious or worse) unchanged
   at 49.0% and 83.1%. The site itself: dangerous -> suspicious. Not solved: half of ordinary tenant hosts still get the
   suspicious banner; that needs the model calibrated on benign tenant hosts (retrain, needs the PC's pool).
+
+### 2026-10-27 — Tier C without the PC: capture on GitHub Actions, domain rows, hosted check (cloud)
+- Ritvik: "start working on tier c and finish what is left", then "get a good number of figures" and "10k is low". Plan:
+  `plans/tier_c_plan.md` (project folder). PR #72.
+- Changed: capture moved to GitHub Actions (`.github/workflows/tier-c-capture.yml` hourly, `tier-c-legit.yml` daily in 8 shards,
+  `tier-c-train.yml` weekly report), data on the orphan branch `tier-c-data` (`scripts/ci_data_branch.sh`; datasets never on main).
+  `collector/domain_capture.py` captures one record per registrable domain (apex, `www.` fallback, platforms and IPs skipped, direct
+  registry RDAP from the IANA bootstrap), `collector/capture_feeds.py` polls fresh phishing (OpenPhish, PhishTank, PhishStats with
+  timestamps; bulk lists only count domains added after the first poll), `python -m collector capture-phishing | capture-legit`.
+  Serving: `js/src/tier_c.js` (29 features, parity with Python on 240 cases), `js/src/domain_check.js`,
+  `netlify/functions/domain-check.mjs`, `models/tier_c.py` (train, bundle `js/data/tier_c.json`, reasons), extension `tierCUrl`
+  setting and combiner rule (raises suspicious to dangerous, never lowers, never warns on a safe address, off by default).
+  `experiments/tier_c.py`: 14 h lag limit with a 2 h sensitivity run, `--a-scores` comparison with the shipped address model.
+- Measured (runner probe): OpenPhish, registry RDAP, DoH, TLS handshakes and Tranco are reachable from GitHub runners; about a quarter of
+  Tranco domains sit on TLDs with no RDAP server. 4,000 legitimate domains take 15-35 min per runner; 8 runners gave 32,025 domains in
+  35 min (76% got an RDAP answer, 92% resolve). Phishing: 217 domains after the first hour (OpenPhish was mostly on platforms or already
+  captured); realistic yield is a few hundred a day (guess from the feed rates seen, not a forecast).
+- First look (10 domain-grouped splits, 44 phishing / 6,395 legitimate per test side; not final, one capture day): tier C ROC-AUC 0.829
+  [0.757, 0.896], without age 0.817, age alone 0.679, with the shipped address model's score 0.853 (that model alone 0.836); recall at
+  1% FPR 54.5% (tier C), 0.1% points granularity-limited; shuffled-label control 0.46, not flagged; nothing above 99%. Time check
+  needs 3 capture days.
+- Caveats: legitimate domains are Tranco-listed, so young legitimate sites are missing and the false-alarm rate on them is unmeasured;
+  the address model's training pool is unknown here, which favours it; the Netlify function is tested with a fake network only.
+- Next: merge PR #72 (starts the schedules), let 3 capture days pass, run `tier-c-train`, apply the gates, then ship `js/data/tier_c.json`.
