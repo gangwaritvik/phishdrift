@@ -21,7 +21,7 @@ mkdirSync(join(dist, "data"), { recursive: true });
 cpSync(join(here, "manifest.json"), join(dist, "manifest.json"));
 for (const f of readdirSync(join(here, "src"))) cpSync(join(here, "src", f), join(dist, f));
 cpSync(join(jsRoot, "src"), join(dist, "lib"), { recursive: true });
-for (const file of ["tier_a_hybrid.json", "tier_b_page.json", "psl_icann.json", "lists.json", "lookalike.json"]) {
+for (const file of ["tier_a_hybrid.json", "tier_b_page.json", "psl_icann.json", "lists.json"]) {
   cpSync(join(jsRoot, "data", file), join(dist, "data", file));
 }
 // Allowlist shipped with the extension (Tranco top N, hashed), written by

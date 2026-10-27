@@ -12,7 +12,6 @@ python -m features build --tier C [--info-dir DIR] [--out FILE]
                                          # captures -> data/processed/features_c.parquet
 python -m features export-js            # js/data/ (public-suffix rules, lists, fitted numbers) and
                                          # js/src/pydata.js (entity tables, Python Unicode sets)
-python -m features lookalike            # js/data/lookalike.json (offline look-alike check)
 python -m features parity               # tests/fixtures/url_parity.json and html_parity.json
                                          # (Python-JS parity cases)
 """
@@ -96,7 +95,6 @@ def main(argv: list[str] | None = None) -> int:
             "fit",
             "build",
             "export-js",
-            "lookalike",
             "parity",
         ],
     )
@@ -136,10 +134,6 @@ def main(argv: list[str] | None = None) -> int:
         from features import html_parity, js_export
 
         print(*js_export.export_js(), html_parity.export_pydata(), sep="\n")
-    elif args.command == "lookalike":
-        from features import lookalike
-
-        print(lookalike.write())
     elif args.command == "parity":
         from features import html_parity, js_export
 

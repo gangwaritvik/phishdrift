@@ -1335,3 +1335,14 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Not measured: the sandbox cannot reach Hugging Face, so no pretrained model has run; tests and a 2,000-row smoke run
   used an offline stand-in embedder (`--embedder hash`) and say nothing about quality. Run time on the PC unknown.
 - Next: Ritvik runs `scripts\run_embed.ps1`; read `reports/embed_split0/SUMMARY.md` against the 2-point bar.
+
+### 2026-10-27 — Offline look-alike layer removed; the Gemini check is the only brand check (cloud)
+- Ritvik: the rules cover only the 899 listed brands, so remove the layer and stay on Gemini.
+- Removed: `js/src/lookalike.js`, `features/lookalike.py` (+ `python -m features lookalike`), `configs/lookalike.yaml`, `js/data/lookalike.json`,
+  `lookalikeEscalate` in `extension/src/combine.js`, the loading and per-address check in `extension/src/background.js`, the demo page's
+  look-alike lines, the data file from the extension and Netlify builds, `experiments/lookalike_eval.py`, `js/bench/lookalike.mjs`, their
+  tests and `reports/lookalike.md`. The brand list stays (a model feature list). `stepUp` stays for the AI check.
+- Tests: `npm test` extension 88 pass, js pass, pytest 584 passed 5 skipped (`test_render_gap_e2e` left out, Chromium), ruff clean.
+- Cost (from the 10-26 entry, not remeasured): with the AI check off, ASCII look-alikes are warned 0.2% and one-letter-off names 0.5% of
+  the time (before: 99.8% and 79.0% for listed brands). The AI check is off by default, has never had a measured accuracy, and its free
+  quota has failed before (HTTP 429). Until it is measured or turned on by default, look-alikes of any brand are mostly unwarned.

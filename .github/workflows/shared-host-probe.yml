@@ -27,7 +27,7 @@ jobs:
           cp demo/index.html demo/app.js demo/check.js demo/evidence.js $OUT/demo/
           cp -r extension/src extension/data $OUT/extension/
           cp -r js/src $OUT/js/
-          cp js/data/tier_a_hybrid.json js/data/psl_icann.json js/data/lists.json js/data/lookalike.json $OUT/js/data/
+          cp js/data/tier_a_hybrid.json js/data/psl_icann.json js/data/lists.json $OUT/js/data/
           (cd $OUT && nohup python3 -m http.server 8080 >/dev/null 2>&1 &)
           sleep 2
       - name: Live page in a browser
