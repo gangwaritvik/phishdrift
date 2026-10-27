@@ -1,6 +1,7 @@
 """Picture-only rule: false alarms on natural legitimate pages and address-side reach on phishing.
 
-``python -m experiments.picture_only --pages data/raw/ood_html/pages --cache DIR [--phishing-urls FILE]``
+``python -m experiments.picture_only --pages data/raw/ood_html/pages --cache DIR
+[--phishing-urls FILE]``
 
 The rule (``extension/src/pagefacts.js`` ``isPictureOnly``, ``combine.js``): a page with next to no
 text, no input fields and one picture covering a good part of the window is raised from safe to
@@ -8,7 +9,8 @@ suspicious when the address model already gives the address at least ``PICTURE_M
 
 Legitimate side: each natural legitimate page with stored HTML is rendered offline in headless
 Chromium (``js/bench/picture_facts.mjs``: the stored HTML at its real address, every other request
-aborted, so images and styles never load and picture sizes are a lower bound) and the content script's
+aborted, so images and styles never load and picture sizes are a lower bound) and the content
+script's
 ``visualFacts`` are read from the live DOM. Counted three ways, from loosest to strictest: no text
 and no fields; plus at least one picture element (upper bound for the real rule, which also needs a
 picture covering ``PICTURE_MIN_AREA`` of the window); plus the area rule on the sizes the offline
@@ -128,10 +130,19 @@ def main() -> None:
 
     pages = load_pages(a.pages)
     pages_jl = a.cache / "pages.jsonl"
-    write_jsonl(pages_jl, [{"url": u, "html": h} for u, h in zip(pages["url"], pages["html"], strict=True)])
+    write_jsonl(
+        pages_jl, [{"url": u, "html": h} for u, h in zip(pages["url"], pages["html"], strict=True)]
+    )
     visual_jl = a.cache / "visual.jsonl"
     subprocess.run(
-        ["node", str(BENCH / "picture_facts.mjs"), str(pages_jl), str(visual_jl), "--workers", str(a.workers)],
+        [
+            "node",
+            str(BENCH / "picture_facts.mjs"),
+            str(pages_jl),
+            str(visual_jl),
+            "--workers",
+            str(a.workers),
+        ],
         check=True,
         timeout=6 * 3600,
     )
@@ -144,13 +155,14 @@ def main() -> None:
         "# Picture-only rule: false alarms and reach",
         "",
         f"Natural legitimate pages with stored HTML: {len(pages):,}; rendered offline: "
-        f"{int(visual['ok'].sum()):,} (failed {int((~visual['ok']).sum())}). Window 1280x720, images and "
-        "styles never load, so picture sizes are a lower bound and picture counts an upper bound.",
+        f"{int(visual['ok'].sum()):,} (failed {int((~visual['ok']).sum())}). Window 1280x720, "
+        "images and styles never load, so picture sizes are a lower bound and picture counts an "
+        "upper bound.",
         "",
-        f"Definition: fewer than {MAX_TEXT} readable characters, no input fields (the area rule needs "
-        f"a picture covering at least {MIN_AREA:.0%} of the window). Cells: pages that would be raised "
-        "at each address-score gate (address layer: bundled allowlist, then the address model; "
-        "shortener addresses are never raised).",
+        f"Definition: fewer than {MAX_TEXT} readable characters, no input fields (the area rule "
+        f"needs a picture covering at least {MIN_AREA:.0%} of the window). Cells: pages that would "
+        "be raised at each address-score gate (address layer: bundled allowlist, then the address "
+        "model; shortener addresses are never raised).",
         "",
         md(legit),
         "",
@@ -158,7 +170,11 @@ def main() -> None:
     legit.to_csv(a.reports / "tables" / "picture_only_legit.csv", index=False)
 
     if a.phishing_urls:
-        urls = [u for u in a.phishing_urls.read_text(encoding="utf-8", errors="ignore").split() if u.startswith("http")]
+        urls = [
+            u
+            for u in a.phishing_urls.read_text(encoding="utf-8", errors="ignore").split()
+            if u.startswith("http")
+        ]
         random.Random(SEED).shuffle(urls)
         sample = urls[: a.phishing_sample]
         ph_jl = a.cache / "phishing.jsonl"
@@ -166,11 +182,12 @@ def main() -> None:
         ph = phishing_table(address_probs(a.dist, ph_jl, a.cache / "phishing_probs.jsonl"))
         ph.to_csv(a.reports / "tables" / "picture_only_phishing.csv", index=False)
         lines += [
-            f"## Phishing addresses (address side only; no phishing HTML in this environment)",
+            "## Phishing addresses (address side only; no phishing HTML in this environment)",
             "",
             f"Fixed-seed sample of {len(sample):,} URLs from `{a.phishing_urls.name}`.",
-            "'address safe' = the address model passes them; the other columns are how many of those "
-            "would be raised if their page were picture-only.",
+            "'not warned' = neither the address model nor the page path (for a page the page model "
+            "cannot read) warns; the last columns are how many of those would be raised if their "
+            "page were picture-only.",
             "",
             md(ph),
             "",

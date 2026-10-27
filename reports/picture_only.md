@@ -16,7 +16,7 @@ Definition: fewer than 100 readable characters, no input fields (the area rule n
 ## Phishing addresses (address side only; no phishing HTML in this environment)
 
 Fixed-seed sample of 5,000 URLs from `active.txt`.
-'address safe' = the address model passes them; the other columns are how many of those would be raised if their page were picture-only.
+'not warned' = neither the address model nor the page path (for a page the page model cannot read) warns; the last columns are how many of those would be raised if their page were picture-only.
 
 | urls | scored | address warns | page path warns an unreadable page | not warned | not warned and >=0.3 | not warned and >=0.4 | not warned and >=0.5 | not warned and >=0.6 | not warned and >=0.7 | not warned and >=0.8 |
 |---|---|---|---|---|---|---|---|---|---|---|
