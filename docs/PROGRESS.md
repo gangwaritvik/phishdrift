@@ -1220,3 +1220,27 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   warns, address side); no real picture-only phishing page was available; a picture drawn after load is not rechecked (only new input fields
   trigger a recheck); the rule needs layout (it runs in the content script, so it cannot be measured on stored HTML except as the upper and
   lower bounds above).
+
+### 2026-10-27 — Tier C without the PC: capture on GitHub Actions, domain rows, hosted check (cloud)
+- Ritvik: "start working on tier c and finish what is left", then "get a good number of figures" and "10k is low". Plan:
+  `plans/tier_c_plan.md` (project folder). PR #72.
+- Changed: capture moved to GitHub Actions (`.github/workflows/tier-c-capture.yml` hourly, `tier-c-legit.yml` daily in 8 shards,
+  `tier-c-train.yml` weekly report), data on the orphan branch `tier-c-data` (`scripts/ci_data_branch.sh`; datasets never on main).
+  `collector/domain_capture.py` captures one record per registrable domain (apex, `www.` fallback, platforms and IPs skipped, direct
+  registry RDAP from the IANA bootstrap), `collector/capture_feeds.py` polls fresh phishing (OpenPhish, PhishTank, PhishStats with
+  timestamps; bulk lists only count domains added after the first poll), `python -m collector capture-phishing | capture-legit`.
+  Serving: `js/src/tier_c.js` (29 features, parity with Python on 240 cases), `js/src/domain_check.js`,
+  `netlify/functions/domain-check.mjs`, `models/tier_c.py` (train, bundle `js/data/tier_c.json`, reasons), extension `tierCUrl`
+  setting and combiner rule (raises suspicious to dangerous, never lowers, never warns on a safe address, off by default).
+  `experiments/tier_c.py`: 14 h lag limit with a 2 h sensitivity run, `--a-scores` comparison with the shipped address model.
+- Measured (runner probe): OpenPhish, registry RDAP, DoH, TLS handshakes and Tranco are reachable from GitHub runners; about a quarter of
+  Tranco domains sit on TLDs with no RDAP server. 4,000 legitimate domains take 15-35 min per runner; 8 runners gave 32,025 domains in
+  35 min (76% got an RDAP answer, 92% resolve). Phishing: 217 domains after the first hour (OpenPhish was mostly on platforms or already
+  captured); realistic yield is a few hundred a day (guess from the feed rates seen, not a forecast).
+- First look (10 domain-grouped splits, 44 phishing / 6,395 legitimate per test side; not final, one capture day): tier C ROC-AUC 0.829
+  [0.757, 0.896], without age 0.817, age alone 0.679, with the shipped address model's score 0.853 (that model alone 0.836); recall at
+  1% FPR 54.5% (tier C), 0.1% points granularity-limited; shuffled-label control 0.46, not flagged; nothing above 99%. Time check
+  needs 3 capture days.
+- Caveats: legitimate domains are Tranco-listed, so young legitimate sites are missing and the false-alarm rate on them is unmeasured;
+  the address model's training pool is unknown here, which favours it; the Netlify function is tested with a fake network only.
+- Next: merge PR #72 (starts the schedules), let 3 capture days pass, run `tier-c-train`, apply the gates, then ship `js/data/tier_c.json`.

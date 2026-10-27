@@ -55,6 +55,8 @@ export const addressOnly = (result) => result?.verdict === DANGEROUS && result.l
 //            (scorePage in page.js)
 // lookalike: layers.lookalike = {rule, brand, text} | null, the offline look-alike check; it only
 // raises (see lookalikeEscalate).
+// tierC: layers.tierC = {verdict, reasons:[{text}]} | null, the hosted domain check (domain age, DNS,
+// certificate; js/src/domain_check.js). It can only raise suspicious to dangerous and add reasons.
 // llm: layers.llm = {raise, kind: "brand"|"phishing"|null, brand, brand_domain, phishing} | null, the
 // backend's AI opinion on the address (backend/llm.py). It only raises (see llmEscalate).
 export function combine(layers, page = null, pageModel = null) {
@@ -165,6 +167,16 @@ function combineLayers(layers, page = null, pageModel = null) {
     }
   } else if (layers.backendFailed) {
     out.notes.push("Domain checks were unavailable, so this uses the address check only.");
+  }
+  // Tier C (domain age, DNS, certificate): like the backend's domain evidence it never turns a safe
+  // verdict into a warning and never lowers one; a dangerous call on a suspicious address raises it.
+  if (layers.tierC && layers.tierC.verdict >= SUSPICIOUS) {
+    out.reasons.push(...layers.tierC.reasons.map((r) => r.text));
+    if (layers.tierC.verdict === DANGEROUS && out.verdict === SUSPICIOUS) {
+      out.verdict = DANGEROUS;
+      out.layer = "tier-c";
+    }
+    out.reasons = [...new Set(out.reasons)];
   }
   // The password-form rule, when the page model could not read the page or read it only as a bare
   // form (too little text for training pages).

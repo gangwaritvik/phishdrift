@@ -14,6 +14,7 @@ Feature code (tier C) turns these into features later; nothing here is a model f
 
 from __future__ import annotations
 
+import copy
 import inspect
 import ipaddress
 import json
@@ -71,10 +72,36 @@ def parse_rdap(obj: dict) -> dict:
     }
 
 
+def load_rdap_bootstrap(client: HttpClient, url: str) -> dict[str, str]:
+    """TLD -> base URL of its registry's RDAP server (the IANA bootstrap file). Asking the
+    registries directly spreads the load over many servers instead of queueing every lookup
+    behind rdap.org's politeness delay."""
+    body = json.loads(client.get(url, cache_ttl_s=86_400))
+    return {
+        tld.lower(): urls[0].rstrip("/")
+        for tlds, urls in body.get("services", [])
+        if urls
+        for tld in tlds
+    }
+
+
+def rdap_url(domain: str, cfg: dict) -> str | None:
+    """RDAP URL for ``domain``: its registry's server when the bootstrap map is loaded (None
+    when the TLD has none), else the ``rdap_url`` template (rdap.org)."""
+    bases = cfg.get("_rdap_bases")
+    if bases is None:
+        return cfg["rdap_url"].format(domain=domain)
+    base = bases.get(domain.rsplit(".", 1)[-1].lower())
+    return f"{base}/domain/{domain}" if base else None
+
+
 def fetch_rdap(
-    client: HttpClient, domain: str, url_template: str
+    client: HttpClient, domain: str, url_template: str | None
 ) -> tuple[dict | None, str | None]:
-    """(parsed RDAP, None) or (None, error). rdap.org redirects to the registry's server."""
+    """(parsed RDAP, None) or (None, error). ``url_template`` has ``{domain}``, or is the full
+    URL (see ``rdap_url``); None = no RDAP server for the TLD."""
+    if url_template is None:
+        return None, "no_server"
     try:
         body = client.get(
             url_template.format(domain=domain), headers={"Accept": "application/rdap+json"}
@@ -278,7 +305,9 @@ def dns_failed(rec: dict) -> bool:
     return any(e.startswith("A:") for e in errors) and any(e.startswith("AAAA:") for e in errors)
 
 
-FINAL_RDAP_ERRORS = frozenset({"not_found", "ip_host"})  # answers, not failures: never retried
+FINAL_RDAP_ERRORS = frozenset(
+    {"not_found", "ip_host", "no_server"}
+)  # answers, not failures: never retried
 
 
 def load_state(info_dir: Path) -> tuple[set[str], set[str], dict[str, int]]:
@@ -313,11 +342,11 @@ def load_captured(info_dir: Path) -> tuple[set[str], set[str]]:
     return hosts, domains
 
 
-def append_records(records: list[dict], info_dir: Path, day: str) -> Path:
+def append_records(records: list[dict], info_dir: Path, day: str, tag: str = "") -> Path:
     """Append ``records`` as JSON lines with one write call, so a stopped run leaves at most
     one cut-off last line (which ``load_captured`` skips). A cut-off line without a trailing
     newline is terminated first, so it cannot swallow the first new record."""
-    path = Path(info_dir) / f"{day}.jsonl"
+    path = Path(info_dir) / f"{day}{tag}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     text = "".join(json.dumps(rec, default=str) + "\n" for rec in records)
     if path.exists() and path.stat().st_size > 0:
@@ -339,10 +368,16 @@ def plan_jobs(
     failures: dict[str, int],
     max_hosts: int,
     rdap_retries: int,
+    unit: str = "host",
+    skip_domains: frozenset[str] = frozenset(),
 ) -> list[dict]:
     """Work for one run, in target order: new hosts (with an RDAP lookup for the first host of
     each domain without a final answer) up to ``max_hosts``, plus RDAP-only retries for domains
-    whose earlier lookups failed fewer than ``rdap_retries`` times."""
+    whose earlier lookups failed fewer than ``rdap_retries`` times.
+
+    ``unit: domain``: the capture unit is the registrable domain (the host recorded is the
+    domain itself), because that is all the deployed check knows: the extension sends the
+    domain only. IP hosts and ``skip_domains`` (hosting platforms, outside tier C) are left out."""
     jobs: list[dict] = []
     hosts, domains = set(hosts_done), set(domains_done)
     n_hosts = 0
@@ -350,6 +385,10 @@ def plan_jobs(
         host, domain = hostname(t["url"]), registered_domain(t["url"])
         if not host or not domain:
             continue
+        if unit == "domain":
+            if _is_ip(host) or domain in skip_domains:
+                continue
+            host = domain
         if host not in hosts:
             if n_hosts >= max_hosts:
                 continue
@@ -374,7 +413,9 @@ def capture_job(
     is_ip = _is_ip(host)
     records = []
     if job["rdap"]:
-        rdap, err = (None, "ip_host") if is_ip else fetch_rdap(client, domain, cfg["rdap_url"])
+        rdap, err = (
+            (None, "ip_host") if is_ip else fetch_rdap(client, domain, rdap_url(domain, cfg))
+        )
         records.append(
             {
                 "kind": "domain",
@@ -385,21 +426,35 @@ def capture_job(
             }
         )
     if t is not None:
+        probe = host
         dns = None if is_ip else dns_facts(host, domain, query)
+        if cfg.get("unit") == "domain" and dns and not dns["resolves"] and not dns["sinkhole"]:
+            # many sites only answer on www: try it, the way the deployed check does
+            alt = dns_facts(f"www.{domain}", domain, query)
+            if alt["resolves"]:
+                dns, probe = alt, f"www.{domain}"
         address = host.strip("[]") if is_ip else _first_real_address(dns)
         records.append(
             {
                 "kind": "host",
                 "host": host,
+                "probe_host": probe,
                 "domain": domain,
                 "label": int(t["label"]),
+                "source": t.get("source"),
                 "first_seen": str(t.get("first_seen")),
                 "captured_at": stamp,
                 "dns": dns,
-                "tls": tls(host, cfg["tls_timeout_s"], address) if cfg.get("tls", True) else None,
+                "tls": tls(probe, cfg["tls_timeout_s"], address) if cfg.get("tls", True) else None,
             }
         )
     return records
+
+
+def _platforms() -> frozenset[str]:
+    from collector.ood import load_platforms
+
+    return load_platforms()
 
 
 def _first_real_address(dns: dict) -> str | None:
@@ -452,6 +507,14 @@ def capture(
     (and when the loop ends or is interrupted), and no new host is started once
     ``time_budget_s`` seconds have passed. Both keys are optional (no checkpoints / no budget)."""
     hosts_done, domains_done, failures = load_state(info_dir)
+    if cfg.get("rdap_min_interval_s") is not None:  # RDAP servers are many: shorter delay each
+        client = copy.copy(client)
+        client.default_min_interval_s = cfg["rdap_min_interval_s"]
+    if cfg.get("rdap_bootstrap_url") and "_rdap_bases" not in cfg:
+        try:
+            cfg = {**cfg, "_rdap_bases": load_rdap_bootstrap(client, cfg["rdap_bootstrap_url"])}
+        except Exception as exc:  # noqa: BLE001 - rdap.org still answers
+            log.warning("RDAP bootstrap unavailable (%s); using %s", exc, cfg["rdap_url"])
     query = query or make_query(cfg)
     if len(inspect.signature(tls).parameters) < 3:  # a (host, timeout) callable
         two_args = tls
@@ -463,6 +526,7 @@ def capture(
     budget_s = cfg.get("time_budget_s")
     started = time.monotonic()
     day = now.date().isoformat()
+    tag = str(cfg.get("file_tag") or "")  # parallel shards write their own files
     jobs = plan_jobs(
         targets,
         hosts_done,
@@ -470,6 +534,8 @@ def capture(
         failures,
         cfg["max_domains_per_run"],
         cfg.get("rdap_retries", 2),
+        cfg.get("unit", "host"),
+        _platforms() if cfg.get("unit") == "domain" else frozenset(),
     )
     over_budget = False
 
@@ -492,12 +558,12 @@ def capture(
             new_hosts = sum(r["kind"] == "host" for r in recs)
             n_hosts += new_hosts
             if checkpoint_every and new_hosts and n_hosts % checkpoint_every == 0:
-                append_records(records, info_dir, day)
+                append_records(records, info_dir, day, tag)
                 records = []
                 log.info("domain capture: %d of %d hosts so far", n_hosts, len(jobs))
     finally:  # also on Ctrl+C: keep every host that finished
         if records:
-            append_records(records, info_dir, day)
+            append_records(records, info_dir, day, tag)
     if over_budget:
         log.warning("domain capture: time budget of %ss used up; the rest waits", budget_s)
     log.info("domain capture: %d hosts, %d registrable domains", n_hosts, n_domains)

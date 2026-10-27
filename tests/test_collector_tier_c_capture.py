@@ -225,3 +225,128 @@ def test_a_stuck_lookup_is_abandoned_and_the_run_finishes(tmp_path):
         release.set()
     assert out["hosts"] == 1
     assert domain_capture.load_captured(tmp_path)[0] == {"ok.xyz"}  # stuck.xyz waits for next run
+
+
+def test_domain_unit_captures_the_apex_once_and_falls_back_to_www(tmp_path):
+    cfg = {**CFG, "unit": "domain", "tls": True}
+    dns = _fake_dns(
+        {
+            ("shop.com", "A"): [("203.0.113.1", 60)],
+            ("blog.net", "A"): [],
+            ("www.blog.net", "A"): [("203.0.113.2", 60)],
+        }
+    )
+    seen = []
+
+    def tls(host, timeout_s, address=None):
+        seen.append((host, address))
+        return {"ok": True, "verified": False, "error": "x"}
+
+    t = [
+        {"url": "https://login.shop.com/a", "label": 1, "first_seen": None},
+        {"url": "https://pay.shop.com/b", "label": 1, "first_seen": None},  # same domain
+        {"url": "https://blog.net/", "label": 0, "first_seen": None},
+        {"url": "https://evil.pages.dev/", "label": 1, "first_seen": None},  # platform
+        {"url": "http://203.0.113.9/x", "label": 1, "first_seen": None},  # IP host
+    ]
+    out = domain_capture.capture(t, FakeClient({}), cfg, tmp_path, NOW, dns, tls)
+    assert out == {"hosts": 2, "domains": 2}
+    hosts = {r["host"]: r for r in _records(tmp_path / "2026-10-13.jsonl") if r["kind"] == "host"}
+    assert set(hosts) == {"shop.com", "blog.net"}
+    assert hosts["shop.com"]["probe_host"] == "shop.com"
+    assert hosts["blog.net"]["probe_host"] == "www.blog.net"
+    assert sorted(seen) == [("shop.com", "203.0.113.1"), ("www.blog.net", "203.0.113.2")]
+
+
+def test_rdap_goes_to_the_registry_server_and_unsupported_tlds_are_final(tmp_path):
+    boot = json.dumps({"services": [[["com"], ["https://rdap.verisign.example/com/v1/"]]]})
+    rdap = {"events": [{"eventAction": "registration", "eventDate": "2026-10-01T00:00:00Z"}]}
+    client = FakeClient(
+        {
+            "https://iana.example/dns.json": boot.encode(),
+            "https://rdap.verisign.example/com/v1/domain/shop.com": json.dumps(rdap).encode(),
+        }
+    )
+    cfg = {**CFG, "unit": "domain", "rdap_bootstrap_url": "https://iana.example/dns.json"}
+    t = [
+        {"url": "https://shop.com/", "label": 1, "first_seen": None},
+        {"url": "https://shop.zz/", "label": 1, "first_seen": None},
+    ]
+    domain_capture.capture(t, client, cfg, tmp_path, NOW, _fake_dns({}))
+    recs = {
+        r["domain"]: r for r in _records(tmp_path / "2026-10-13.jsonl") if r["kind"] == "domain"
+    }
+    assert recs["shop.com"]["rdap"]["registered"] == "2026-10-01T00:00:00Z"
+    assert recs["shop.zz"]["rdap_error"] == "no_server"
+    assert not [u for u, _ in client.calls if "rdap.example" in u]  # rdap.org not used
+    _, domains, failures = domain_capture.load_state(tmp_path)
+    assert "shop.zz" in domains and not failures  # a TLD without a server is never retried
+
+
+def test_capture_feeds_emit_fresh_entries_and_skip_the_baseline_of_bulk_lists(
+    tmp_path, monkeypatch
+):
+    from collector import capture_feeds
+
+    now = datetime(2026, 10, 27, 12, 0, tzinfo=UTC)
+    tank = (
+        "phish_id,url,phish_detail_url,submission_time,verified,verification_time,online,target\n"
+        "1,http://new.example/a,x,2026-10-27T10:00:00+00:00,yes,x,yes,x\n"
+        "2,http://old.example/a,x,2026-10-20T10:00:00+00:00,yes,x,yes,x\n"
+    )
+    pages = {
+        "https://tank.example/v.csv": tank.encode(),
+        "https://unt.example/feed.txt": b"http://a.example/x\nhttp://b.example/y\n",
+        "https://stats.example/api?_sort=-date&_size=2&_p=0": json.dumps(
+            [
+                {"url": "http://s1.example/", "date": "2026-10-27T11:00:00.000Z"},
+                {"url": "http://s0.example/", "date": "2026-10-01T11:00:00.000Z"},
+            ]
+        ).encode(),
+    }
+    cfg = {
+        "state_dir": tmp_path,
+        "backlog_hours": 14,
+        "feeds": {
+            "tank": {
+                "kind": "phishtank_csv",
+                "url": "https://tank.example/v.csv",
+                "min_interval_h": 2,
+            },
+            "stats": {
+                "kind": "phishstats_api",
+                "url": "https://stats.example/api",
+                "pages": 3,
+                "page_size": 2,
+                "min_interval_h": 1,
+            },
+            "unt": {
+                "kind": "url_list",
+                "url": "https://unt.example/feed.txt",
+                "min_interval_h": 1,
+                "baseline": True,
+            },
+        },
+    }
+    monkeypatch.setattr(capture_feeds, "_get_plain", lambda url, ua, timeout: pages[url])
+    targets, counts = capture_feeds.poll(FakeClient(pages), cfg, now)
+    assert counts == {"tank": 1, "stats": 1, "unt": 0}  # baseline poll emits nothing
+    assert {t["url"] for t in targets} == {"http://new.example/a", "http://s1.example/"}
+    assert str(targets[0]["first_seen"]).startswith("2026-10-27 11:00")  # newest listing first
+    # not due again within min_interval_h; the baseline feed then reports only what is new
+    assert capture_feeds.poll(FakeClient(pages), cfg, now)[0] == []
+    pages["https://unt.example/feed.txt"] += b"http://c.example/z\n"
+    later = now.replace(hour=14)
+    targets, counts = capture_feeds.poll(FakeClient(pages), cfg, later)
+    assert counts["unt"] == 1 and "https://c.example/" in {t["url"] for t in targets}
+
+
+def test_new_capture_commands_reach_their_functions(monkeypatch):
+    seen = []
+    monkeypatch.setattr(collector_main, "capture_phishing", lambda: seen.append("p") or 0)
+    monkeypatch.setattr(
+        collector_main, "capture_legit", lambda shard, n: seen.append((shard, n)) or 0
+    )
+    assert collector_main.main(["capture-phishing"]) == 0
+    assert collector_main.main(["capture-legit", "--shard", "1/8", "--per-run", "5"]) == 0
+    assert seen == ["p", ((1, 8), 5)]
