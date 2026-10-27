@@ -1,4 +1,4 @@
-"""Tier C serving: the parity fixture is current, and training exports a bundle the JS side can read."""
+"""Tier C serving: the parity fixture is current; training exports a bundle the JS side reads."""
 
 import json
 import math
