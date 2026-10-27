@@ -1346,3 +1346,31 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Cost (from the 10-26 entry, not remeasured): with the AI check off, ASCII look-alikes are warned 0.2% and one-letter-off names 0.5% of
   the time (before: 99.8% and 79.0% for listed brands). The AI check is off by default, has never had a measured accuracy, and its free
   quota has failed before (HTTP 429). Until it is measured or turned on by default, look-alikes of any brand are mostly unwarned.
+### 2026-10-27 — CatBoost, XGBoost, an average, and a source-adversarial scorer: no gain on a sample (cloud)
+- Why: the conference paper wants a better model than the CharCNN (no gain); options 4 and 3 of the ranked list, both need no downloads.
+- Changed (new files; nothing shipped touched): `models/gbdt.py` gains a `catboost` kind, `models/adv_text.py` (hashed char n-grams, small
+  encoder, label head plus a source head behind a gradient-reversal layer; `lam=0` = same net without the adversary),
+  `experiments/boosters_a.py` + `configs/boosters.yaml` (one pass of out-of-fold text scores feeds LightGBM, CatBoost, XGBoost, their
+  average, and LightGBM with `adv_url` or `plain_url` as an extra input), `tests/test_boosters_a.py`.
+- Data: the same 84,938-URL staged sample as the CharCNN test (about a fifth of the PC pool, no time slice, no HTML), split 0, seed 42;
+  not comparable with the 10-split tables. Run took about 1.7 hours on 4 cores (the out-of-fold step was 23 minutes).
+- Results (`reports/boosters_sample_split0/SUMMARY.md`, recall at FPR 1%, change against LightGBM; bar 2 points, a proposal): CatBoost
+  -0.3 test / -0.9 held-out PhishStorm; XGBoost +0.8 / +0.6; average of LightGBM and CatBoost +0.3 / -0.3; adversarial scorer +0.9 / -1.5;
+  the same net without the adversary +0.3 / -1.5. Nothing reaches the bar; natural-page false alarms at the cal 1% point 3.1-3.6% for all.
+  Alone, both nets are weaker than the n-gram model on the URL (test 46-52 vs 61 recall at 1%); the adversary lowers how well the
+  network's source head names the source only from 47.2% to 41.5%. The "+27.6 points" for adv vs plain on held-out in the alone table
+  comes from the plain net's recall at the fixed-FPR point being 0.0 there (ROC-AUC 0.856 vs 0.843), so it is not a real gain.
+- Not done: shuffled-label control for the hybrid, other splits, the full pool (PC), a stronger adversary setting (`lam`, epochs untuned).
+- Reading: the booster on top is not the bottleneck; the hybrid's inputs are. Page-text embeddings (option 2) and Ritvik's pretrained
+  host/path embedding run are the remaining candidates.
+
+### 2026-10-27 — Pretrained text embeddings on the full pool (PC run by Ritvik, read in the cloud): no gain
+- Ritvik ran `scripts\run_embed.ps1` (all-MiniLM-L6-v2 frozen, logistic-regression head, split 0, full PC pool: 94,859 test URLs /
+  69,315 domains); pasted `SUMMARY.md` (`reports/embed_split0/SUMMARY.md`, copied unchanged; tables not supplied).
+- Results (recall at FPR 1%): hybrid2 with the two embedding scorers against hybrid2: test +0.2, held-out PhishStorm +0.3, time slice +0.1,
+  normalised URLs -0.1, bare domains (depth 0) +0.1; all inside the 2-point bar (a proposal). Alone, the host embedding is far weaker than
+  the char n-gram model on the same piece (test 24.6 vs 42.0; bare domains 33.1 vs 51.6) and equal only on the held-out source (21.8 vs 21.5).
+  Shuffled-label control 0.4853, not flagged; tripwire not triggered. Hybrid's own shuffled-label control not run.
+- Reading: with CharCNN, CatBoost/XGBoost/average and the source-adversarial scorer, four attempts to improve the hybrid on its URL text
+  inputs have given nothing past the bar. Hypothesis (not tested): the n-gram and word scorers already capture what a small frozen sentence
+  model knows about host words. Page-text embeddings (option 2) are untested.
