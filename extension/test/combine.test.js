@@ -296,3 +296,27 @@ test("on shared hosting a credential page, the page model, a list or domain evid
   const domain = { risk: "high", signals: [{ severity: "high", text: "Brand new domain." }] };
   assert.deepEqual([combine({ ...shared, domain }).verdict, combine({ ...shared, domain }).layer], [DANGEROUS, "domain"]);
 });
+
+// --- tier C (domain age, DNS, certificate): raises suspicious to dangerous, nothing else ------
+const tierC = (verdict, text = "The domain was registered 3 days ago.") => ({ verdict, reasons: [{ text }] });
+
+test("tier C raises a suspicious address to dangerous and adds its reason", () => {
+  const r = combine({ ...base, model: model(SUSPICIOUS, ["m"]), tierC: tierC(DANGEROUS) });
+  assert.deepEqual([r.verdict, r.layer, r.reasons], [DANGEROUS, "tier-c", ["m", "The domain was registered 3 days ago."]]);
+});
+
+test("tier C suspicious adds a reason but does not raise; tier C safe changes nothing", () => {
+  const sus = combine({ ...base, model: model(SUSPICIOUS, ["m"]), tierC: tierC(SUSPICIOUS) });
+  assert.deepEqual([sus.verdict, sus.layer], [SUSPICIOUS, "url-model"]);
+  assert.ok(sus.reasons.includes("The domain was registered 3 days ago."));
+  const safe = combine({ ...base, model: model(SUSPICIOUS, ["m"]), tierC: tierC(SAFE) });
+  assert.deepEqual([safe.verdict, safe.reasons], [SUSPICIOUS, ["m"]]);
+});
+
+test("tier C never warns on a safe address, never lowers, never touches trusted or allowlisted sites", () => {
+  assert.equal(combine({ ...base, tierC: tierC(DANGEROUS) }).verdict, SAFE);
+  assert.equal(combine({ ...base, model: model(DANGEROUS), tierC: tierC(SAFE) }).verdict, DANGEROUS);
+  assert.equal(combine({ ...base, trusted: true, model: model(SUSPICIOUS), tierC: tierC(DANGEROUS) }).verdict, SAFE);
+  assert.equal(combine({ ...base, allow: true, model: model(SUSPICIOUS), tierC: tierC(DANGEROUS) }).verdict, SAFE);
+  assert.equal(combine({ ...base, blocked: "url", model: null, tierC: tierC(SAFE) }).layer, "blocklist");
+});

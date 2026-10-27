@@ -5,8 +5,9 @@
 // js/data/short_links.json (python -m backend export-llm-js, block short_links in
 // configs/backend.yaml).
 //
-// request(url, method, ms) -> { status, location, body } does one request without following
-// redirects or running anything (body: the first bytes of a GET, or ""); it throws on failure.
+// request(url, method, ms) -> { status, location, body, headers } does one request without following
+// redirects or running anything (body: the first bytes of a GET, or ""; headers: lower-case names);
+// it throws on failure.
 
 const META_REFRESH = /<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]*content\s*=\s*["']\s*\d*\s*[;,]\s*url\s*=\s*['"]?([^"'>\s]+)/i;
 
@@ -14,6 +15,17 @@ const META_REFRESH = /<meta[^>]+http-equiv\s*=\s*["']?refresh["']?[^>]*content\s
 export function metaRefresh(body) {
   const m = META_REFRESH.exec(body ?? "");
   return m ? m[1].replace(/&amp;/g, "&") : null;
+}
+
+// Some shortener services answer a link they have stopped redirecting (tinyurl.com: "no spam" page)
+// with a redirect to their own warning page, and name the real destination in a response header of
+// that same answer (observed: x-lighttpd-longurl). Any header named x-...longurl is read as that
+// statement; it is only an address to check, never requested.
+export function headerDestination(headers) {
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    if (/^x-[a-z-]*longurl$/.test(name.toLowerCase()) && typeof value === "string") return value;
+  }
+  return null;
 }
 
 function webAddress(text, base) {
@@ -27,8 +39,9 @@ function webAddress(text, base) {
 
 // { final, complete, hops: [{ url, status, method }], error }
 // complete: final is off every shortener (the destination); otherwise final is the last address
-// reached and error says why it stopped (no_redirect, too_many_hops, timeout, bad_redirect, or the
-// request's own error).
+// reached and error says why it stopped (no_redirect: the link's page does not redirect; service_page:
+// the shortener sent the link on to one of its own pages that does not redirect, usually a warning,
+// preview or removed-link page; too_many_hops, timeout, bad_redirect, or the request's own error).
 export async function expand(start, { isShortener, request, cfg, now = Date.now }) {
   const deadline = now() + cfg.timeout_ms;
   const hops = [];
@@ -43,7 +56,7 @@ export async function expand(start, { isShortener, request, cfg, now = Date.now 
         if (left <= 0) return { final: url, complete: false, hops, error: "timeout" };
         const res = await request(url, method, left);
         hops.push({ url, status: res.status, method });
-        const target = res.status >= 300 && res.status < 400 ? res.location : method === "GET" ? metaRefresh(res.body) : null;
+        const target = headerDestination(res.headers) ?? (res.status >= 300 && res.status < 400 ? res.location : method === "GET" ? metaRefresh(res.body) : null);
         if (target) {
           next = webAddress(target, url);
           if (!next) return { final: url, complete: false, hops, error: "bad_redirect" };
@@ -53,7 +66,7 @@ export async function expand(start, { isShortener, request, cfg, now = Date.now 
     } catch (err) {
       return { final: url, complete: false, hops, error: String(err?.message ?? err).slice(0, 120) };
     }
-    if (!next) return { final: url, complete: false, hops, error: "no_redirect" };
+    if (!next) return { final: url, complete: false, hops, error: url === start ? "no_redirect" : "service_page" };
     url = next;
   }
   return { final: url, complete: false, hops, error: "too_many_hops" };

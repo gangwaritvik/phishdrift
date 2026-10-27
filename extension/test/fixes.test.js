@@ -5,7 +5,7 @@ import { test } from "node:test";
 
 import { effectiveUrl } from "../dist/address.js";
 import { DANGEROUS, SAFE, SUSPICIOUS, framePageVerdict } from "../dist/combine.js";
-import { DOMAIN_FAILURE_MS, domainTtl, usableAnswer } from "../dist/domain.js";
+import { DOMAIN_FAILURE_MS, domainTtl, usableAnswer, usableTierCAnswer } from "../dist/domain.js";
 import { safeExit, worse } from "../dist/navigation.js";
 import { TRUST_DAYS, addTrust, liveTrust } from "../dist/trust.js";
 import { loadHybrid } from "../dist/lib/hybrid.js";
@@ -137,4 +137,13 @@ test("content script counts credential fields inside shadow roots", () => {
   assert.equal(facts.passwordFields, 1);
   assert.equal(facts.credentialFields, 1);
   assert.deepEqual(facts.forms, [{ hasPassword: true, action: "https://evil.test/p" }]);
+});
+
+test("a tier C answer counts only when the domain was checked", () => {
+  const ok = { checked: true, verdict: "dangerous", reasons: [{ feature: "domain_age_days", text: "Registered 3 days ago." }] };
+  assert.deepEqual(usableTierCAnswer(ok), { verdict: 2, reasons: [{ text: "Registered 3 days ago." }] });
+  assert.equal(usableTierCAnswer({ checked: false, reason: "shortener" }), null);
+  assert.equal(usableTierCAnswer({ ...ok, error: "x" }), null);
+  assert.equal(usableTierCAnswer({ ...ok, verdict: "maybe" }), null);
+  assert.equal(usableTierCAnswer(null), null);
 });
