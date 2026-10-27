@@ -69,7 +69,8 @@ here), **wrong** (the claim did not hold; what is true is said, and whether I fi
 | Pages that are only a picture, or draw the form on a canvas | The page model reads text and form fields, so a picture of a login box gives it almost nothing. **2026-10-27: partly closed.** A page with under 100 characters of text, no input fields and a picture covering at least 10% of the window is raised to suspicious when the address model scores the address 0.5 or more (`extension/src/pagefacts.js`, `combine.js`; browser test in `extension/e2e/smoke.mjs` step 4d). Still open: a picture-only page on an address scoring under 0.5 gets no warning (see `reports/picture_only.md`), and a picture drawn after load is not rechecked. | S to test, M to fix |
 | Crypto wallet drainers ("connect your wallet") | **Browser test 2026-10-26: a recovery-phrase page got a banner on both addresses (2 of 2 runs); one generic page only.** Original note: | No password or card box, so the rule "never clear a page that asks for credentials" does not apply. The page model knows wallet words, but no test set exists. | M |
 | Fake virus alerts, tech-support scams, "paste this into Run" pages | Not credential phishing, but users meet them often. No data, no rule. | M (out of scope is a fair answer) |
-| Phishing PDFs opened in Chrome | **Partly tested 2026-10-26:** a PDF on a dangerous address gets a banner. Clicking a link inside a PDF was not tested (the headless viewer could not be clicked). | S |
+| Phishing PDFs opened in Chrome | **Tested 2026-10-27 (real Chromium, PDF viewer, local server):** the PDF's address is checked like a page (banner on a suspicious or dangerous address, warning page on a blocklisted one), and a link clicked inside a PDF is checked as a normal navigation (a dangerous target opened the warning page). Nothing inside the PDF is read: a phishing PDF on a clean address, or a clean-looking link text, is not caught. | S |
+| File downloads (.exe, .zip, .apk, HTML attachment) | **Fixed 2026-10-27:** a download never commits, so the old build showed nothing and left the file's verdict on the page the user was on. Now a suspicious address shows a banner about the file on that page, the page keeps its own verdict, and a blocklisted address opens the warning page. The download itself is not stopped. A new tab with no page keeps only the toolbar badge. File type is not used (no extension list). | S |
 | Phishing from search ads or poisoned search results | The real problem is a redirect chain through ad networks. Not tested. | M |
 | QR-code phishing | The victim scans with a phone; the extension is desktop Chrome only. | Out of scope (say so in the report) |
 | Other browsers and phones | Only Chrome desktop was built and tested. | Out of scope |
@@ -108,6 +109,6 @@ All of these have a result in the files above.
 
 ## Suggested order if there is time
 
-1. Done 2026-10-26: short links, redirect chains, `file://`, PDF on a bad address. Not done: clicking a link inside a PDF, the fake popup and picture-only login pages (not built, because a realistic one copies a real brand's sign-in screen).
+1. Done 2026-10-26: short links, redirect chains, `file://`, PDF on a bad address. Done 2026-10-27: clicking a link inside a PDF, downloads. Not done: the fake popup and picture-only login pages (not built, because a realistic one copies a real brand's sign-in screen).
 2. Measure today's look-alike coverage with the Gemini check on and off (`experiments/llm_eval.py`).
 3. Everything else goes in the report's Limitations section.

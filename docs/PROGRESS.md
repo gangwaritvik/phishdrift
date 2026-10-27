@@ -1218,6 +1218,23 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   results" (the file's date was not confirmed), so either the shortener feature moved nothing or the report was not rewritten.
 - Not measured: whether the 10-split medians change; the learner finds few shorteners (most probed hosts gave no answer or no redirect).
 
+### 2026-10-27 — PDFs, downloads and other file types (cloud)
+- Ritvik: "what about PDF websites or other file types". Checked the code and ran real Chromium (attack harness, local pages, offline,
+  new `F-` cases in `extension/e2e/attack/harness.mjs`; PDF viewer included).
+- Verified before the change: a PDF is a normal committed page (content script runs in the viewer's page): banner on a suspicious or
+  dangerous address, warning page on a blocklisted one; a link clicked inside a PDF is checked like any navigation (warning page).
+  A download does not commit: the extension showed nothing (toolbar badge only) and overwrote the open page's stored verdict and
+  badge with the file address's verdict (a safe page turned to "suspicious" in the popup, its later rechecks were dropped as "left").
+- Changed (`extension/src/background.js`, `combine.js` `downloadWarning`, `content.js` banner `headline`): a navigation Chrome reports
+  as `net::ERR_ABORTED` (a download) restores the page's own tab state and badge, keeps it as the tab's current navigation, and a
+  suspicious file address shows a banner on that page ("a file was just downloaded from <domain>, and that address looks suspicious").
+  A blocklisted file address still opens the warning page. Never lowers a verdict; no file-type or extension list.
+- Results (real Chromium, `F-` cases): 9 pass, 0 fail, 4 info; full harness 45 pass, 0 fail, 6 info; `npm test` extension 84 pass.
+- Not fixed: the file is not stopped (it has already started when the warning shows; MV3 cannot block per URL against the list);
+  a new tab sent straight to a file has no page for a banner (badge only); PDF/file contents are not read; a download from an
+  allowlisted address is trusted; the URL check page scores the address only (it cannot see a content type) and says "Not a web
+  address" for data:, javascript: and mailto:.
+
 ### 2026-10-27 — Picture-only login page rule (cloud)
 - Gap (claim check, PR #64): a page whose sign-in box is one image or canvas (no password field, almost no text) on a safe-looking
   address got no warning. Changed: `extension/src/content.js` `visualFacts` (readable text, input fields, share of the window the

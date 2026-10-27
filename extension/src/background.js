@@ -11,7 +11,7 @@
 // waited for: the verdict is shown at once and raised when (and if) the backend answers.
 
 import { llmEndpoint, sanitizeSettings } from "./config.js";
-import { addressOnly, combine, DANGEROUS, FRAME_PAGE_REASON, SAFE, SUSPICIOUS, framePageVerdict } from "./combine.js";
+import { addressOnly, combine, DANGEROUS, downloadWarning, FRAME_PAGE_REASON, SAFE, SUSPICIOUS, framePageVerdict } from "./combine.js";
 import { listDomainKey, listUrlKey } from "./keys.js";
 import { MAX_URL_CHARS, effectiveUrl, isLocalAddress, scoreAddress } from "./address.js";
 import { DOMAIN_FAILURE_MS, usableAnswer, usableLlmAnswer, usableTierCAnswer } from "./domain.js";
@@ -465,12 +465,16 @@ async function rememberSafe(tabId, result) {
 
 // `at` is the tab's navigation when the verdict was reached; the warning page is not opened if the
 // tab has moved on since (the awaits below leave room for "Take me back to safety" to run).
-async function applyResult(tabId, result, at = lastNav.get(tabId)) {
-  await session.set(`tab:${tabId}`, result);
+async function showBadge(tabId, result) {
   await chrome.action.setBadgeText({ tabId, text: BADGES[result.verdict] });
   if (BADGE_COLORS[result.verdict]) {
     await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLORS[result.verdict] });
   }
+}
+
+async function applyResult(tabId, result, at = lastNav.get(tabId)) {
+  await session.set(`tab:${tabId}`, result);
+  await showBadge(tabId, result);
   const bypass = await session.get(`bypass:${tabId}`);
   if (result.verdict === DANGEROUS && bypass !== listUrlKey(result.url) && lastNav.get(tabId) === at) {
     await chrome.tabs.update(tabId, { url: warningUrl(tabId) });
@@ -541,14 +545,54 @@ function holdForPage(tabId, url, result) {
 const lastNav = new Map();
 const stillAt = (tabId, url) => !lastNav.has(tabId) || lastNav.get(tabId) === url;
 
+// Navigations Chrome reported as aborted (a file download, or Stop pressed) whose verdict may not be
+// ready yet: tabId -> address. Whoever finishes second handles the download (see `downloaded`).
+const aborted = new Map();
+
 chrome.webNavigation.onBeforeNavigate.addListener((details) => {
   if (details.frameId !== 0) return;
   const { tabId, url } = details;
   lastNav.set(tabId, url);
+  aborted.delete(tabId);
   guarded(async () => {
     const { result } = await evaluate(url);
     const early = result.verdict === DANGEROUS && result.layer !== "blocklist" ? held(result) : result;
-    if (stillAt(tabId, url)) await applyResult(tabId, early);
+    if (!stillAt(tabId, url)) return;
+    // kept in case this navigation turns into a download and the open page stays
+    const before = await session.get(`tab:${tabId}`);
+    if (before && before.url !== url) await session.set(`prev:${tabId}`, before);
+    await applyResult(tabId, early);
+    if (aborted.get(tabId) === url) await downloaded(tabId, url, early);
+  });
+}, navFilter);
+
+// A file download never commits: Chrome reports the navigation as aborted and the tab keeps the page
+// it was showing. That page gets back its own verdict (the file's address must not stand in for it),
+// and a suspicious file address is shown on it as a banner. A blocklisted address already opened the
+// warning page. A tab that shows no web page (a new tab sent straight to the file) has nowhere to
+// show a banner, so it keeps only the toolbar badge.
+async function downloaded(tabId, url, shown) {
+  aborted.delete(tabId);
+  if (shown.layer === "blocklist") return;
+  const [prev, doc] = await Promise.all([session.get(`prev:${tabId}`), session.get(`doc:${tabId}`)]);
+  if (doc?.url) lastNav.set(tabId, doc.url); // the open page is still the tab's current navigation
+  if (prev) {
+    await session.set(`tab:${tabId}`, prev);
+    await showBadge(tabId, prev);
+  }
+  const warning = downloadWarning(shown);
+  if (warning) notifyTab(tabId, warning);
+}
+
+chrome.webNavigation.onErrorOccurred.addListener((details) => {
+  if (details.frameId !== 0 || details.error !== "net::ERR_ABORTED") return;
+  const { tabId, url } = details;
+  if (lastNav.get(tabId) !== url) return; // replaced by a newer navigation
+  aborted.set(tabId, url);
+  guarded(async () => {
+    const shown = await session.get(`tab:${tabId}`);
+    // not applied yet: onBeforeNavigate's check finishes the job when its verdict is ready
+    if (shown?.url === url && aborted.get(tabId) === url) await downloaded(tabId, url, shown);
   });
 }, navFilter);
 
@@ -558,6 +602,7 @@ chrome.webNavigation.onCommitted.addListener((details) => {
   if (details.frameId !== 0) return;
   const { tabId, url } = details;
   lastNav.set(tabId, url);
+  aborted.delete(tabId);
   guarded(async () => {
     await session.set(`doc:${tabId}`, { url, floor: null, pageDone: false, frameCredentials: false });
     await check(url, {}, async (result, earlier) => {
@@ -596,7 +641,7 @@ chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   lastNav.delete(tabId);
-  for (const key of ["tab", "bypass", "doc", "safe"]) session.remove(`${key}:${tabId}`);
+  for (const key of ["tab", "bypass", "doc", "safe", "prev"]) session.remove(`${key}:${tabId}`);
 });
 
 // --- messages from the content script, popup and warning page -------------------------------

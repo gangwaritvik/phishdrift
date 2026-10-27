@@ -95,3 +95,10 @@ PASS  X-backend-down  ui=banner verdict=1 layer=page-model notes=[]
   list-based host names, not model scores.
 - Run after every retrain: `node build.mjs && bash e2e/attack/run.sh`. A calibration error means the candidate host names in
   `calibrate.mjs` need extending. A failing case is a real result.
+
+## File types (added 2026-10-27, `F-` cases)
+
+PDF viewer and downloads on the current build, offline, local server (the body is chosen by Content-Type / Content-Disposition,
+so the address and its score are the same as in the page cases). 9 pass, 0 fail, 4 info. Before the download fix, `F-download-link-from-safe-page-flagged`
+failed: the safe page's stored verdict became the file address's (1) and no banner showed. Info lines: a new tab sent straight to a
+file keeps only the toolbar badge; an image on a dangerous address (no HTML) is not scored beyond the address.

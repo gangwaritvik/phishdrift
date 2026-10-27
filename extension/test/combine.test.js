@@ -267,6 +267,17 @@ test("a look-alike hit never lowers a verdict and never acts on trusted, listed 
   assert.equal(combine({ ...base, local: true, lookalike }).layer, "local");
 });
 
+test("a download from a suspicious address gets a file-worded banner; other verdicts get none", async () => {
+  const { downloadWarning, SAFE, SUSPICIOUS, DANGEROUS } = await import("../src/combine.js");
+  const warn = downloadWarning({ verdict: SUSPICIOUS, domain: "evil.example", reasons: ["r"], url: "http://evil.example/x" });
+  assert.equal(warn.verdict, SUSPICIOUS);
+  assert.match(warn.headline, /file was just downloaded from evil\.example/);
+  assert.deepEqual(warn.reasons, ["r"]);
+  assert.equal(downloadWarning({ verdict: SAFE, reasons: [] }), null);
+  assert.equal(downloadWarning({ verdict: DANGEROUS, layer: "blocklist", reasons: [] }), null); // the warning page handles it
+  assert.equal(downloadWarning(null), null);
+});
+
 test("on shared hosting the address model alone is capped at suspicious", () => {
   const shared = { ...base, shared: true, model: model(DANGEROUS) };
   const r = combine(shared);
