@@ -12,12 +12,24 @@ jobs:
       matrix:
         site:
           - https://loquacious-starship-3425f0.netlify.app
-          - https://deploy-preview-69--loquacious-starship-3425f0.netlify.app
+          - local   # this branch's page, served from the runner (the deploy previews need a Netlify login)
     env:
-      SITE: ${{ matrix.site }}
+      SITE: ${{ matrix.site == 'local' && 'http://localhost:8080' || matrix.site }}
     steps:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      - uses: actions/checkout@v4
+        if: matrix.site == 'local'
+      - name: Serve this branch (no blocklist)
+        if: matrix.site == 'local'
+        run: |
+          OUT=site_dist; mkdir -p $OUT/demo $OUT/extension $OUT/js/data
+          cp demo/index.html demo/app.js demo/check.js demo/evidence.js $OUT/demo/
+          cp -r extension/src extension/data $OUT/extension/
+          cp -r js/src $OUT/js/
+          cp js/data/tier_a_hybrid.json js/data/psl_icann.json js/data/lists.json js/data/lookalike.json $OUT/js/data/
+          (cd $OUT && nohup python3 -m http.server 8080 >/dev/null 2>&1 &)
+          sleep 2
       - name: Live page in a browser
         run: |
           mkdir /tmp/pw && cd /tmp/pw && npm init -y >/dev/null && npm i playwright@1.50.0 >/dev/null 2>&1 && npx playwright install --with-deps chromium >/dev/null 2>&1
