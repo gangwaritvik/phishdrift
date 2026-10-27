@@ -4,11 +4,17 @@ on:
   workflow_dispatch:
   push:
     paths: [".github/workflows/shared-host-probe.yml"]
-env:
-  SITE: https://loquacious-starship-3425f0.netlify.app
 jobs:
   probe:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        site:
+          - https://loquacious-starship-3425f0.netlify.app
+          - https://deploy-preview-69--loquacious-starship-3425f0.netlify.app
+    env:
+      SITE: ${{ matrix.site }}
     steps:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
@@ -18,7 +24,7 @@ jobs:
           cat > run.mjs <<'JS'
           import { chromium } from "playwright";
           const b = await chromium.launch();
-          for (const u of [process.env.SITE, process.env.SITE + "/demo/index.html", "https://eager-curie-5f3a21.netlify.app/", "https://myportfolio.netlify.app/", "https://google.github.io/", "https://example.com/"]) {
+          for (const u of ["https://loquacious-starship-3425f0.netlify.app/", "https://loquacious-starship-3425f0.netlify.app/demo/index.html", "https://eager-curie-5f3a21.netlify.app/", "https://myportfolio.netlify.app/", "https://google.github.io/", "https://example.com/"]) {
             const p = await b.newPage();
             await p.goto(process.env.SITE + "/demo/index.html");
             await p.waitForSelector("#go:not([disabled])", { timeout: 120000 });
