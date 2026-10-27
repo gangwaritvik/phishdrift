@@ -1,0 +1,7 @@
+definition,allowlist,pages,matching,already warned,added >=0.3,added >=0.4,added >=0.5,added >=0.6,added >=0.7,added >=0.8
+"no text, no fields",on,2335,52,0,4,1,0,0,0,0
+"no text, no fields",off,2335,84,0,4,1,0,0,0,0
+... and a picture element,on,2335,16,0,0,0,0,0,0,0
+... and a picture element,off,2335,23,0,0,0,0,0,0,0
+... and a picture over 10% of the window (measurable offline),on,2335,2,0,0,0,0,0,0,0
+... and a picture over 10% of the window (measurable offline),off,2335,4,0,0,0,0,0,0,0

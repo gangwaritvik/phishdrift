@@ -30,6 +30,11 @@ export const LOCAL_NOTE = "This is an address on your computer or local network,
 export const ADDRESS_ONLY_NOTE =
   "The address looks like phishing, but this page does not ask for a password or payment details, so it was not blocked.";
 
+export const PICTURE_REASON =
+  "This page is a single picture with almost no text, a way to hide a fake sign-in box from page checks, and its address looks somewhat suspicious.";
+// The address model's score from which a picture-only page is raised (see experiments/picture_only.py).
+export const PICTURE_MIN_PROB = 0.5;
+
 // A dangerous verdict that rests on the address model alone (no list, look-alike rule, domain
 // check or page agrees yet). The service worker shows it as suspicious until the page is read.
 export const addressOnly = (result) => result?.verdict === DANGEROUS && result.layer === "url-model";
@@ -139,6 +144,14 @@ function combineLayers(layers, page = null, pageModel = null) {
       out.verdict = SUSPICIOUS;
       out.notes.push(ADDRESS_ONLY_NOTE);
     }
+  }
+  // A page that is one picture and nothing else (a sign-in box drawn as an image) gives the page
+  // model nothing to read and the form rules nothing to see. On an address the model already finds
+  // somewhat suspicious it is raised to suspicious, however the verdict got to safe. Never lowers.
+  if (out.verdict === SAFE && page?.pictureOnly && model.prob != null && model.prob >= PICTURE_MIN_PROB) {
+    out.verdict = SUSPICIOUS;
+    out.layer = "page";
+    out.reasons = [PICTURE_REASON];
   }
   if (out.verdict === SAFE) return { ...out, reasons: [] };
 
