@@ -74,3 +74,7 @@ measured in `reports/`. The combiner is a transparent rule set, not yet validate
 - `e2e/smoke.mjs`: loads the unpacked extension in Chromium with a stub backend and local pages
   (safe, banner, page-check escalation, warning page with proceed/report, blocklist hit, backend
   down). Needs Playwright; run by hand, not in CI.
+- `e2e/attack/`: 36 attack cases (late and hidden login forms, frames, pop-ups, banner hiding, trust vs
+  blocklist, back to safety, odd and huge addresses, slow or dead backend). Test addresses are picked from the
+  shipped model's score at run time, so it follows retrains. `bash e2e/attack/run.sh`; results in
+  `e2e/attack/results.md`. Manual workflow `.github/workflows/attack-harness.yml`.

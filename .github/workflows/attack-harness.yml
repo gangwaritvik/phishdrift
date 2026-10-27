@@ -1,0 +1,24 @@
+name: Extension attack harness
+# Manual: loads the built extension in headless Chromium and runs the attack cases against local pages
+# (extension/e2e/attack). Not part of ci.yml because it takes about two minutes and needs a browser.
+on:
+  workflow_dispatch:
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Build the extension
+        run: node extension/build.mjs
+      - name: Playwright and Chromium
+        run: |
+          mkdir /tmp/pw && cd /tmp/pw && npm init -y >/dev/null && npm i playwright@1.50.0 >/dev/null 2>&1 && npx playwright install --with-deps chromium >/dev/null 2>&1
+      - name: Attack harness
+        run: NODE_PATH=/tmp/pw/node_modules bash extension/e2e/attack/run.sh /tmp/attack-out | tee /tmp/attack.log
+      - name: Fail on any failed case
+        run: '! grep -q "^FAIL" /tmp/attack.log'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: attack-harness, path: /tmp/attack-out }

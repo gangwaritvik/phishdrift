@@ -29,3 +29,4 @@ dist/
 node_modules/
 logs_b2/
 site_dist/
+extension/e2e/attack/out/
