@@ -1336,6 +1336,16 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   used an offline stand-in embedder (`--embedder hash`) and say nothing about quality. Run time on the PC unknown.
 - Next: Ritvik runs `scripts\run_embed.ps1`; read `reports/embed_split0/SUMMARY.md` against the 2-point bar.
 
+### 2026-10-27 — Offline look-alike layer removed; the Gemini check is the only brand check (cloud)
+- Ritvik: the rules cover only the 899 listed brands, so remove the layer and stay on Gemini.
+- Removed: `js/src/lookalike.js`, `features/lookalike.py` (+ `python -m features lookalike`), `configs/lookalike.yaml`, `js/data/lookalike.json`,
+  `lookalikeEscalate` in `extension/src/combine.js`, the loading and per-address check in `extension/src/background.js`, the demo page's
+  look-alike lines, the data file from the extension and Netlify builds, `experiments/lookalike_eval.py`, `js/bench/lookalike.mjs`, their
+  tests and `reports/lookalike.md`. The brand list stays (a model feature list). `stepUp` stays for the AI check.
+- Tests: `npm test` extension 88 pass, js pass, pytest 584 passed 5 skipped (`test_render_gap_e2e` left out, Chromium), ruff clean.
+- Cost (from the 10-26 entry, not remeasured): with the AI check off, ASCII look-alikes are warned 0.2% and one-letter-off names 0.5% of
+  the time (before: 99.8% and 79.0% for listed brands). The AI check is off by default, has never had a measured accuracy, and its free
+  quota has failed before (HTTP 429). Until it is measured or turned on by default, look-alikes of any brand are mostly unwarned.
 ### 2026-10-27 — CatBoost, XGBoost, an average, and a source-adversarial scorer: no gain on a sample (cloud)
 - Why: the conference paper wants a better model than the CharCNN (no gain); options 4 and 3 of the ranked list, both need no downloads.
 - Changed (new files; nothing shipped touched): `models/gbdt.py` gains a `catboost` kind, `models/adv_text.py` (hashed char n-grams, small

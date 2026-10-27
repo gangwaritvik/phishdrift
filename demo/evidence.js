@@ -123,12 +123,8 @@ function combineEvidence(c, layers, result) {
     steps.push({ text: `The address model says ${names[start]}.`, to: start });
   }
   // Escalate-only layers after the model: each is shown only if it moved the verdict.
-  const base = c.combine.combine({ ...layers, lookalike: null, llm: null }).verdict;
-  const withLookalike = c.combine.combine({ ...layers, llm: null }).verdict;
-  if (layers.lookalike && withLookalike > base) {
-    steps.push({ text: `${layers.lookalike.text} The look-alike check raises it to ${names[withLookalike]}.`, to: withLookalike });
-  }
-  if (layers.llm?.raise && result.verdict > withLookalike) {
+  const base = c.combine.combine({ ...layers, llm: null }).verdict;
+  if (layers.llm?.raise && result.verdict > base) {
     steps.push({ text: `The AI check raises it to ${names[result.verdict]}.`, to: result.verdict });
   }
   return { steps, start, end: result.verdict };

@@ -1,9 +1,0 @@
-# Offline look-alike check (features/lookalike.py -> js/data/lookalike.json, js/src/lookalike.js).
-# An escalate-only signal next to the models: it never lowers a verdict and never fires on a
-# brand's own domains. Brand names come from configs/lists/brands.txt, the official-domain map from
-# configs/lists/brand_domains.json and the look-alike character table from
-# configs/lists/confusables.json (all built from data, see features/scrape.py).
-
-rules: [homograph, edit1]
-min_brand_len: 4   # shorter brand names match too many unrelated words
-min_edit_len: 6    # edit1 compares only labels of at least this many characters
