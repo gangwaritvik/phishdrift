@@ -10,21 +10,21 @@ Rows are captured hosts (one per host, latest capture); in the domain unit that 
 | label not 0/1 | 0 | 0 | 0 |
 | hosting platform | 0 | 0 | 0 |
 | IP host | 0 | 0 | 0 |
-| filtered by the PC's resolver | 50 | 0 | 0 |
+| filtered by the PC's resolver | 119 | 0 | 0 |
 | captured more than 14 h after first seen | 0 | 0 | 0 |
 
 Eligible:
 
 | class | hosts | registrable domains | hosts per domain |
 |---|---|---|---|
-| benign | 31,975 | 31,975 | 1.00 |
-| phishing | 217 | 217 | 1.00 |
+| benign | 90,616 | 90,616 | 1.00 |
+| phishing | 214 | 214 | 1.00 |
 
 The address score is the shipped model's on `https://<domain>/`, not retrained on this split; pool overlap with its training data is unknown, which favours the address model.
 
 Median hours from first seen in a feed to the capture used (benign): 0.2.
 
-Median hours from first seen in a feed to the capture used (phishing): 0.8.
+Median hours from first seen in a feed to the capture used (phishing): 0.6.
 
 ## Test results
 
@@ -32,38 +32,38 @@ Median over 10 registrable-domain-grouped splits [min, max]. `op` = operating po
 
 | model | features | test hosts / domains | pos / neg | ROC-AUC | PR-AUC | recall @1% FPR | recall @0.1% FPR | cal 1%: recall / FPR | cal 0.1%: recall / FPR |
 |---|---|---|---|---|---|---|---|---|---|
-| lightgbm | c_all | 6,439 / 6,439 | 44 / 6,395 | 0.8289 [0.7568, 0.8958] | 0.5411 [0.4902, 0.6430] | 54.5 [50.0, 65.9] | 52.3 [45.5, 61.4]* | 52.3 / 0.4 | 48.9 / 0.0 |
-| lightgbm | c_no_age | 6,439 / 6,439 | 44 / 6,395 | 0.8167 [0.7436, 0.8859] | 0.3780 [0.3037, 0.4915] | 44.3 [40.9, 56.8] | 28.4 [20.5, 40.9]* | 43.2 / 0.7 | 30.7 / 0.1 |
-| baseline | domain_age_days | 6,439 / 6,439 | 44 / 6,395 | 0.6788 [0.6664, 0.7313] | 0.0106 [0.0101, 0.0120] | 0.0 [0.0, 0.0] | 0.0 [0.0, 0.0]* | 0.0 / 0.0 | 0.0 / 0.0 |
-| a_host | hybrid2_bare_host | 6,439 / 6,439 | 44 / 6,395 | 0.8361 [0.8099, 0.8712] | 0.1413 [0.1158, 0.1737] | 21.6 [13.6, 27.3] | 9.1 [6.8, 15.9]* | 18.2 / 0.8 | 6.8 / 0.1 |
-| lightgbm | c+a_host | 6,439 / 6,439 | 44 / 6,395 | 0.8530 [0.7866, 0.9143] | 0.5489 [0.4912, 0.6528] | 54.5 [50.0, 65.9] | 52.3 [45.5, 61.4]* | 53.4 / 0.5 | 50.0 / 0.0 |
-| lightgbm | c_all_shuffled | 6,439 / 6,439 | 44 / 6,395 | 0.4016 [0.2477, 0.6667] | 0.0067 [0.0043, 0.0146] | 0.0 [0.0, 6.8] | 0.0 [0.0, 2.3]* | n/a / n/a | n/a / n/a |
+| lightgbm | c_all | 18,167 / 18,167 | 43 / 18,124 | 0.8079 [0.7618, 0.8398] | 0.4897 [0.4125, 0.5710] | 53.5 [46.5, 60.5] | 50.0 [39.5, 60.5] | 48.8 / 0.6 | 44.2 / 0.0 |
+| lightgbm | c_no_age | 18,167 / 18,167 | 43 / 18,124 | 0.7768 [0.7550, 0.8616] | 0.2802 [0.1543, 0.3738] | 43.0 [37.2, 51.2] | 26.7 [18.6, 41.9] | 41.9 / 0.5 | 24.4 / 0.1 |
+| baseline | domain_age_days | 18,167 / 18,167 | 43 / 18,124 | 0.6733 [0.6277, 0.7015] | 0.0036 [0.0032, 0.0038] | 0.0 [0.0, 0.0] | 0.0 [0.0, 0.0] | 0.0 / 0.0 | 0.0 / 0.0 |
+| a_host | hybrid2_bare_host | 18,167 / 18,167 | 43 / 18,124 | 0.8313 [0.7804, 0.8598] | 0.0495 [0.0215, 0.1433] | 16.3 [11.6, 25.6] | 7.0 [2.3, 18.6] | 12.8 / 0.7 | 4.7 / 0.1 |
+| lightgbm | c+a_host | 18,167 / 18,167 | 43 / 18,124 | 0.8347 [0.8063, 0.8559] | 0.4833 [0.4134, 0.5708] | 53.5 [46.5, 60.5] | 47.7 [39.5, 58.1] | 50.0 / 0.4 | 44.2 / 0.0 |
+| lightgbm | c_all_shuffled | 18,167 / 18,167 | 43 / 18,124 | 0.5097 [0.2992, 0.7687] | 0.0027 [0.0016, 0.0328] | 0.0 [0.0, 20.9] | 0.0 [0.0, 9.3] | n/a / n/a | n/a / n/a |
 
-Cal side: median 6,395 benign hosts per split, so the thresholds allow 63 false positive(s) at 1.0% FPR, 6 false positive(s) at 0.1% FPR there.
+Cal side: median 18,123 benign hosts per split, so the thresholds allow 181 false positive(s) at 1.0% FPR, 18 false positive(s) at 0.1% FPR there.
 
-Shuffled-label control (labels permuted within train): mean test ROC-AUC 0.4617 [0.2477, 0.6667] over 10 splits; not flagged (flag rule: |mean - 0.5| > 0.05).
+Shuffled-label control (labels permuted within train): mean test ROC-AUC 0.5111 [0.2992, 0.7687] over 10 splits x 5 shuffles (standard error of the split means 0.016); not flagged (flag rule: |mean - 0.5| > 0.05).
 
 ## Feature importance (main model, gain share averaged over splits)
 
 | feature | group | gain share |
 |---|---|---|
-| `domain_age_days` | registration | 31.3% |
-| `days_since_rdap_change` | registration | 18.0% |
-| `days_to_expiry` | registration | 7.2% |
-| `cert_age_days` | tls | 7.0% |
-| `cert_days_left` | tls | 6.4% |
-| `registration_length_days` | registration | 5.7% |
-| `min_ttl_s` | dns | 4.4% |
-| `cert_validity_days` | tls | 3.5% |
-| `cert_san_count` | tls | 2.6% |
-| `mx_count` | dns | 2.6% |
-| `n_a` | dns | 1.6% |
-| `rdap_status_count` | registration | 1.6% |
-| `n_ns` | dns | 1.2% |
-| `ns_cloudflare` | dns | 1.1% |
-| `has_spf` | dns | 0.8% |
+| `domain_age_days` | registration | 33.5% |
+| `days_since_rdap_change` | registration | 17.0% |
+| `days_to_expiry` | registration | 7.5% |
+| `cert_age_days` | tls | 6.6% |
+| `registration_length_days` | registration | 6.1% |
+| `cert_days_left` | tls | 5.9% |
+| `min_ttl_s` | dns | 4.1% |
+| `cert_validity_days` | tls | 2.8% |
+| `cert_san_count` | tls | 2.4% |
+| `mx_count` | dns | 2.2% |
+| `n_a` | dns | 2.0% |
+| `rdap_status_count` | registration | 1.5% |
+| `ns_cloudflare` | dns | 1.2% |
+| `n_ns` | dns | 1.1% |
+| `n_aaaa` | dns | 1.0% |
 
-`has_cname` (host-form sensitive): gain share 0.1%, rank 28 of 29.
+`has_cname` (host-form sensitive): gain share 0.0%, rank 29 of 29.
 
 ## Time check
 
@@ -82,13 +82,13 @@ Time check skipped: the eligible rows span 1 capture day(s), fewer than 3.
 
 ## Sensitivity: captured within 2 h of first seen
 
-113 phishing and 31,975 benign rows (32,088 domains). Median over the same number of grouped splits [min, max].
+113 phishing and 90,616 benign rows (90,729 domains). Median over the same number of grouped splits [min, max].
 
 | model | features | ROC-AUC | recall @1% FPR |
 |---|---|---|---|
-| lightgbm | c_all | 0.7811 [0.6603, 0.8427] | 37.0 [30.4, 52.2] |
-| lightgbm | c_no_age | 0.7446 [0.6442, 0.8353] | 30.4 [17.4, 39.1] |
-| baseline | domain_age_days | 0.6790 [0.6282, 0.7248] | 0.0 [0.0, 0.0] |
-| a_host | hybrid2_bare_host | 0.7833 [0.6882, 0.8253] | 10.9 [0.0, 17.4] |
-| lightgbm | c+a_host | 0.8019 [0.7143, 0.8832] | 41.3 [30.4, 56.5] |
-| lightgbm | c_all_shuffled | 0.4435 [0.2576, 0.5503] | 0.0 [0.0, 4.3] |
+| lightgbm | c_all | 0.7546 [0.7038, 0.8134] | 41.3 [26.1, 52.2] |
+| lightgbm | c_no_age | 0.7433 [0.6197, 0.8516] | 30.4 [17.4, 43.5] |
+| baseline | domain_age_days | 0.6833 [0.6232, 0.7555] | 0.0 [0.0, 0.0] |
+| a_host | hybrid2_bare_host | 0.7655 [0.6594, 0.8643] | 8.7 [4.3, 21.7] |
+| lightgbm | c+a_host | 0.7654 [0.7286, 0.8510] | 41.3 [30.4, 52.2] |
+| lightgbm | c_all_shuffled | 0.5425 [0.2922, 0.7677] | 0.0 [0.0, 21.7] |
