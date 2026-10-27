@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       per_shard:
-        description: "domains per shard"
+        description: "domains per shard (the daily schedule uses 1000: 8,000 a day keeps the data branch small)"
         default: "4000"
   push:
     paths: [".github/workflows/tier-c-legit.yml"]
@@ -28,7 +28,7 @@ jobs:
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
     env:
       GITHUB_TOKEN: ${{ github.token }}
-      PER_SHARD: ${{ github.event.inputs.per_shard || '4000' }}
+      PER_SHARD: ${{ github.event.inputs.per_shard || '1000' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -2,6 +2,7 @@
 # Used by the tier C capture workflows. The captures live on the orphan branch `tier-c-data`.
 #   ci_data_branch.sh fetch   clone it to ./databranch and copy its data/ into ./data/
 #   ci_data_branch.sh push    copy the new capture files back and push (retries on a race)
+#   ci_data_branch.sh results DIR   copy DIR into results/ on the branch (reports, model) and push
 set -euo pipefail
 repo="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}"
 case "${1:-}" in
@@ -10,11 +11,17 @@ fetch)
   mkdir -p data
   cp -r databranch/data/. data/
   ;;
-push)
+push | results)
   mkdir -p databranch/data/interim
-  for d in domain_info capture_state; do
-    [ -d "data/interim/$d" ] && cp -r "data/interim/$d" databranch/data/interim/
-  done
+  if [ "$1" = results ]; then
+    mkdir -p databranch/results
+    cp -r "${2:?results needs a directory}"/. databranch/results/
+    set -- results "${3:-results}"
+  else
+    for d in domain_info capture_state; do
+      [ -d "data/interim/$d" ] && cp -r "data/interim/$d" databranch/data/interim/
+    done
+  fi
   cd databranch
   git config user.name "github-actions[bot]"
   git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -28,5 +35,5 @@ push)
   done
   exit 1
   ;;
-*) echo "usage: $0 fetch|push" >&2; exit 2 ;;
+*) echo "usage: $0 fetch|push|results DIR" >&2; exit 2 ;;
 esac

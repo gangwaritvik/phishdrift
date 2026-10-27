@@ -1,0 +1,44 @@
+name: Tier C train and report
+# Builds the tier C features from the captures on `tier-c-data`, runs experiments/tier_c.py
+# (10 domain-grouped splits, controls, time check, address-model comparison from the shipped
+# bundle) and trains the serving bundle. Results go to results/ on the data branch; nothing is
+# shipped from here. Whether to ship is decided from the report (the gates in the plan).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 4 * * 0"
+permissions:
+  contents: write
+concurrency:
+  group: tier-c-train
+  cancel-in-progress: false
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      PHISHDRIFT_THREADS: "4"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install -e .
+      - run: scripts/ci_data_branch.sh fetch
+      - name: Features
+        run: python -m features build --tier C --info-dir data/interim/domain_info --out out/features_c.parquet
+      - name: Address model scores (shipped bundle) for the comparison
+        run: |
+          python -c "import pandas as pd; pd.read_parquet('out/features_c.parquet', columns=['domain'])['domain'].drop_duplicates().to_csv('out/domains.txt', index=False, header=False)"
+          node js/bench/domain_scores.mjs out/domains.txt > out/a_scores.csv
+      - name: Experiment
+        run: python -m experiments.tier_c --features out/features_c.parquet --reports out/reports --with-a --a-scores out/a_scores.csv
+      - name: Serving bundle
+        run: python -m models.tier_c train --features out/features_c.parquet --out out/reports/tier_c_bundle.json --parity-out out/reports/tier_c_model_parity.json
+      - if: always()
+        run: scripts/ci_data_branch.sh results out/reports "tier C report"

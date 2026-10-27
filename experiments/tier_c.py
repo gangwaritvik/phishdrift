@@ -532,6 +532,7 @@ def run(
     with_a: bool = False,
     processed: Path | None = None,
     lists: Lists | None = None,
+    a_scores: Path | None = None,
 ) -> Path:
     cfg = cfg or load_config("models")
     cc = cfg["tier_c"]
@@ -544,7 +545,19 @@ def run(
         cc.get("require_resolving", True),
     )
     notes: list[str] = []
-    if with_a:
+    if with_a and a_scores is not None:
+        # scores of the shipped address model (js/bench/domain_scores.mjs): its training pool is
+        # not here, so domains it may have seen are not removed; that can only make the address
+        # model look better, i.e. the gain from tier C smaller
+        table = pd.read_csv(a_scores).drop_duplicates("domain").set_index("domain")["score"]
+        df = df[df["domain"].isin(table.index)].reset_index(drop=True)
+        df["a_host"] = df["domain"].map(table).to_numpy(dtype=float)
+        notes.append(
+            "The address score is the shipped model's on `https://<domain>/`, not retrained "
+            "on this split; pool overlap with its training data is unknown, which favours the "
+            "address model."
+        )
+    elif with_a:
         if processed is None:
             raise ValueError("--with-a needs --processed")
         seen = pool_domains(processed)
@@ -590,7 +603,7 @@ def run(
         log.info("not trained: %s", reason)
         return out_md
 
-    if with_a:
+    if with_a and a_scores is None:
         df["a_host"] = a_host_scores(df, processed, lists or load_lists(), cfg)
     splits = grouped_splits(df, cc["n_splits"], cc["test_fraction"], cc["cal_fraction"], cc["seed"])
     runs, imp = [], []
@@ -665,12 +678,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--reports", type=Path, default=Path("reports"))
     ap.add_argument("--with-a", action="store_true", help="add the tier A bare-host score")
     ap.add_argument("--processed", type=Path, default=Path("data/processed"))
+    ap.add_argument(
+        "--a-scores", type=Path, default=None, help="CSV domain,score from domain_scores.mjs"
+    )
     ap.add_argument("--lists-dir", default=None)
     ap.add_argument("--platforms-file", default=None)
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
-    lists = load_lists(a.lists_dir, a.platforms_file) if a.with_a else None
-    print(run(a.features, a.reports, with_a=a.with_a, processed=a.processed, lists=lists))
+    lists = load_lists(a.lists_dir, a.platforms_file) if a.with_a and not a.a_scores else None
+    print(
+        run(
+            a.features,
+            a.reports,
+            with_a=a.with_a,
+            processed=a.processed,
+            lists=lists,
+            a_scores=a.a_scores,
+        )
+    )
     return 0
 
 
