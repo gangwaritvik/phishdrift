@@ -243,3 +243,25 @@ test("a picture-only page restores a suspicious address verdict the page model c
   const r = combine(withProb(0.95, SUSPICIOUS), picture, pageModel);
   assert.deepEqual([r.verdict, r.layer], [SUSPICIOUS, "page"]);
 });
+
+// --- offline look-alike check (escalate only) ----------------------------------------------
+const lookalike = { rule: "homograph", brand: "paypal", text: 'This address looks like "paypal" but is written with look-alike characters.' };
+
+test("a look-alike hit raises safe to suspicious, and to dangerous only on a credential page", () => {
+  const r = combine({ ...base, lookalike });
+  assert.deepEqual([r.verdict, r.layer, r.reasons], [SUSPICIOUS, "lookalike", [lookalike.text]]);
+  const sus = combine({ ...base, model: model(SUSPICIOUS, ["m"]), lookalike });
+  assert.deepEqual([sus.verdict, sus.reasons], [SUSPICIOUS, [lookalike.text, "m"]]);
+  const login = combine({ ...base, model: model(SUSPICIOUS, ["m"]), lookalike }, { asksCredentials: true });
+  assert.deepEqual([login.verdict, login.layer], [DANGEROUS, "lookalike"]);
+});
+
+test("a look-alike hit never lowers a verdict and never acts on trusted, listed or short-link addresses", () => {
+  assert.equal(combine({ ...base, model: model(DANGEROUS), lookalike }).verdict, DANGEROUS);
+  assert.equal(combine({ ...base, lookalike: null }).verdict, SAFE);
+  assert.equal(combine({ ...base, trusted: true, lookalike }).verdict, SAFE);
+  assert.equal(combine({ ...base, blocked: "url", model: null, lookalike }).layer, "blocklist");
+  assert.equal(combine({ ...base, allow: true, lookalike }).verdict, SAFE);
+  assert.equal(combine({ ...base, shortener: true, lookalike }).verdict, SAFE);
+  assert.equal(combine({ ...base, local: true, lookalike }).layer, "local");
+});

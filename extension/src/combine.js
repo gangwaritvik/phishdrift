@@ -53,10 +53,13 @@ export const addressOnly = (result) => result?.verdict === DANGEROUS && result.l
 // page: {hasPassword, credFormCrossDomain, credFormInsecure, asksCredentials} | null (pagefacts.js)
 // pageModel: {hasHtml, blended, verdict, pageDangerous, reasons:[{text}], allowedPageWarning?} | null
 //            (scorePage in page.js)
+// lookalike: layers.lookalike = {rule, brand, text} | null, the offline look-alike check; it only
+// raises (see lookalikeEscalate).
 // llm: layers.llm = {raise, kind: "brand"|"phishing"|null, brand, brand_domain, phishing} | null, the
 // backend's AI opinion on the address (backend/llm.py). It only raises (see llmEscalate).
 export function combine(layers, page = null, pageModel = null) {
-  return llmEscalate(combineLayers(layers, page, pageModel), layers, page);
+  const out = lookalikeEscalate(combineLayers(layers, page, pageModel), layers, page);
+  return llmEscalate(out, layers, page);
 }
 
 export const llmReason = (llm) =>
@@ -64,20 +67,28 @@ export const llmReason = (llm) =>
     ? `An AI check of the address thinks it looks like a phishing site (${Math.round(llm.phishing * 100)}% likely).`
     : `This address looks like it imitates ${llm.brand}, whose real site is ${llm.brand_domain}.`;
 
-// One step up when the LLM check says the address imitates a brand whose own domain it is not, or
-// looks like phishing on its own:
-// safe to suspicious, suspicious to dangerous only if the page asks for credentials. Never lowers
-// a verdict, never acts on blocklisted, trusted, allowlisted, short-link, local or unscored
-// addresses.
-export function llmEscalate(out, layers, page) {
-  const llm = layers.llm;
-  if (!llm?.raise || layers.trusted || layers.allow || layers.shortener) return out;
+// One step up for a look-alike or AI-check hit: safe to suspicious, suspicious to dangerous only if
+// the page asks for credentials. Never lowers a verdict, never acts on blocklisted, trusted,
+// allowlisted, short-link, local or unscored addresses.
+function stepUp(out, layers, page, reason, layer) {
+  if (layers.trusted || layers.allow || layers.shortener) return out;
   if (["blocklist", "none", "local", "allowlist", "shortener", "user-trusted"].includes(out.layer)) return out;
   const cap = page?.asksCredentials ? DANGEROUS : SUSPICIOUS;
   const verdict = Math.min(out.verdict + 1, Math.max(cap, out.verdict));
-  const reasons = [...new Set([llmReason(llm), ...out.reasons])];
+  const reasons = [...new Set([reason, ...out.reasons])];
   if (verdict <= out.verdict) return { ...out, reasons };
-  return { ...out, verdict, layer: "llm", reasons };
+  return { ...out, verdict, layer, reasons };
+}
+
+// layers.lookalike: the offline look-alike check (js/src/lookalike.js) says the address imitates a
+// brand whose own site it is not.
+export function lookalikeEscalate(out, layers, page) {
+  return layers.lookalike ? stepUp(out, layers, page, layers.lookalike.text, "lookalike") : out;
+}
+
+// layers.llm says the address imitates a brand or looks like phishing on its own.
+export function llmEscalate(out, layers, page) {
+  return layers.llm?.raise ? stepUp(out, layers, page, llmReason(layers.llm), "llm") : out;
 }
 
 function combineLayers(layers, page = null, pageModel = null) {

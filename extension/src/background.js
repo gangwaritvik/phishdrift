@@ -18,6 +18,7 @@ import { DOMAIN_FAILURE_MS, usableAnswer, usableLlmAnswer } from "./domain.js";
 import { addTrust, liveTrust } from "./trust.js";
 import { safeExit, worse } from "./navigation.js";
 import { loadHybrid } from "./lib/hybrid.js";
+import { loadLookalike, lookalikeSignal } from "./lib/lookalike.js";
 import { loadPage, scorePage } from "./lib/page.js";
 import { isIpHost } from "./lib/urlparts.js";
 import { ListSet, withBundledAllowlist, withShorteners } from "./lists.js";
@@ -93,6 +94,23 @@ function getPage() {
     return page;
   })();
   return pagePromise;
+}
+
+// Offline look-alike check (js/src/lookalike.js). Without its data file the check is simply off.
+let lookalikePromise;
+function getLookalike() {
+  lookalikePromise ??= (async () => {
+    try {
+      const [payload, model] = await Promise.all([
+        fetch(chrome.runtime.getURL("data/lookalike.json")).then((r) => r.json()),
+        getModel(),
+      ]);
+      return loadLookalike(payload, model.lists.psl, model.lists.platforms);
+    } catch {
+      return null;
+    }
+  })();
+  return lookalikePromise;
 }
 
 let listsPromise;
@@ -281,6 +299,8 @@ async function layersFor(url) {
   // and the cached layers must not depend on it.
   if (!layers.allow && !layers.shortener && !layers.blocked && !layers.local) {
     layers.model = scoreAddress(model, url);
+    const rules = await getLookalike();
+    layers.lookalike = rules && url.length <= MAX_URL_CHARS ? lookalikeSignal(rules, url) : null;
   }
   cacheSet(verdictCache, key, { layers }, settings.verdictCacheMax);
   return { ...layers, trusted: trusted.has(listed.trustKey) };
