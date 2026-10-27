@@ -20,13 +20,16 @@
   embeddings and skips finished stages. Do not run it at the same time as another heavy job.
 #>
 
-$ErrorActionPreference = "Stop"
+# "Continue": Windows PowerShell 5.1 turns any text a program writes to stderr (pip and logging notes)
+# into a terminating error under "Stop". Failures are caught through the exit codes below.
+$ErrorActionPreference = "Continue"
 Set-Location (Split-Path -Parent $PSScriptRoot)
 $env:PYTHONUTF8 = "1"
 $branch = "claude/project-thread-w7x133"
 $raw = "https://raw.githubusercontent.com/gangwaritvik/phishdrift/$branch"
 $py = if (Test-Path ".venv\Scripts\python.exe") { ".venv\Scripts\python.exe" } else { "python" }
 
+function Py { & $py @args 2>&1 | ForEach-Object { "$_" } }
 function Step([string]$Name) { Write-Host ""; Write-Host "==> $Name" -ForegroundColor Cyan }
 function Fail([string]$Msg) { Write-Host $Msg -ForegroundColor Red; exit 1 }
 
@@ -61,27 +64,27 @@ if ($free -lt 3) { Fail "less than 3 GB free disk: free some space first" }
 if ($ram -lt 6) { Write-Host "  low free RAM: close other programs for a safer run" -ForegroundColor Yellow }
 
 Step "3. PyTorch (CPU) and sentence-transformers"
-& $py -c "import torch" 2>$null
+$null = Py -c "import torch"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  PyTorch not installed: installing the CPU build (about 200 MB)"
-    & $py -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+    Py -m pip install torch --index-url https://download.pytorch.org/whl/cpu
     if ($LASTEXITCODE -ne 0) { Fail "PyTorch install failed (see the lines above)" }
 }
-& $py -c "import sentence_transformers" 2>$null
+$null = Py -c "import sentence_transformers"
 if ($LASTEXITCODE -ne 0) {
-    & $py -m pip install sentence-transformers
+    Py -m pip install sentence-transformers
     if ($LASTEXITCODE -ne 0) { Fail "sentence-transformers install failed (see the lines above)" }
 }
-& $py -c "import torch; print('  torch', torch.__version__, 'threads', torch.get_num_threads())"
+Py -c "import torch; print('  torch', torch.__version__, 'threads', torch.get_num_threads())"
 
 Step "4. smoke test on 2,000 rows with the real model (downloads about 90 MB)"
 $t = Get-Date
-& $py -m experiments.embed_a --smoke 2000 --reports reports\embed_smoke --cache-dir reports\embed_smoke\cache --max-hours 0.5
+Py -m experiments.embed_a --smoke 2000 --reports reports\embed_smoke --cache-dir reports\embed_smoke\cache --max-hours 0.5
 if ($LASTEXITCODE -ne 0) { Fail "smoke test failed (see the lines above); the real run was not started" }
 Write-Host ("  smoke test took {0:N0} s" -f ((Get-Date) - $t).TotalSeconds)
 
 Step "5. real run on split 0 (embeddings cached on disk, stops after 3 hours)"
-& $py -m experiments.embed_a --max-hours 3
+Py -m experiments.embed_a --max-hours 3
 $code = $LASTEXITCODE
 if ($code -eq 3) {
     Write-Host "Time limit reached. Run the same command again to continue." -ForegroundColor Yellow
