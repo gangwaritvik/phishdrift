@@ -41,7 +41,7 @@ VOCAB = 97
 def encode(texts: list[str], max_len: int) -> np.ndarray:
     out = np.zeros((len(texts), max_len), dtype=np.int64)
     for i, t in enumerate(texts):
-        codes = [c - 31 if 32 <= c <= 126 else 96 for c in t[:max_len].encode("utf-8", "replace")]
+        codes = [c - 31 if 32 <= c <= 126 else 96 for c in t.encode("utf-8", "replace")[:max_len]]
         out[i, : len(codes)] = codes
     return out
 

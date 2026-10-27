@@ -29,6 +29,7 @@ PARAMS = {
 
 def test_encode_pads_truncates_and_maps_unknown():
     x = char_cnn.encode(["ab", "a" * 100, "é"], 10)
+    assert char_cnn.encode(["é" * 50], 10).shape == (1, 10)  # multi-byte text is cut by bytes
     assert x.shape == (3, 10) and x[0, 2] == 0 and (x[1] == x[1, 0]).all()
     assert x[2, 0] == 96  # non-ASCII byte -> unknown id
 

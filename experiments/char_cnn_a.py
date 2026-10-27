@@ -176,6 +176,8 @@ def _table(runs: pd.DataFrame, models: list[str], bar: float, ref: str, new: str
             )
     lines += ["", f"Change in recall at 1% FPR, `{new}` minus `{ref}` (points; bar {bar:g}):", ""]
     for set_name in ("test", "heldout_source", "time_slice", "test_normalised"):
+        if set_name not in set(runs["eval_set"]):
+            continue
         d = 100 * (
             _get(runs, new, set_name, "op_1pct_recall")
             - _get(runs, ref, set_name, "op_1pct_recall")
@@ -242,7 +244,9 @@ def run(args, cfg: dict | None = None, lists: Lists | None = None) -> int:
     lists = lists or load_lists(args.lists_dir, args.platforms_file)
     char_cnn.set_deadline(args.max_hours)
 
-    frames = {p: load_part(args.processed, p, lists) for p in PARTS}
+    # time_slice and natural are optional parts: a staged sample may have neither
+    parts = [p for p in (*PARTS, "natural") if (args.processed / f"meta_{p}.parquet").exists()]
+    frames = {p: load_part(args.processed, p, lists) for p in parts}
     pool = frames.pop("pool")
     splits = pd.read_parquet(args.processed / "splits.parquet")
     splits = pool[["uid"]].merge(splits, on="uid", how="left", validate="one_to_one")
