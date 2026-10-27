@@ -30,6 +30,9 @@ export const LOCAL_NOTE = "This is an address on your computer or local network,
 export const ADDRESS_ONLY_NOTE =
   "The address looks like phishing, but this page does not ask for a password or payment details, so it was not blocked.";
 
+export const SHARED_HOST_NOTE =
+  "This site is on a shared hosting platform, where anyone can publish under a name of their choice, so its address alone is never called dangerous.";
+
 export const PICTURE_REASON =
   "This page is a single picture with almost no text, a way to hide a fake sign-in box from page checks, and its address looks somewhat suspicious.";
 // The address model's score from which a picture-only page is raised (see experiments/picture_only.py).
@@ -47,6 +50,7 @@ export const addressOnly = (result) => result?.verdict === DANGEROUS && result.l
 //   model: {verdict, prob, reasons:[{text}]} | null,
 //   domain: {risk, signals:[{severity,text}]} | null,   backend answer
 //   backendFailed: bool,
+//   shared: bool,                shared hosting platform or open-hosting zone (lists.js)
 //   unscored: bool,              the document has no web address (address.js effectiveUrl)
 //   local: bool,                 this computer or the local network (address.js isLocalAddress)
 // }
@@ -115,8 +119,14 @@ function combineLayers(layers, page = null, pageModel = null) {
     if (page?.asksCredentials) return { ...out, verdict: SUSPICIOUS, layer: "page", reasons: [NO_ADDRESS_REASON] };
     return { ...out, layer: "none", notes: [NO_ADDRESS_NOTE] };
   }
-  const model = layers.model;
-  if (!model) return { ...out, layer: "none", notes: ["The address could not be read."] };
+  if (!layers.model) return { ...out, layer: "none", notes: ["The address could not be read."] };
+  // Shared hosting: whoever publishes there picks the host name, and the model's prior for hosting
+  // platforms makes many ordinary tenants look like phishing (reports/shared_host_cap.md). The
+  // address alone is then capped at suspicious; a page that asks for credentials, the page model,
+  // a list or domain evidence can still take it to dangerous.
+  const capped = layers.shared && !page?.asksCredentials && layers.model.verdict > SUSPICIOUS;
+  const model = capped ? { ...layers.model, verdict: SUSPICIOUS } : layers.model;
+  if (capped) out.notes.push(SHARED_HOST_NOTE);
   out.verdict = model.verdict;
   out.prob = model.prob;
   out.reasons = model.reasons.map((r) => r.text);
