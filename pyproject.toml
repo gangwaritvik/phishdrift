@@ -25,6 +25,7 @@ dependencies = [
 
 [project.optional-dependencies]
 datasets = ["datasets>=2.18", "ucimlrepo>=0.0.7"]
+deep = ["torch>=2.2"]
 backend = ["fastapi>=0.110", "uvicorn>=0.29", "cryptography>=42"]
 dev = ["pytest>=8", "ruff>=0.5", "huggingface_hub>=0.23", "httpx>=0.27"]
 

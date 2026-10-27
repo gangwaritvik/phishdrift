@@ -1220,3 +1220,17 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   warns, address side); no real picture-only phishing page was available; a picture drawn after load is not rechecked (only new input fields
   trigger a recheck); the rule needs layout (it runs in the content script, so it cannot be measured on stored HTML except as the upper and
   lower bounds above).
+
+### 2026-10-27 — One-split CharCNN test for the tier A hybrid (cloud, code only; paper plan thread)
+- Why: the conference-paper plan (`/mnt/project-files/phishdrift/paper/conference_plan.md`) lists a deep member for the tier A
+  hybrid as an add-on experiment behind a stop rule. Ritvik said "go"; Remote Control could not start on the PC, so he runs a script.
+- Changed (new files only; nothing shipped or configured for the shipped model is touched): `models/char_cnn.py` (multi-scale
+  character CNN, same fit/score interface as the other text scorers, checkpoint after every epoch, deadline), `configs/char_cnn.yaml`,
+  `experiments/char_cnn_a.py` (split 0: CNN against the char n-gram LR next to it, shuffled-label control, hybrid2 with and without the
+  CNN as a fifth out-of-fold scorer; test, per source, held-out source, time slice, normalised URLs), `scripts/run_char_cnn.ps1`
+  (downloads the three files, checks, installs CPU PyTorch, smoke test, real run, copies `SUMMARY.md` to the clipboard),
+  `tests/test_char_cnn.py`, optional dependency `deep` in `pyproject.toml`.
+- Tested here on toy data only (pytest 3 pass, ruff clean). Timing in the cloud (4 cores, random 20,000 URLs of up to 200 characters):
+  about 18 s per epoch, so about 4.4 min per epoch for 285,000 training URLs (estimate; the PC differs). Not run on real data.
+- The 2-point bar for "a gain" is a proposal, not an approved rule. The hybrid's own shuffled-label control is not part of this first test.
+- Next: Ritvik runs `scripts\run_char_cnn.ps1` on the PC and pastes `SUMMARY.md` back.

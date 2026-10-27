@@ -1,0 +1,14 @@
+# experiments/char_cnn_a.py: one-split test of a deep (character CNN) member for the tier A hybrid.
+# Kept apart from models.yaml so the shipped model's config is untouched.
+split: 0
+char_cnn:
+  max_len: 200          # characters of the masked canonical URL (longer URLs keep their start)
+  embed_dim: 32
+  widths: [3, 5, 7]     # parallel convolution widths
+  filters: 128          # per width
+  hidden: 64
+  dropout: 0.3
+  lr: 0.002
+  batch_size: 256
+  epochs: 6             # fixed; per-epoch cal-side ROC-AUC is logged, nothing is tuned on test
+bar_points: 2.0         # proposed (not yet approved): a gain must beat the split spread, about 2 points
