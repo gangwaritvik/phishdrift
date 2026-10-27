@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { ADDRESS_ONLY_NOTE, BLOCKLIST_REASON, DANGEROUS, NO_ADDRESS_REASON, SAFE, SHARED_HOST_NOTE, SUSPICIOUS, addressOnly, combine } from "../dist/combine.js";
+import {
+  ADDRESS_ONLY_NOTE,
+  BLOCKLIST_REASON,
+  DANGEROUS,
+  NO_ADDRESS_REASON,
+  PICTURE_MIN_PROB,
+  PICTURE_REASON,
+  SAFE,
+  SHARED_HOST_NOTE,
+  SUSPICIOUS,
+  addressOnly,
+  combine,
+} from "../dist/combine.js";
 
 const model = (verdict, texts = ["why"]) => ({ verdict, prob: 0.5, reasons: texts.map((text) => ({ text })) });
 const base = { trusted: false, allow: false, blocked: null, model: model(SAFE, []), domain: null, backendFailed: false };
@@ -201,6 +213,36 @@ test("the LLM opinion never acts on trusted, blocklisted, allowlisted or short-l
   assert.equal(combine({ ...base, blocked: "url", model: null, llm }).layer, "blocklist");
   assert.equal(combine({ ...base, allow: true, llm }).verdict, SAFE);
   assert.equal(combine({ ...base, shortener: true, llm }).verdict, SAFE);
+});
+
+// the picture-only rule (pagefacts.js pictureOnly): raises safe to suspicious on a somewhat suspicious address
+const picture = { hasPassword: false, credFormCrossDomain: false, credFormInsecure: false, asksCredentials: false, pictureOnly: true };
+const withProb = (prob, verdict = SAFE) => ({ ...base, model: { verdict, prob, reasons: [] } });
+
+test("a picture-only page on an address the model finds somewhat suspicious is raised to suspicious", () => {
+  const r = combine(withProb(PICTURE_MIN_PROB), picture);
+  assert.deepEqual([r.verdict, r.layer, r.reasons], [SUSPICIOUS, "page", [PICTURE_REASON]]);
+});
+
+test("a picture-only page on an address that looks fine, or an ordinary page, is not raised", () => {
+  assert.equal(combine(withProb(PICTURE_MIN_PROB - 0.01), picture).verdict, SAFE);
+  assert.equal(combine(withProb(0.8), { ...picture, pictureOnly: false }).verdict, SAFE);
+  assert.equal(combine(withProb(PICTURE_MIN_PROB), null).verdict, SAFE);
+});
+
+test("the picture-only rule never lowers and never acts on trusted, allowlisted, blocklisted, short-link or local addresses", () => {
+  assert.equal(combine(withProb(0.9, DANGEROUS), { ...picture, asksCredentials: true }).verdict, DANGEROUS);
+  assert.equal(combine(withProb(0.8, SUSPICIOUS), picture).verdict, SUSPICIOUS);
+  for (const layers of [{ trusted: true }, { allow: true }, { shortener: true }, { local: true }]) {
+    assert.equal(combine({ ...withProb(0.9), ...layers }, picture).verdict, SAFE);
+  }
+  assert.equal(combine({ ...withProb(0.9), blocked: "url" }, picture).layer, "blocklist");
+});
+
+test("a picture-only page restores a suspicious address verdict the page model cleared", () => {
+  const pageModel = { hasHtml: false, blended: 0.2, verdict: SAFE, pageDangerous: false, reasons: [] };
+  const r = combine(withProb(0.95, SUSPICIOUS), picture, pageModel);
+  assert.deepEqual([r.verdict, r.layer], [SUSPICIOUS, "page"]);
 });
 
 // --- offline look-alike check (escalate only) ----------------------------------------------

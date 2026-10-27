@@ -69,6 +69,32 @@ function collectPageFacts(doc, base, shadows = shadowRoots(doc)) {
   return { passwordFields, credentialFields, forms };
 }
 
+// <visual-facts> (js/bench/picture_facts.mjs runs this block as it is)
+// What a page looks like, for the picture-only rule (pagefacts.js): the readable text, the input
+// fields, and the share of the window the largest picture (img, canvas, svg or a CSS background
+// image) covers. A fake sign-in box drawn as one image has next to no text and no fields.
+const MAX_BACKGROUND_CANDIDATES = 100;
+
+function visualFacts(doc, win) {
+  const body = doc.body;
+  if (!body) return null;
+  const textChars = (body.innerText || "").replace(/\s+/g, " ").trim().length;
+  const fields = body.querySelectorAll('input:not([type="hidden"]), textarea, select, [contenteditable]').length;
+  const window_ = Math.max(1, win.innerWidth) * Math.max(1, win.innerHeight);
+  const pictures = Array.from(body.querySelectorAll("img, canvas, svg"));
+  for (const el of Array.from(body.querySelectorAll("div, a, section, main, span")).slice(0, MAX_BACKGROUND_CANDIDATES)) {
+    if (win.getComputedStyle(el).backgroundImage !== "none") pictures.push(el);
+  }
+  if (win.getComputedStyle(body).backgroundImage !== "none") pictures.push(body);
+  let largest = 0;
+  for (const el of pictures) {
+    const r = el.getBoundingClientRect();
+    largest = Math.max(largest, Math.min(r.width, win.innerWidth) * Math.min(r.height, win.innerHeight));
+  }
+  return { textChars, fields, pictures: pictures.length, largest: largest / window_ };
+}
+// </visual-facts>
+
 // The banner lives in a closed shadow root, in the browser's top layer (a popover), with its own
 // styles marked important, so the page can neither restyle it, cover it nor find it by id. If the
 // page removes or hides it, it is put back; a page that keeps doing so is reported to the service
@@ -193,6 +219,13 @@ async function run() {
   const facts = collectPageFacts(document, location.href);
   // Frames report only when they ask for credentials (ad and widget frames cost nothing).
   if (!isTop && !asksCredentials(facts)) return facts;
+  if (isTop) {
+    try {
+      facts.visual = visualFacts(document, window);
+    } catch {
+      facts.visual = null; // the picture-only rule is skipped
+    }
+  }
   let html = null;
   try {
     html = pageHtml(document);
