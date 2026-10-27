@@ -38,8 +38,8 @@ client = HttpClient.from_config(cfg["http"], Path(".cache/http"))
 ua = {"User-Agent": cfg["http"]["user_agent"]}
 
 
-def get(url, **kw):
-    r = requests.get(url, timeout=20, headers=ua, **kw)
+def get(url, headers=None, **kw):
+    r = requests.get(url, timeout=20, headers={**ua, **(headers or {})}, **kw)
     return {"status": r.status_code, "bytes": len(r.content)}
 
 
@@ -48,7 +48,13 @@ timed("phishing_db_new_today", lambda: get(cfg["feeds"]["phishing_database"]["ur
 timed("rdap_org_example", lambda: get("https://rdap.org/domain/example.com"))
 timed("iana_rdap_bootstrap", lambda: get("https://data.iana.org/rdap/dns.json"))
 timed("doh_8888", lambda: get("https://8.8.8.8/resolve?name=example.com&type=A"))
-timed("doh_1111", lambda: get("https://1.1.1.1/dns-query?name=example.com&type=A", headers={"Accept": "application/dns-json"}))
+timed(
+    "doh_1111",
+    lambda: get(
+        "https://1.1.1.1/dns-query?name=example.com&type=A",
+        headers={"Accept": "application/dns-json"},
+    ),
+)
 timed("tls_example", lambda: domain_capture.tls_facts("example.com", 8))
 
 # targets
@@ -73,7 +79,7 @@ try:
     out["tranco"] = {"n": len(ranked), "s": round(time.monotonic() - t, 1)}
 except Exception as exc:  # noqa: BLE001
     out["tranco_error"] = repr(exc)[:200]
-legit = [f"www.{d}" for d in ranked[5000:5000 + N]]
+legit = [f"www.{d}" for d in ranked[5000 : 5000 + N]]
 
 query = domain_capture.make_query(dc)
 jobs = []
@@ -82,8 +88,12 @@ for label, hosts in ((1, phish), (0, legit)):
     for h in hosts:
         d = registered_domain(f"https://{h}/")
         jobs.append(
-            {"host": h, "domain": d, "rdap": d not in seen_d,
-             "target": {"url": f"https://{h}/", "label": label, "first_seen": None}}
+            {
+                "host": h,
+                "domain": d,
+                "rdap": d not in seen_d,
+                "target": {"url": f"https://{h}/", "label": label, "first_seen": None},
+            }
         )
         seen_d.add(d)
 t0 = time.monotonic()
@@ -91,13 +101,15 @@ res = []
 for job, recs in benign.run_parallel(
     jobs,
     lambda j: domain_capture.capture_job(j, client, dc, query, domain_capture.tls_facts),
-    dc["workers"], dc["job_deadline_s"],
+    dc["workers"],
+    dc["job_deadline_s"],
 ):
     res.append((job, recs))
 out["capture_seconds"] = round(time.monotonic() - t0, 1)
 stats: dict = {}
 for label in (1, 0):
-    rd = collections.Counter(); dns_ok = tls_ok = tls_ver = n = timeout = 0
+    rd = collections.Counter()
+    dns_ok = tls_ok = tls_ver = n = timeout = 0
     for job, recs in res:
         if job["target"]["label"] != label:
             continue
@@ -113,8 +125,12 @@ for label in (1, 0):
                 tls_ok += bool(r["tls"] and r["tls"]["ok"])
                 tls_ver += bool(r["tls"] and r["tls"].get("verified"))
     stats["phishing" if label else "legit"] = {
-        "hosts": n, "abandoned": timeout, "rdap": dict(rd), "dns_resolves": dns_ok,
-        "tls_ok": tls_ok, "tls_verified": tls_ver,
+        "hosts": n,
+        "abandoned": timeout,
+        "rdap": dict(rd),
+        "dns_resolves": dns_ok,
+        "tls_ok": tls_ok,
+        "tls_verified": tls_ver,
     }
 out["capture"] = stats
 print(json.dumps(out, indent=1, default=str))

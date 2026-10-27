@@ -82,18 +82,23 @@ def capture_lag_h(df: pd.DataFrame) -> pd.Series:
     return (captured - first).dt.total_seconds() / 3600
 
 
-def eligible(df: pd.DataFrame, max_lag_h: float | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+def eligible(
+    df: pd.DataFrame, max_lag_h: float | None = None, require_resolving: bool = True
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """(eligible rows, removals per filter and class). Filters run in this order.
     ``max_lag_h``: drop hosts captured more than this many hours after they were first seen,
     so both classes are measured at the same age (a host re-captured a day later, e.g. after
-    the PC's resolver blocked the first try, may already be suspended or taken down)."""
+    the PC's resolver blocked the first try, may already be suspended or taken down).
+    ``require_resolving`` False (domain-unit captures): a domain whose apex and www do not
+    resolve stays, because the deployed check meets such domains too and sees no DNS for them."""
     steps = [
         ("label not 0/1", lambda d: ~d["label"].isin([0, 1])),
         ("hosting platform", lambda d: d["is_hosting_platform"].astype(bool)),
         ("IP host", lambda d: d["is_ip"].astype(bool)),
         ("filtered by the PC's resolver", lambda d: d["filtered"].astype(bool)),
-        ("not resolving", lambda d: ~d["resolves"].fillna(False).astype(bool)),
     ]
+    if require_resolving:
+        steps.append(("not resolving", lambda d: ~d["resolves"].fillna(False).astype(bool)))
     if max_lag_h is not None:
         steps.append(
             (
@@ -529,7 +534,11 @@ def run(
     tables = reports / "tables"
     tables.mkdir(parents=True, exist_ok=True)
     out_md = reports / "tier_c.md"
-    df, filters = eligible(pd.read_parquet(features), cc.get("max_capture_lag_h"))
+    df, filters = eligible(
+        pd.read_parquet(features),
+        cc.get("max_capture_lag_h"),
+        cc.get("require_resolving", True),
+    )
     notes: list[str] = []
     if with_a:
         if processed is None:

@@ -241,7 +241,7 @@ def tls_group(tls: dict | None, host: str, now: datetime | None, lists: Lists) -
 def compute_c(host_rec: dict, domain_rec: dict | None, lists: Lists) -> dict[str, float]:
     """Every tier C feature of one host record (with its registrable domain's record)."""
     now = parse_time(host_rec.get("captured_at"))
-    host = str(host_rec.get("host") or "").lower()
+    host = str(host_rec.get("probe_host") or host_rec.get("host") or "").lower()
     own = str(host_rec.get("domain") or registrable(host)[1]).lower()
     filtered = filtered_dns(host_rec)  # the PC's resolver answered, not the host's DNS
     values = (

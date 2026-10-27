@@ -225,3 +225,34 @@ def test_a_stuck_lookup_is_abandoned_and_the_run_finishes(tmp_path):
         release.set()
     assert out["hosts"] == 1
     assert domain_capture.load_captured(tmp_path)[0] == {"ok.xyz"}  # stuck.xyz waits for next run
+
+
+def test_domain_unit_captures_the_apex_once_and_falls_back_to_www(tmp_path):
+    cfg = {**CFG, "unit": "domain", "tls": True}
+    dns = _fake_dns(
+        {
+            ("shop.com", "A"): [("203.0.113.1", 60)],
+            ("blog.net", "A"): [],
+            ("www.blog.net", "A"): [("203.0.113.2", 60)],
+        }
+    )
+    seen = []
+
+    def tls(host, timeout_s, address=None):
+        seen.append((host, address))
+        return {"ok": True, "verified": False, "error": "x"}
+
+    t = [
+        {"url": "https://login.shop.com/a", "label": 1, "first_seen": None},
+        {"url": "https://pay.shop.com/b", "label": 1, "first_seen": None},  # same domain
+        {"url": "https://blog.net/", "label": 0, "first_seen": None},
+        {"url": "https://evil.pages.dev/", "label": 1, "first_seen": None},  # platform
+        {"url": "http://203.0.113.9/x", "label": 1, "first_seen": None},  # IP host
+    ]
+    out = domain_capture.capture(t, FakeClient({}), cfg, tmp_path, NOW, dns, tls)
+    assert out == {"hosts": 2, "domains": 2}
+    hosts = {r["host"]: r for r in _records(tmp_path / "2026-10-13.jsonl") if r["kind"] == "host"}
+    assert set(hosts) == {"shop.com", "blog.net"}
+    assert hosts["shop.com"]["probe_host"] == "shop.com"
+    assert hosts["blog.net"]["probe_host"] == "www.blog.net"
+    assert sorted(seen) == [("shop.com", "203.0.113.1"), ("www.blog.net", "203.0.113.2")]

@@ -85,6 +85,7 @@ tier_c:                               # experiments/tier_c.py: domain/DNS/TLS fe
   test_fraction: 0.2                  # 60/20/20 train/cal/test by rows (whole domains)
   cal_fraction: 0.25                  # share of the train side held for thresholds (0.25 * 0.8 = 0.2)
   min_rows_per_class: 20              # fewer eligible rows than this in either class: report counts only
+  require_resolving: false            # rows are registrable domains (collector unit: domain): one that does not resolve stays, the deployed check meets those too
   max_capture_lag_h: 2                # hosts captured later than this after first seen are dropped (same age for both classes)
   time_check:
     min_days: 3                       # distinct capture days needed for the newest-days check

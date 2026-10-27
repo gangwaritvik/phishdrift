@@ -107,10 +107,15 @@ def benign_targets(cfg: dict, now: datetime) -> list[dict]:
     ranked = benign.tranco_domains(top_n, resolve(cfg["crawler"]["tranco_cache_dir"]))
     run_cfg = {**bcfg, "seed": bcfg["seed"] + now.toordinal() * 2 + now.hour // 12}
     picked = ood.sample_ood_domains(ranked, run_cfg, exclude, ood.load_platforms(), bcfg["per_run"])
+    forms = (
+        (lambda d: (d,))
+        if cfg["domain_capture"].get("unit") == "domain"
+        else (lambda d: (d, f"www.{d}"))
+    )
     return [
         {"url": f"https://{host}/", "label": 0, "first_seen": pd.Timestamp(now)}
         for d in picked
-        for host in (d, f"www.{d}")
+        for host in forms(d)
     ]
 
 

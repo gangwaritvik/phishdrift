@@ -339,10 +339,16 @@ def plan_jobs(
     failures: dict[str, int],
     max_hosts: int,
     rdap_retries: int,
+    unit: str = "host",
+    skip_domains: frozenset[str] = frozenset(),
 ) -> list[dict]:
     """Work for one run, in target order: new hosts (with an RDAP lookup for the first host of
     each domain without a final answer) up to ``max_hosts``, plus RDAP-only retries for domains
-    whose earlier lookups failed fewer than ``rdap_retries`` times."""
+    whose earlier lookups failed fewer than ``rdap_retries`` times.
+
+    ``unit: domain``: the capture unit is the registrable domain (the host recorded is the
+    domain itself), because that is all the deployed check knows: the extension sends the
+    domain only. IP hosts and ``skip_domains`` (hosting platforms, outside tier C) are left out."""
     jobs: list[dict] = []
     hosts, domains = set(hosts_done), set(domains_done)
     n_hosts = 0
@@ -350,6 +356,10 @@ def plan_jobs(
         host, domain = hostname(t["url"]), registered_domain(t["url"])
         if not host or not domain:
             continue
+        if unit == "domain":
+            if _is_ip(host) or domain in skip_domains:
+                continue
+            host = domain
         if host not in hosts:
             if n_hosts >= max_hosts:
                 continue
@@ -385,21 +395,34 @@ def capture_job(
             }
         )
     if t is not None:
+        probe = host
         dns = None if is_ip else dns_facts(host, domain, query)
+        if cfg.get("unit") == "domain" and dns and not dns["resolves"] and not dns["sinkhole"]:
+            # many sites only answer on www: try it, the way the deployed check does
+            alt = dns_facts(f"www.{domain}", domain, query)
+            if alt["resolves"]:
+                dns, probe = alt, f"www.{domain}"
         address = host.strip("[]") if is_ip else _first_real_address(dns)
         records.append(
             {
                 "kind": "host",
                 "host": host,
+                "probe_host": probe,
                 "domain": domain,
                 "label": int(t["label"]),
                 "first_seen": str(t.get("first_seen")),
                 "captured_at": stamp,
                 "dns": dns,
-                "tls": tls(host, cfg["tls_timeout_s"], address) if cfg.get("tls", True) else None,
+                "tls": tls(probe, cfg["tls_timeout_s"], address) if cfg.get("tls", True) else None,
             }
         )
     return records
+
+
+def _platforms() -> frozenset[str]:
+    from collector.ood import load_platforms
+
+    return load_platforms()
 
 
 def _first_real_address(dns: dict) -> str | None:
@@ -470,6 +493,8 @@ def capture(
         failures,
         cfg["max_domains_per_run"],
         cfg.get("rdap_retries", 2),
+        cfg.get("unit", "host"),
+        _platforms() if cfg.get("unit") == "domain" else frozenset(),
     )
     over_budget = False
 

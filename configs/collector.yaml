@@ -125,7 +125,8 @@ popular:
 
 domain_capture:                        # tier C raw facts, captured once per new live domain
   enabled: true
-  max_domains_per_run: 1500            # hosts per run: feed phishing first, then legitimate hosts
+  unit: domain                         # one record per registrable domain (all the deployed check knows); the apex is probed, www. when the apex does not resolve
+  max_domains_per_run: 1500            # domains per run: feed phishing first, then legitimate domains
   workers: 8                           # hosts captured at once (RDAP servers still get the 1 s politeness delay)
   job_deadline_s: 300                  # a host still being looked up after this is abandoned (retried next run)
   checkpoint_every: 25                 # captured hosts are appended to the JSONL after every this many
@@ -142,7 +143,7 @@ domain_capture:                        # tier C raw facts, captured once per new
   tls_timeout_s: 8
   benign:                              # legitimate hosts captured the same way (label 0), so tier C has both classes
     enabled: true
-    per_run: 400                       # registrable domains per run; each is captured as <domain> and www.<domain>
+    per_run: 1500                      # registrable domains per run (with unit: host each is captured as <domain> and www.<domain>)
     seed: 20261013                     # varied per run (date and half-day), so every run draws new domains
     skip_top_n: 1000                   # the head of the list is allowlist territory
     bands:                             # Tranco rank ranges to spread the sample over; rank is never stored or a feature
