@@ -1163,6 +1163,21 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   for unflagged links (then the ordinary Location redirect applies and was already followed). Tests: `npm test` js 27,
   extension 74, ruff clean.
 
+### 2026-10-26 — Attack harness in the repo, recalibrated at run time (cloud)
+- Ritvik: fix the gaps found by the claim check (PR #64); this one is "the harness reports 23 of 35". The harness was in the
+  project folder, with `evil-blocked.com` hard-coded as the "suspicious" address; after the retrain it scores 0.75, under the
+  0.904 cut-off, so the page-based cases lost their trigger. The extension had not broken.
+- Changed: `extension/e2e/attack/` (`harness.mjs`, `calibrate.mjs`, `pages/`, `run.sh`, `offline.sh`, `lo_up.py`,
+  `results.md`), `.github/workflows/attack-harness.yml` (manual). `calibrate.mjs` scores candidate hosts with the shipped
+  model and picks suspicious, dangerous, safe and "dangerous by address only" test hosts; it stops with an error if a band is
+  empty. Fake blocklist no longer contains `example.com` (the extension refuses a list with a top site, so the trust cases
+  never saw a blocklisted domain). "Back to safety" cases use a dangerous page that asks for a password; new case
+  `D-address-only-dangerous-is-banner` pins the 2026-10-20 behaviour. Each change is explained in `results.md`.
+- Results (measured, headless Chromium, local pages): 36 of 36 pass in 3 runs (one with the network cut off), 2 info lines.
+  Same harness with only the address swapped: 34 of 35. Old harness: 23 of 35.
+- Not done: the 2026-10-26 quick-win cases (short links, redirects, PDF) stay in the project folder; the workflow has not run on a GitHub runner yet.
+
+
 ### 2026-10-26 — Offline look-alike check (works with the AI check off) (cloud)
 - Why: the claim check (PR #64) measured that with the AI check off only 2% of `micr0soft.com`-style and 1% of `paypl.com`-style
   look-alikes were warned. Ritvik asked for an offline check learned from data, no hand-typed lists.
@@ -1202,3 +1217,32 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   slice 81.7: identical to 2026-10-21. Ritvik's answer to "is blend2.md dated today?" was "no change"; read as "no change in the
   results" (the file's date was not confirmed), so either the shortener feature moved nothing or the report was not rewritten.
 - Not measured: whether the 10-split medians change; the learner finds few shorteners (most probed hosts gave no answer or no redirect).
+
+### 2026-10-27 — Picture-only login page rule (cloud)
+- Gap (claim check, PR #64): a page whose sign-in box is one image or canvas (no password field, almost no text) on a safe-looking
+  address got no warning. Changed: `extension/src/content.js` `visualFacts` (readable text, input fields, share of the window the
+  largest img / canvas / svg / CSS background picture covers), `extension/src/pagefacts.js` `isPictureOnly` (under 100 characters of text,
+  no fields, picture at least 10% of the window, no credential fields), `extension/src/combine.js` (safe is raised to suspicious when
+  `pictureOnly` and the address model's score is at least `PICTURE_MIN_PROB` = 0.5; never lowers; not on trusted, allowlisted,
+  blocklisted, short-link or local addresses). New: `js/bench/picture_facts.mjs`, `js/bench/address_probs.mjs`,
+  `experiments/picture_only.py` -> `reports/picture_only.md`.
+- Measured (`reports/picture_only.md`; 2,373 natural legitimate pages with stored HTML, 2,335 rendered offline in headless Chromium,
+  images and styles never load): no text and no fields 84 pages (52 with the allowlist), plus a picture element 23 (16), plus a picture
+  over 10% of the window as far as the offline render can measure 4 (2). Raised by the rule at gate 0.5: 0 of 2,335 under every
+  definition and with or without the allowlist (0.4: 1 page, which has no picture, so the rule would not apply; 0.3: 4, same). Rule of three:
+  the true rate on such pages is under about 0.13%. Phishing side, address only (5,000 random URLs of Phishing.Database ACTIVE, 2026-10-26;
+  no phishing HTML exists here): the address model warns 3,887; 885 are warned by neither the address model nor the page path for a page the
+  page model cannot read; of those 531 (60%) score 0.5 or more and would be raised if their page were picture-only (0.6: 418, 0.8: 132).
+- Why 0.5: the lowest gate where even the loosest legitimate definition (no text, no fields, picture not required) gives 0 alarms. The legitimate
+  counts are tiny (a few pages), so the gate is not tuned finely; the phishing and legitimate sets were both used to pick it, so these are
+  not independent numbers. The area share 10% is a guess for a login-box-sized picture (the offline render cannot measure real image sizes).
+- Browser test (`extension/e2e/smoke.mjs` step 4d, headless Chromium, network cut, local canvas page with a generic "Sign in" box and no brand):
+  address scoring 0.60 gets the banner and a stored verdict of suspicious (layer page); the same page at 0.45 and an ordinary text page at 0.77
+  get nothing. `npm test` extension 89 pass. The rest of that smoke file still fails here (its first steps use `wikipedia.org`, which Chromium
+  upgrades to https, and `evil-blocked.com/a`, which no longer scores suspicious after the retrain), so step 4d was run in a trimmed copy.
+- Stale banner (suspicious address, picture page, stored verdict safe): not reproduced. 4 runs on `evil-blocked.info` and 2 on `.com` of the
+  round-2 picture case gave banner and stored verdict in agreement every time (the new rule keeps them in agreement on pages it covers).
+- Not done / limits: a picture-only page on an address scoring under 0.5 is still not warned (about 40% of the feed phishing that nothing else
+  warns, address side); no real picture-only phishing page was available; a picture drawn after load is not rechecked (only new input fields
+  trigger a recheck); the rule needs layout (it runs in the content script, so it cannot be measured on stored HTML except as the upper and
+  lower bounds above).

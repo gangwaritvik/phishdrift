@@ -115,7 +115,18 @@ const EXTRA = {
     setTimeout(() => { location.href = URL.createObjectURL(b); }, 500);</script></body></html>`,
 };
 
-const signinBody = SIGNIN_PAGE.match(/<body>([\s\S]*)<\/body>/)[1].replace(/<script>[\s\S]*?<\/script>/, "");
+// 2026-10-27, picture-only pages: a generic sign-in box drawn on a canvas (no brand), no text, no fields.
+//   http://evil-blocked.com:8123/doc      address score 0.60, picture-only page -> banner (rule gate 0.5)
+//   http://evil-blocked.com:8123/pic      address score 0.45, same page -> nothing (below the gate)
+//   http://evil-blocked.com:8123/account  address score 0.77, an ordinary page with text -> nothing
+const PICTURE_PAGE = `<html><head><title>Account</title></head><body style="margin:0"><canvas id="c" width="420" height="260"></canvas>
+<script>const g = document.getElementById("c").getContext("2d"); g.fillStyle = "#eee"; g.fillRect(0, 0, 420, 260);
+g.fillStyle = "#333"; g.font = "24px sans-serif"; g.fillText("Sign in", 30, 50); g.strokeRect(30, 80, 360, 40); g.strokeRect(30, 140, 360, 40);</script></body></html>`;
+EXTRA["/doc"] = PICTURE_PAGE;
+EXTRA["/pic"] = PICTURE_PAGE;
+EXTRA["/account"] = `<html><body><h1 id="ok">Opening hours</h1><p>${"The shop is open every day of the week except on public holidays. ".repeat(6)}</p></body></html>`;
+
+const signinBody =SIGNIN_PAGE.match(/<body>([\s\S]*)<\/body>/)[1].replace(/<script>[\s\S]*?<\/script>/, "");
 EXTRA["/srcdoc-host"] = `<html><body><h1 id="ok">Bakery</h1><iframe width="600" height="400" srcdoc="${SIGNIN_PAGE.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"></iframe></body></html>`;
 EXTRA["/shadow"] = `<html><body><h1 id="ok">News</h1><div id="sh"></div><script>
   document.getElementById("sh").attachShadow({ mode: "closed" }).innerHTML = ${JSON.stringify(signinBody)};</script></body></html>`;
@@ -244,6 +255,20 @@ try {
   assert.equal(page.url(), "http://acme-tools.in:8123/branch/second/subjects/CSE");
   assert.equal((await stateOf(page.url()))?.verdict, 0);
   console.log("ok  redirect hop with a dangerous-looking address is not blocked; the page it lands on is judged");
+
+  // 4d. a page that is one picture (no text, no fields) on an address the model finds somewhat suspicious
+  page = await open("http://evil-blocked.com:8123/doc");
+  await settle(page, async () => (await page.locator("phishdrift-banner").count()) === 1, "picture-only banner");
+  const pic = await stateOf(page.url());
+  assert.deepEqual([pic?.verdict, pic?.layer], [1, "page"], JSON.stringify(pic)); // banner and stored verdict agree
+  assert.match(pic.reasons.join(" "), /single picture/);
+  for (const path of ["/pic", "/account"]) {
+    page = await open(`http://evil-blocked.com:8123${path}`);
+    await sleep(3000);
+    assert.equal(await page.locator("phishdrift-banner").count(), 0, `banner on ${path}`);
+    assert.equal((await stateOf(page.url()))?.verdict, 0, path);
+  }
+  console.log("ok  picture-only page: banner above the address gate, nothing below it or on an ordinary page");
 
   // 5. blocklist hit on an address the model passes
   page = await open("http://quietgarden-recipes.com:8123/soup");
