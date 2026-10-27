@@ -1,0 +1,37 @@
+name: Shared-host probe (live demo site)
+# What the live URL check page says for addresses on free-hosting platforms, including the site's own.
+on:
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/shared-host-probe.yml"]
+env:
+  SITE: https://loquacious-starship-3425f0.netlify.app
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Live page in a browser
+        run: |
+          mkdir /tmp/pw && cd /tmp/pw && npm init -y >/dev/null && npm i playwright@1.50.0 >/dev/null 2>&1 && npx playwright install --with-deps chromium >/dev/null 2>&1
+          cat > run.mjs <<'JS'
+          import { chromium } from "playwright";
+          const b = await chromium.launch();
+          for (const u of [process.env.SITE, process.env.SITE + "/demo/index.html", "https://eager-curie-5f3a21.netlify.app/", "https://myportfolio.netlify.app/", "https://google.github.io/", "https://example.com/"]) {
+            const p = await b.newPage();
+            await p.goto(process.env.SITE + "/demo/index.html");
+            await p.waitForSelector("#go:not([disabled])", { timeout: 120000 });
+            await p.waitForTimeout(3000);
+            await p.fill("#url", u);
+            await p.click("#go");
+            await p.waitForTimeout(15000);
+            if (await p.isEnabled("#skip")) await p.click("#skip");
+            await p.waitForTimeout(2000);
+            const txt = (await p.innerText("#stage")).replace(/\s+/g, " ").slice(0, 1200);
+            console.log("== " + u + "\n" + txt + "\n");
+            await p.close();
+          }
+          await b.close();
+          JS
+          node run.mjs
