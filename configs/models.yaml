@@ -87,6 +87,7 @@ tier_c:                               # experiments/tier_c.py: domain/DNS/TLS fe
   min_rows_per_class: 20              # fewer eligible rows than this in either class: report counts only
   require_resolving: false            # rows are registrable domains (collector unit: domain): one that does not resolve stays, the deployed check meets those too
   max_capture_lag_h: 14               # rows captured later than this after first seen are dropped (hourly polling and feed-side first-seen times make a few hours normal)
+  control_shuffles: 5                 # shuffled-label control: this many shuffles per split (few positives make one draw noisy)
   sensitivity_lag_h: 2                # the report repeats the main model on rows captured within this many hours
   time_check:
     min_days: 3                       # distinct capture days needed for the newest-days check

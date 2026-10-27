@@ -258,11 +258,15 @@ def run_split(
                 {"split": k, "feature": n, "gain": float(g), "gain_share": float(g / total)}
                 for n, g in zip(gbdt.columns, gain, strict=True)
             ]
-    y_shuffled = np.random.default_rng(seed).permutation(train["label"].to_numpy())
-    gbdt = GBDT("lightgbm", cc["lightgbm"], list(NAMES_C), seed).fit(train, y_shuffled)
-    row = evaluate(test["label"], gbdt.score(test), targets, min_neg)
-    row |= {"n_domains": test["domain"].nunique(), "cal_n_neg": int((cal["label"] == 0).sum())}
-    runs.append(base | {"model": CONTROL[0], "features": CONTROL[1]} | row)
+    # with few positives one shuffle is a noisy draw (a test-side AUC has a wide spread when the
+    # scores of nearby rows are correlated), so the control repeats with several shuffles
+    for j in range(cc.get("control_shuffles", 1)):
+        shuffle_seed = seed + 1000 * j
+        y_shuffled = np.random.default_rng(shuffle_seed).permutation(train["label"].to_numpy())
+        gbdt = GBDT("lightgbm", cc["lightgbm"], list(NAMES_C), seed).fit(train, y_shuffled)
+        row = evaluate(test["label"], gbdt.score(test), targets, min_neg)
+        row |= {"n_domains": test["domain"].nunique(), "cal_n_neg": int((cal["label"] == 0).sum())}
+        runs.append(base | {"model": CONTROL[0], "features": CONTROL[1], "shuffle": j} | row)
     return runs, importance
 
 
@@ -312,7 +316,7 @@ def time_check(df: pd.DataFrame, cfg: dict, with_a: bool) -> tuple[pd.DataFrame 
 def summarise(runs: pd.DataFrame) -> pd.DataFrame:
     g = runs.groupby(["model", "features"], sort=False)
     out = g[["n_urls", "n_domains", "n_pos", "n_neg", "cal_n_neg"]].median()
-    out["n_splits"] = g.size()
+    out["n_splits"] = g["split"].nunique()
     for m in SUMMARY:
         col = runs[m] if m in runs else pd.Series(np.nan, index=runs.index)
         grouped = col.groupby([runs["model"], runs["features"]], sort=False)
@@ -500,10 +504,17 @@ def control_lines(runs: pd.DataFrame, flag: float) -> list[str]:
         return []
     mean = float(ctrl.mean())
     flagged = abs(mean - 0.5) > flag
+    per_split = runs[runs["features"] == CONTROL[1]].groupby("split")["roc_auc"].mean()
+    # the spread of the split means is the honest uncertainty (shuffles of a split share a test set)
+    sem = (
+        float(per_split.std(ddof=1) / math.sqrt(len(per_split))) if len(per_split) > 1 else math.nan
+    )
     return [
         f"Shuffled-label control (labels permuted within train): mean test ROC-AUC {mean:.4f} "
-        f"[{ctrl.min():.4f}, {ctrl.max():.4f}] over {len(ctrl)} splits; "
-        f"{'**FLAGGED**' if flagged else 'not flagged'} (flag rule: |mean - 0.5| > {flag})."
+        f"[{ctrl.min():.4f}, {ctrl.max():.4f}] over {len(per_split)} splits x "
+        f"{len(ctrl) // max(len(per_split), 1)} shuffles (standard error of the split means "
+        f"{sem:.3f}); {'**FLAGGED**' if flagged else 'not flagged'} "
+        f"(flag rule: |mean - 0.5| > {flag})."
     ]
 
 
