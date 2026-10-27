@@ -1353,3 +1353,14 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Not done: shuffled-label control for the hybrid, other splits, the full pool (PC), a stronger adversary setting (`lam`, epochs untuned).
 - Reading: the booster on top is not the bottleneck; the hybrid's inputs are. Page-text embeddings (option 2) and Ritvik's pretrained
   host/path embedding run are the remaining candidates.
+
+### 2026-10-27 — Pretrained text embeddings on the full pool (PC run by Ritvik, read in the cloud): no gain
+- Ritvik ran `scripts\run_embed.ps1` (all-MiniLM-L6-v2 frozen, logistic-regression head, split 0, full PC pool: 94,859 test URLs /
+  69,315 domains); pasted `SUMMARY.md` (`reports/embed_split0/SUMMARY.md`, copied unchanged; tables not supplied).
+- Results (recall at FPR 1%): hybrid2 with the two embedding scorers against hybrid2: test +0.2, held-out PhishStorm +0.3, time slice +0.1,
+  normalised URLs -0.1, bare domains (depth 0) +0.1; all inside the 2-point bar (a proposal). Alone, the host embedding is far weaker than
+  the char n-gram model on the same piece (test 24.6 vs 42.0; bare domains 33.1 vs 51.6) and equal only on the held-out source (21.8 vs 21.5).
+  Shuffled-label control 0.4853, not flagged; tripwire not triggered. Hybrid's own shuffled-label control not run.
+- Reading: with CharCNN, CatBoost/XGBoost/average and the source-adversarial scorer, four attempts to improve the hybrid on its URL text
+  inputs have given nothing past the bar. Hypothesis (not tested): the n-gram and word scorers already capture what a small frozen sentence
+  model knows about host words. Page-text embeddings (option 2) are untested.
