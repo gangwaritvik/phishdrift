@@ -34,6 +34,10 @@ def set_deadline(hours: float | None) -> None:
     _deadline = None if hours is None else time.monotonic() + hours * 3600
 
 
+def deadline_passed() -> bool:
+    return _deadline is not None and time.monotonic() > _deadline
+
+
 # printable ASCII 32..126 -> ids 1..95, anything else -> 96, padding 0
 VOCAB = 97
 

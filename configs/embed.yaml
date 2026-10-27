@@ -1,0 +1,11 @@
+# experiments/embed_a.py: one-split test of pretrained text embeddings (host and path words) as extra
+# scorers of the tier A hybrid. Kept apart from models.yaml so the shipped model's config is untouched.
+split: 0
+embed:
+  model: sentence-transformers/all-MiniLM-L6-v2   # small, frozen; only a logistic-regression head is fitted
+  batch_size: 256
+  max_len: 32           # word pieces per text (host and path words are short)
+  chunk: 20000          # texts embedded per cache shard (a stopped run keeps finished shards)
+  C: 1.0
+  max_iter: 300
+bar_points: 2.0         # proposed (not yet approved): a gain must beat the split spread, about 2 points

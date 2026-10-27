@@ -1323,3 +1323,15 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Caveats: legitimate domains are Tranco-listed, so young legitimate sites are missing and the false-alarm rate on them is unmeasured;
   the address model's training pool is unknown here, which favours it; the Netlify function is tested with a fake network only.
 - Next: merge PR #72 (starts the schedules), let 3 capture days pass, run `tier-c-train`, apply the gates, then ship `js/data/tier_c.json`.
+
+### 2026-10-27 — Pretrained text embeddings as hybrid scorers: one-split test, code only (cloud)
+- Why: the CharCNN added nothing; about 70% of missed phishing URLs are bare domains, where the model has little text
+  to read. A pretrained text model has seen real words and brand names. Ritvik chose this ("go") and will run it.
+- Changed (new files; `experiments/char_cnn_a.py` setup moved into `build_ctx`, behaviour unchanged, its test passes):
+  `models/embed_scorer.py` (frozen sentence embedding of the host or path words + logistic-regression head, embeddings
+  cached on disk in shards, resumable, deadline-aware), `experiments/embed_a.py` (alone against the char n-gram scorer
+  on the same piece, shuffled-label control, `test:depth0` bare-domain set, hybrid2 with and without the two scorers),
+  `configs/embed.yaml` (all-MiniLM-L6-v2, 2-point bar as a proposal), `scripts/run_embed.ps1`, `tests/test_embed_scorer.py`.
+- Not measured: the sandbox cannot reach Hugging Face, so no pretrained model has run; tests and a 2,000-row smoke run
+  used an offline stand-in embedder (`--embedder hash`) and say nothing about quality. Run time on the PC unknown.
+- Next: Ritvik runs `scripts\run_embed.ps1`; read `reports/embed_split0/SUMMARY.md` against the 2-point bar.
