@@ -1,6 +1,6 @@
-"""Gradient-boosted trees on the tier A feature table (LightGBM and XGBoost).
+"""Gradient-boosted trees on the tier A feature table (LightGBM, XGBoost, CatBoost).
 
-NaN stays NaN: both libraries learn a direction for missing values, so a missing feature is
+NaN stays NaN: all three libraries handle missing values themselves, so a missing feature is
 never silently turned into 0.
 """
 
@@ -30,6 +30,16 @@ class GBDT:
             import xgboost as xgb
 
             self.model = xgb.XGBClassifier(**params, random_state=seed, n_jobs=THREADS)
+        elif kind == "catboost":
+            from catboost import CatBoostClassifier
+
+            self.model = CatBoostClassifier(
+                **params,
+                random_seed=seed,
+                thread_count=THREADS,
+                verbose=0,
+                allow_writing_files=False,
+            )
         else:
             raise ValueError(f"unknown booster {kind!r}")
 

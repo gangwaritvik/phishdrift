@@ -1,0 +1,19 @@
+# experiments/boosters_a.py: one-split test of other boosters (CatBoost, XGBoost, an average) and of a
+# source-adversarial text scorer for the tier A hybrid. Kept apart from models.yaml so the shipped
+# model's config is untouched.
+split: 0
+catboost:
+  iterations: 600
+  learning_rate: 0.08
+  depth: 8
+  l2_leaf_reg: 3.0
+adv:
+  ngram_range: [3, 5]
+  n_features: 262144    # hashed character n-grams
+  embed_dim: 64
+  lr: 0.003
+  batch_size: 256
+  epochs: 5
+  lam: 1.0              # strength of the source adversary; 0 = same network, no adversary
+  source_weight: 1.0
+bar_points: 2.0         # proposed (not yet approved): a gain must beat the split spread, about 2 points
