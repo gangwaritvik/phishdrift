@@ -30,10 +30,10 @@ from __future__ import annotations
 
 import argparse
 import copy
-import hashlib
 import json
 import logging
 import math
+import pickle
 import random
 import time
 from functools import partial
@@ -46,25 +46,29 @@ from attacks.lookalike import STYLES, TEST_ONLY_STYLES, TRAIN_STYLES, make_domai
 from experiments.char_cnn_a import _rows, _thresholds, build_ctx
 from experiments.hybrid_a import make_hybrid
 from experiments.metrics import evaluate
-from experiments.tier_a import apply_fitted, refit
+from experiments.tier_a import refit
 from features.brand_mismatch import COLUMNS, BrandMismatch
-from features.extract import extract
 from features.fit import Fitted
 from features.lists import Lists, load_lists
 from features.registry import NAMES
 from features.urlparts import parse
 from models.char_ngram import CharNgramLR
 from models.gbdt import GBDT
+from models.lookalike_aug import (
+    LeakageError,
+    add_brand,
+    augmentation,
+    own_tld,
+    real_paths,
+    split_brands,
+    url_frame,
+)
 from models.text_scorers import piece_texts
 from phishdrift.config import load_config
 
 log = logging.getLogger("lookalike_a")
 MODELS = ("E0", "E1a", "E1b", "E2", "E3")
 Z95 = 1.96
-
-
-class LeakageError(RuntimeError):
-    pass
 
 
 def wilson(k: int, n: int) -> tuple[float, float]:
@@ -74,80 +78,6 @@ def wilson(k: int, n: int) -> tuple[float, float]:
     centre = (p + z2 / (2 * n)) / (1 + z2 / n)
     half = Z95 * math.sqrt(p * (1 - p) / n + z2 / (4 * n * n)) / (1 + z2 / n)
     return max(0.0, centre - half), min(1.0, centre + half)
-
-
-# ---- frames --------------------------------------------------------------------------------------
-
-
-def add_brand(df: pd.DataFrame, bm: BrandMismatch) -> pd.DataFrame:
-    cols = pd.DataFrame([bm.features(p) for p in df["_parts"]], index=df.index, columns=COLUMNS)
-    return df.assign(**{c: cols[c].astype("float32") for c in COLUMNS})
-
-
-def url_frame(urls: list[str], lists: Lists, fitted: Fitted, bm: BrandMismatch) -> pd.DataFrame:
-    """Tier A features, text pieces and brand columns of arbitrary URLs."""
-    feats = pd.DataFrame(
-        [extract(u, lists=lists, fitted=Fitted()) for u in urls], columns=list(NAMES)
-    ).astype("float32")
-    feats["url"] = urls
-    feats["_parts"] = [parse(u, lists.platforms) for u in urls]
-    feats["_text"] = [p.canon if p is not None else "" for p in feats["_parts"]]
-    feats["domain"] = [p.domain if p is not None else "" for p in feats["_parts"]]
-    return add_brand(apply_fitted(feats, fitted), bm)
-
-
-def path_of(parts) -> str:
-    return (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
-
-
-def real_paths(frame: pd.DataFrame) -> list[str]:
-    return [
-        path_of(p) for p, d in zip(frame["_parts"], frame["depth"], strict=True) if p and d >= 1
-    ]
-
-
-# ---- brands --------------------------------------------------------------------------------------
-
-
-def brand_fold(brand: str, n_folds: int) -> int:
-    return int(hashlib.md5(brand.encode()).hexdigest(), 16) % n_folds
-
-
-def own_tld(bm: BrandMismatch, brand: str, rng: random.Random) -> str | None:
-    doms = sorted(bm.owned.get(brand, ()))
-    return rng.choice(doms).split(".", 1)[1] if doms else None
-
-
-def augmentation(train, brands, bm, exp, lists, fitted, taken, rng) -> pd.DataFrame:
-    """Look-alike phishing rows and official-domain legitimate rows from ``brands`` only."""
-    n_each = int(exp["aug_fraction"] * len(train))
-    paths = real_paths(train)
-    tlds = tuple(exp["tlds"])
-
-    def path() -> str:
-        return "/" if rng.random() < exp["aug_bare_share"] or not paths else rng.choice(paths)
-
-    pos, neg = [], []
-    for _ in range(n_each * 30):
-        if len(pos) >= n_each:
-            break
-        b = rng.choice(brands)
-        dom = make_domain(rng.choice(TRAIN_STYLES), b, rng, own_tld(bm, b, rng), tlds)
-        if not dom or dom in bm.official or dom in taken or dom.split(".")[0] in bm.brands:
-            continue
-        pos.append((f"https://{dom}{path()}", b))
-    with_domains = [b for b in brands if bm.owned.get(b)]
-    while len(neg) < n_each:
-        b = rng.choice(with_domains)
-        host = rng.choice(sorted(bm.owned[b]))
-        host = f"www.{host}" if rng.random() < 0.3 else host
-        neg.append((f"https://{host}{path()}", b))
-    urls = [u for u, _ in pos] + [u for u, _ in neg]
-    out = url_frame(urls, lists, fitted, bm)
-    out["domain"] = [f"brand:{b}" for _, b in pos + neg]  # a brand's variants share one group
-    out["label"] = [1] * len(pos) + [0] * len(neg)
-    out["weight"] = float(train["weight"].median())
-    return out
 
 
 def lookalike_test(test_brands, bm, exp, test_paths, unlisted, lists, fitted) -> pd.DataFrame:
@@ -242,13 +172,13 @@ def run_split(args, cfg, lists, exp) -> None:
     train = add_brand(train, bm)
     cal = add_brand(cal, bm)
     sets = {n: add_brand(f, bm) for n, f in sets.items()}
+    if args.natural_csv and "natural" not in sets:  # a PC pool without a staged natural part
+        used = {d for f in (train, cal, *sets.values()) for d in f["domain"]}
+        sets["natural"] = natural_frame(args.natural_csv, lists, fitted, bm, used)
     targets, min_neg = ctx["targets"], ctx["min_neg"]
     rng = random.Random(exp["seed"] + k)
 
-    all_brands = sorted(b for b in lists.brands if b.isalpha() and len(b) >= exp["min_brand_len"])
-    fold = k % exp["n_brand_folds"]
-    test_brands = [b for b in all_brands if brand_fold(b, exp["n_brand_folds"]) == fold]
-    train_brands = [b for b in all_brands if brand_fold(b, exp["n_brand_folds"]) != fold]
+    train_brands, test_brands = split_brands(lists, exp, k)
 
     real_domains = set(train["domain"]) | set(cal["domain"])
     for f in sets.values():
@@ -316,25 +246,37 @@ def run_split(args, cfg, lists, exp) -> None:
     def exists(name):
         return (out / f"main_{name}.csv").exists()
 
-    if not exists("E0"):
-        evaluate_model("E0", e0 := make_hybrid(cfg, "hybrid2").fit(train, y0, w0), e0.score)
+    want = set(args.models or MODELS)
+
+    def save(name, model):
+        if args.save_models:
+            d = Path(args.save_models) / f"split_{k}"
+            d.mkdir(parents=True, exist_ok=True)
+            with open(d / f"{name}.pkl", "wb") as f:
+                pickle.dump(model, f)
+
+    if "E0" in want and not exists("E0"):
+        e0 = make_hybrid(cfg, "hybrid2").fit(train, y0, w0)
+        save("E0", e0)
+        evaluate_model("E0", e0, e0.score)
         del e0
     for name in ("E1a", "E1b"):
-        if not exists(name):
+        if name in want and not exists(name):
             f, y, w = (train, y0, w0) if name == "E1a" else (train_aug, ya, wa)
             m = CharAlone(cfg).fit(f, y, w)
             evaluate_model(name, m, m.score)
-    if not exists("E3"):
+    if want & {"E2", "E3"} and not all(exists(n) for n in want & {"E2", "E3"}):
         e2 = make_hybrid(cfg, "hybrid2").fit(train_aug, ya, wa)
+        save("E2", e2)
         evaluate_model("E2", e2, e2.score)
-        e3 = e3_from_e2(e2, train_aug, ya, wa, cfg)
-        evaluate_model("E3", e3, e3.score)
+        if "E3" in want:
+            e3 = e3_from_e2(e2, train_aug, ya, wa, cfg)
+            evaluate_model("E3", e3, e3.score)
     # shuffled-label control (trees only, unweighted like experiments.tier_a)
     if not (out / "control.csv").exists():
         shuffled = np.random.default_rng(cfg["seed"] + k).permutation(ya)
-        g = GBDT("lightgbm", cfg["lightgbm"], [*NAMES, *COLUMNS], cfg["seed"]).fit(
-            train_aug, shuffled
-        )
+        cols = [*NAMES, *COLUMNS] if "E3" in want else list(NAMES)
+        g = GBDT("lightgbm", cfg["lightgbm"], cols, cfg["seed"]).fit(train_aug, shuffled)
         test = add_brand(ctx["test"], bm)
         r = evaluate(test["label"].to_numpy(), g.score(test), targets, min_neg)
         pd.DataFrame([{"split": k, "roc_auc": r["roc_auc"]}]).to_csv(
@@ -368,13 +310,13 @@ def _med(s: pd.Series) -> str:
     )
 
 
-def _load_ev(dirs: list[Path]) -> pd.DataFrame:
+def _load_ev(dirs: list[Path], models: tuple[str, ...] = MODELS) -> pd.DataFrame:
     """Per-URL table: meta, split, and for each model whether it warns / says dangerous."""
     frames = []
     for d in dirs:
         meta = pd.read_parquet(d / "ev_meta.parquet")
         meta["split"] = int(pd.read_csv(d / "sizes.csv")["split"].iloc[0])
-        for m in MODELS:
+        for m in models:
             thr = pd.read_csv(d / f"thr_{m}.csv").iloc[0]
             s = pd.read_parquet(d / f"scores_{m}.parquet")["score"].to_numpy()
             meta[m] = s >= thr["threshold_1pct"]
@@ -385,7 +327,7 @@ def _load_ev(dirs: list[Path]) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-COLS = (*MODELS, "E3r")
+COLS = (*MODELS, "E3r")  # render() narrows this to the models that were run
 
 
 def _rate(g: pd.DataFrame, col: str) -> str:
@@ -404,7 +346,8 @@ def _per_split(g: pd.DataFrame, col: str) -> str:
     return f"{100 * r.median():.1f} [{100 * r.min():.1f}, {100 * r.max():.1f}] (n={int(n.median())} per split)"
 
 
-def _table(head: list[str], rows: list[tuple[list[str], pd.DataFrame]], fn, cols=COLS) -> list[str]:
+def _table(head: list[str], rows: list[tuple[list[str], pd.DataFrame]], fn, cols=None) -> list[str]:
+    cols = cols or COLS
     out = ["| " + " | ".join([*head, *cols]) + " |", "|" + "---|" * (len(head) + len(cols))]
     for label, g in rows:
         if len(g):
@@ -424,21 +367,29 @@ def render(root: Path, bar: float) -> str:
         )
 
     main, sizes, control = cat("main_"), cat("sizes"), cat("control")
-    ev = _load_ev(dirs)
+    global COLS
+    models = tuple(m for m in MODELS if all((d / f"thr_{m}.csv").exists() for d in dirs))
+    COLS = (*models, "E3r")
+    ev = _load_ev(dirs, models)
+    note = root / "data_note.txt"
+    data = (
+        note.read_text(encoding="utf-8").strip()
+        if note.exists()
+        else "the processed data given to the run"
+    )
     splits = sorted(int(x) for x in main["split"].unique())
     L = [
-        "# Brand look-alike experiments E0-E3",
+        "# Brand look-alike experiments: " + ", ".join(models),
         "",
         "Generated by `python -m experiments.lookalike_a --render`. Do not edit by hand.",
         "",
-        f"Splits {splits} of the staged cloud sample (a fifth of the PC pool, no time slice, no HTML), "
-        "so absolute numbers are not comparable with the 10-split tables, and E0 here is retrained "
-        "on the sample, not the shipped model. Median [min, max] over the splits unless a count is "
+        f"Splits {splits} of {data}. E0 here is retrained by this script, not the shipped model. "
+        "Median [min, max] over the splits unless a count is "
         f"given. The {bar:g}-point bar is a proposal. Thresholds: cal-side 1% (suspicious) and 0.1% "
         "(dangerous) FPR points of the pool's calibration slice (natural look-alike-free rows).",
         "",
         f"Per split: {int(sizes['train_rows'].median()):,} training rows, "
-        f"{int(sizes['aug_rows'].median()):,} look-alike/official rows added (E1b, E2, E3), "
+        f"{int(sizes['aug_rows'].median()):,} look-alike/official rows added (E1b, E2, E3 where run), "
         f"{int(sizes['test_brands'].median())} held-out brands "
         f"({int(sizes['lookalike_rows'].median()):,} look-alike test URLs).",
         "",
@@ -453,8 +404,8 @@ def render(root: Path, bar: float) -> str:
         "| set | model | ROC-AUC | PR-AUC | recall @1% FPR (op) | recall @0.1% FPR (op) | cal 1%: recall / FPR / precision | cal 0.1%: recall / FPR |",
         "|---|---|---|---|---|---|---|---|",
     ]
-    for s in ("test", "heldout_source", "natural", "test_normalised"):
-        for m in MODELS:
+    for s in ("test", "heldout_source", "time_slice", "natural", "test_normalised"):
+        for m in models:
             r = main[(main["eval_set"] == s) & (main["model"] == m)]
             if r.empty:
                 continue
@@ -464,18 +415,24 @@ def render(root: Path, bar: float) -> str:
                 f"| {fmt('op_0p1pct_recall')} | {fmt('cal_1pct_recall')} / {fmt('cal_1pct_fpr')} / {fmt('cal_1pct_precision')} "
                 f"| {fmt('cal_0p1pct_recall')} / {fmt('cal_0p1pct_fpr')} |"
             )
-    L += ["", f"Change of recall at 1% FPR against E0 (points; bar {bar:g}):", ""]
-    for s in ("test", "heldout_source", "test_normalised"):
-        base = main[(main["eval_set"] == s) & (main["model"] == "E0")].set_index("split")
-        for m in ("E1a", "E2", "E3"):
-            r = main[(main["eval_set"] == s) & (main["model"] == m)].set_index("split")
-            d = 100 * (r["op_1pct_recall"] - base["op_1pct_recall"]).dropna()
-            if not d.empty:
-                L.append(
-                    f"- {s}, {m}: {d.median():+.1f} (per split: {', '.join(f'{x:+.1f}' for x in d)})"
-                )
+    L += [
+        "",
+        f"Change against E0 in recall at matched FPR (points; bar {bar:g}), median and range over splits:",
+        "",
+    ]
+    for s in ("test", "heldout_source", "time_slice", "test_normalised"):
+        for col, level in (("op_1pct_recall", "1%"), ("op_0p1pct_recall", "0.1%")):
+            base = main[(main["eval_set"] == s) & (main["model"] == "E0")].set_index("split")
+            for m in models[1:]:
+                r = main[(main["eval_set"] == s) & (main["model"] == m)].set_index("split")
+                d = 100 * (r[col] - base[col]).dropna()
+                if not d.empty:
+                    L.append(
+                        f"- {s} at {level}, {m}: {d.median():+.1f} [{d.min():+.1f}, {d.max():+.1f}], "
+                        f"higher in {int((d > 0).sum())} of {len(d)} splits"
+                    )
     L += ["", "False alarms on natural legitimate pages at the cal-side 1% / 0.1% thresholds:", ""]
-    for m in MODELS:
+    for m in models:
         r = main[(main["eval_set"] == "natural") & (main["model"] == m)]
         if not r.empty:
             L.append(f"- {m}: {_med(r['cal_1pct_fpr'])} / {_med(r['cal_0p1pct_fpr'])}")
@@ -513,7 +470,7 @@ def render(root: Path, bar: float) -> str:
     own = la[la["tld_mode"] == "own"]
     L += [
         "Dangerous (0.1% FPR threshold), own suffix, all shapes: "
-        + "; ".join(f"{m} {_rate(own, f'{m}_dangerous')}" for m in MODELS),
+        + "; ".join(f"{m} {_rate(own, f'{m}_dangerous')}" for m in models),
         "",
         "### Controls and the coverage ceiling",
         "",
@@ -557,18 +514,21 @@ def render(root: Path, bar: float) -> str:
     ]
     L += _table(["set"], [([s], ev[ev["set"] == s]) for s in sets], _per_split)
     near = ev[ev["set"].str.startswith("near:")]
-    flagged = near[near["E3"] & ~near["E0"]][["split", "set", "url", "homograph", "edit1"]]
+    top = "E3" if "E3" in models else "E2"
+    flagged = near[near[top] & ~near["E0"]][["split", "set", "url", "homograph", "edit1"]]
     flagged.drop_duplicates(["set", "url"]).to_csv(
-        root / "near_flagged_by_E3_not_E0.csv", index=False
+        root / f"near_flagged_by_{top}_not_E0.csv", index=False
     )
     L += [
-        f"Legitimate near-neighbour URLs flagged by E3 but not by E0: {len(flagged.drop_duplicates(['set', 'url']))} "
-        f"of {near.drop_duplicates(['set', 'url']).shape[0]} distinct (list in `near_flagged_by_E3_not_E0.csv`).",
+        f"Legitimate near-neighbour URLs flagged by {top} but not by E0: {len(flagged.drop_duplicates(['set', 'url']))} "
+        f"of {near.drop_duplicates(['set', 'url']).shape[0]} distinct (list in `near_flagged_by_{top}_not_E0.csv`).",
         "",
     ]
     auc = control["roc_auc"]
     L += [
-        "Shuffled-label control (trees on tier A + brand columns, labels shuffled over train + look-alike rows), "
+        "Shuffled-label control (trees on the tier A features"
+        + (" + brand columns" if "E3" in models else "")
+        + ", labels shuffled over train + look-alike rows), "
         f"test ROC-AUC: {auc.mean():.4f} over {len(auc)} splits "
         f"({'FLAGGED' if abs(auc.mean() - 0.5) > 0.05 else 'not flagged'}, limit 0.05).",
         "",
@@ -585,6 +545,43 @@ def render(root: Path, bar: float) -> str:
     return "\n".join(L) + "\n"
 
 
+def natural_frame(csv: Path, lists: Lists, fitted: Fitted, bm: BrandMismatch, used: set[str]):
+    """Naturally browsed legitimate pages (evaluation only), minus domains seen anywhere in the run."""
+    nat = pd.read_csv(csv)
+    nat = nat[nat["ok"].astype(str).str.lower() == "true"].drop_duplicates("url")
+    nat = nat[~nat["domain"].isin(used)].reset_index(drop=True)
+    frame = url_frame(nat["url"].tolist(), lists, fitted, bm)
+    frame["label"], frame["source"], frame["weight"] = 0, "natural", 1.0
+    frame["depth"] = nat["url"].str.replace(r"^[a-z]+://[^/]+", "", regex=True).str.count(r"/[^/]")
+    return frame
+
+
+def make_feed_json(feed_txt: Path, out_json: Path, exp: dict, args) -> None:
+    """One URL per registrable domain of a feed file, grouped by what the brand rule says."""
+    lists = load_lists(args.lists_dir, args.platforms_file)
+    bm = BrandMismatch.from_lists(min_brand_len=exp["min_brand_len"])
+    seen: set[str] = set()
+    groups: dict[str, list[str]] = {"homoglyph": [], "edit1": [], "none": []}
+    for line in feed_txt.read_text(encoding="utf-8", errors="ignore").splitlines():
+        url = line.strip()
+        parts = parse(url, lists.platforms) if url else None
+        if parts is None or parts.domain in seen:
+            continue
+        seen.add(parts.domain)
+        f = bm.features(parts)
+        if f["brand_homograph"] == 1:
+            groups["homoglyph"].append(url)
+        elif f["brand_edit1"] == 1:
+            groups["edit1"].append(url)
+        elif f["brand_other_suffix"] == 0 and f["brand_official"] == 0:
+            groups["none"].append(url)
+    groups["none"] = random.Random(exp["seed"]).sample(
+        groups["none"], min(exp["feed_sample"], len(groups["none"]))
+    )
+    out_json.write_text(json.dumps(groups), encoding="utf-8")
+    print(out_json, {k: len(v) for k, v in groups.items()})
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="experiments.lookalike_a")
     ap.add_argument("--processed", type=Path, default=Path("data/processed"))
@@ -592,12 +589,23 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--split", type=int, default=None)
     ap.add_argument("--smoke", type=int, default=0)
     ap.add_argument("--feed-json", default=None)
+    ap.add_argument("--make-feed-json", nargs=2, metavar=("FEED_TXT", "OUT_JSON"), default=None)
+    ap.add_argument("--models", nargs="*", choices=MODELS, default=None)
+    ap.add_argument("--save-models", default=None, help="pickle E0/E2 here (never a shipped path)")
+    ap.add_argument("--data-note", default=None)
+    ap.add_argument("--natural-csv", type=Path, default=None, help="configs/eval/ood_urls.csv")
     ap.add_argument("--lists-dir", default=None)
     ap.add_argument("--platforms-file", default=None)
     ap.add_argument("--render", action="store_true")
     a = ap.parse_args(argv)
     exp = load_config("lookalike_exp")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
+    if a.make_feed_json:
+        make_feed_json(Path(a.make_feed_json[0]), Path(a.make_feed_json[1]), exp, a)
+        return 0
+    if a.data_note:
+        a.reports.mkdir(parents=True, exist_ok=True)
+        (a.reports / "data_note.txt").write_text(a.data_note, encoding="utf-8")
     if a.render:
         text = render(a.reports, exp["bar_points"])
         (a.reports / "SUMMARY.md").write_text(text, encoding="utf-8")

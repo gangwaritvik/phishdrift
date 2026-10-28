@@ -48,6 +48,7 @@ from features.urlparts import parse
 from models.calibrate import Calibrator
 from models.explain import expected_value, reason_rules, reasons
 from models.export import _clean, compact_trees, lists_from_payload, probability
+from models.lookalike_aug import with_lookalikes
 from models.stack import EPS
 from phishdrift.config import load_config
 
@@ -95,7 +96,8 @@ def bundle_names(cfg: dict) -> list[str]:
 
 def split_frames(processed: Path, k: int, lists: Lists):
     """(train, cal, test, held-out parts) of split k, leakage-checked, before refitting."""
-    frames = {p: load_part(processed, p, lists) for p in PARTS}
+    parts = [p for p in PARTS if (processed / f"meta_{p}.parquet").exists()]  # sample: none
+    frames = {p: load_part(processed, p, lists) for p in parts}
     pool = frames.pop("pool")
     splits = pd.read_parquet(processed / "splits.parquet")
     side = pool[["uid"]].merge(splits, on="uid", how="left", validate="one_to_one")
@@ -144,11 +146,18 @@ def address_bundle(model, cal, sets: dict, fitted, lists: Lists, cfg: dict, k: i
     }
 
 
-def build(processed: Path, k: int, lists: Lists, cfg: dict) -> tuple[dict, dict]:
+def build(
+    processed: Path, k: int, lists: Lists, cfg: dict, lookalike: bool = False
+) -> tuple[dict, dict]:
     train, cal, test, frames = split_frames(processed, k, lists)
     fitted = refit(train, lists)
     train, cal, test = (apply_fitted(f, fitted) for f in (train, cal, test))
     held = {n: apply_fitted(h, fitted) for n, h in frames.items()}
+    if (
+        lookalike
+    ):  # experiment only: look-alike examples in the training rows (models.lookalike_aug)
+        taken = {d for f in (train, cal, test, *held.values()) for d in f["domain"]}
+        train, _ = with_lookalikes(train, k, lists, fitted, taken)
     model = make_hybrid(cfg, VARIANT).fit(
         train, train["label"].to_numpy(), train["weight"].to_numpy()
     )
@@ -209,10 +218,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, default=BUNDLE_FILE)
     ap.add_argument("--parity-out", type=Path, default=PARITY_FILE)
     ap.add_argument("--reports", type=Path, default=Path("reports"))
+    ap.add_argument("--lookalike", action="store_true", help="E2 experiment; needs its own --out")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
+    shipped = {BUNDLE_FILE.resolve(), PARITY_FILE.resolve()}
+    if a.lookalike and (
+        {a.out.resolve(), a.parity_out.resolve()} & shipped
+        or a.reports.resolve() == Path("reports").resolve()
+    ):
+        raise SystemExit(
+            "--lookalike never writes shipped files: pass --out, --parity-out, --reports"
+        )
     lists = load_lists(a.lists_dir, a.platforms_file)
-    bundle, fitted_objs = build(a.processed, a.split, lists, load_config("models"))
+    bundle, fitted_objs = build(a.processed, a.split, lists, load_config("models"), a.lookalike)
     doc = parity(bundle, fitted_objs["model"], fitted_objs["booster"], lists, fitted_objs["fitted"])
     # The bundle's lists are the ones used to train; parity uses the same.
     assert lists_from_payload(bundle["lists"])[0].platforms == lists.platforms

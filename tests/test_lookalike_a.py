@@ -2,7 +2,8 @@
 
 import pytest
 
-from experiments.lookalike_a import brand_fold, wilson
+from experiments.lookalike_a import wilson
+from models.lookalike_aug import brand_fold
 
 
 def test_wilson_interval_brackets_the_rate_and_handles_edges():
