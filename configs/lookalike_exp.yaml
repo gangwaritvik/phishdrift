@@ -1,0 +1,14 @@
+# Brand look-alike experiments E0-E3 (experiments/lookalike_a.py). Settings are fixed before any
+# result is read; nothing here is tuned on the test side.
+split: 0                    # default split; the plan runs splits 0, 1, 2 (one process each)
+bar_points: 2.0             # proposed bar: a change below this is "within the spread"
+n_brand_folds: 5            # brands split into folds by hash; split k tests fold k % 5
+min_brand_len: 4            # brands shorter than this are not used for look-alikes
+aug_fraction: 0.02          # augmented positives (and as many official-domain negatives) per train row
+aug_bare_share: 0.34        # share of augmented URLs that are bare hosts; the rest carry a real path
+seed: 7
+tlds: [com, net, org, info, xyz, top, site, online, co, app]
+shapes: [bare, login, deep] # test look-alikes: https://host/ , https://host/login , a real deep path
+variants_per_brand: 1       # per style and shape in the test sets
+unlisted_names: 150         # site names not on the brand list, for the coverage-ceiling rows
+feed_sample: 5000           # real feed URLs of the "no brand signal" comparison group
