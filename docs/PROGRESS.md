@@ -1374,3 +1374,43 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Reading: with CharCNN, CatBoost/XGBoost/average and the source-adversarial scorer, four attempts to improve the hybrid on its URL text
   inputs have given nothing past the bar. Hypothesis (not tested): the n-gram and word scorers already capture what a small frozen sentence
   model knows about host words. Page-text embeddings (option 2) are untested.
+
+### 2026-10-28 — Brand look-alike experiments E0-E3 (cloud sample, splits 0-2; nothing shipped changed)
+- Why: `paypa1.com` scores 0.877 against the 0.904 suspicious cut-off (diagnosis in the thread plan). Ritvik approved a controlled
+  comparison, not a new model: E0 baseline, E1 char-level URL model alone, E2 = E0 + look-alike training examples, E3 = E2 + four
+  brand-mismatch columns, E3r = E0 + the old escalate-only rule as a reference.
+- Changed (new files only): `features/brand_mismatch.py` (homograph, edit-1, other-suffix, official-domain columns from the brand list,
+  `brand_domains.json` and the confusables table; experimental, not in the registry or JS), `attacks/lookalike.py` (nine look-alike
+  styles; four used in training, five held out), `experiments/lookalike_a.py` + `configs/lookalike_exp.yaml`, tests
+  `tests/test_brand_mismatch.py`, `tests/test_lookalike_a.py`. Look-alike rows go in training folds only; test brands are held out of
+  training by brand fold; test names never equal a real site in the pool; shuffled-label control and leakage checks run.
+- Data: the 84,938-URL staged sample (a fifth of the PC pool, no time slice, no HTML), 3 splits, so absolute numbers are not comparable
+  with the 10-split tables and E0 is retrained on the sample, not the shipped model.
+- Results (`reports/lookalike/SUMMARY.md`, median of 3 splits, recall at FPR 1%): main metrics do not move (test E0 70.3, E2 70.3,
+  E3 70.3; held-out PhishStorm 74.5 / 73.4 / 74.3; normalised 41.4 / 41.3 / 41.3); natural-page false alarms 3.1 / 3.4 / 3.4%
+  (inside the spread). Look-alikes of held-out brands on the brand's own suffix (the `paypa1.com` case), share warned: E0 20-33%,
+  E2 47-51%, E3 56-60%, E3r 90-93% for styles never trained on; styles in training 24-33% -> 80-85%. Never-trained styles
+  `transpose` and `rnvv` hardly improve in E2/E3 (E3 11% and 5% on bare own-suffix hosts; the rule 83% and 65%). Names not on the
+  brand list: no gain (22% -> 24%). The char-level model alone (E1) is 10 points worse than E0 on test and does not help look-alikes.
+  Official domains of the same brands, deep paths: false alarms E0 22.9% -> E3 0.0%. Legitimate names that resemble a brand
+  (5 test, 1 cal, 12 held-out per split): E3 warns 40%, the old rule 100%, E0 0%; 13 of 32 distinct URLs flagged by E3 and not E0.
+  Shuffled-label control 0.503; tripwire not triggered.
+- Not measured: latency and bundle size (no JS port; E2 changes training data only; E3 adds four columns and a roughly 150 KB brand map,
+  a guess), the PC pool, 10 splits, real look-alike phishing beyond the feed's 35 per split.
+- Next: Ritvik decides whether to retrain the shipped model with the look-alike examples (E2) on the PC; E3 only if the JS port is wanted.
+
+### 2026-10-28 — E2 (look-alike training examples) in the real training path; 10-split cloud comparison (cloud)
+- Ritvik: "start step 1" with eight safeguards. Nothing shipped changed: the augmentation is off by default and every output goes to new folders.
+- Changed: `models/lookalike_aug.py` (shared augmentation, training rows only, brand folds `k % 5`, variants of a brand share one out-of-fold group, `LeakageError`
+  hard checks), `experiments/hybrid_a.py` variant `hybrid2_la`, `models/export_hybrid.py --lookalike` (refuses to write the shipped bundle, parity file or `reports/`),
+  `experiments/lookalike_a.py` (`--models E0 E2`, `--save-models`, `--natural-csv`, `--make-feed-json`, `--data-note`, `--render`, `--smoke`),
+  `experiments/lookalike_cost.py` + `experiments/latency.py` + `js/bench/latency.mjs` (size, latency, Python-JS parity of two bundles), `docs/LOOKALIKE_E2.md` (PC runbook), tests.
+- Results (`reports/lookalike_e2/SUMMARY.md`, `cost.md`; cloud sample = a fifth of the pool, no HTML, no time slice, 10 domain-grouped splits, median): recall at FPR 1%
+  test 71.2 -> 71.5, held-out PhishStorm 73.9 -> 73.5 (E2 lower in 9 of 10 splits, -0.7); at 0.1% test 54.8 -> 53.8, held-out 54.1 -> 53.0; all inside the proposed 2-point bar.
+  Natural-page false alarms 3.0 -> 3.2% (1% threshold). `paypa1.com` style (own suffix, held-out brands, bare host) warned: digit 4.9 -> 86.3%, leet (unseen) 4.2 -> 88.5%,
+  delete 1.8 -> 55.0%, insert 3.3 -> 71.6%; transposition (unseen) 1.7 -> 1.2%, `rnvv` (unseen) 1.8 -> 4.8%, unicode 52 -> 59%; names not on the brand list 20.6 -> 23.6% (no real gain).
+  Official domains of held-out brands, deep paths: false alarms 23.8 -> 1.6%. Legitimate near-neighbours flagged by E2 and not E0: 18 of 56 distinct (some look like real typosquats).
+  Shuffled-label control 0.4946, tripwire not triggered. Bundle +0.26 MB (10.96 -> 11.22), scoring 1.47 -> 1.49 ms, parity max difference 2.2e-16 and 0 reason mismatches in both.
+- Not measured: temporal performance (no time slice in the sample), the full pool, HTML. Item 8 (deployment recommendation) needs the PC run.
+- Next: Ritvik runs `docs/LOOKALIKE_E2.md` on the PC; then compare against E0 on all 10 splits.
+- Open: whether the small, consistent held-out dip matters; whether transposition, `rnvv` and unlisted names need the E3 columns / a different approach.
