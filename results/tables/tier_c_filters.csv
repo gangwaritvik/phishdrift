@@ -2,5 +2,5 @@ filter,benign,phishing,other
 label not 0/1,0,0,0
 hosting platform,0,0,0
 IP host,0,0,0
-filtered by the PC's resolver,137,0,0
+filtered by the PC's resolver,158,1,0
 captured more than 14 h after first seen,0,0,0
