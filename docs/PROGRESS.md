@@ -1374,3 +1374,20 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Reading: with CharCNN, CatBoost/XGBoost/average and the source-adversarial scorer, four attempts to improve the hybrid on its URL text
   inputs have given nothing past the bar. Hypothesis (not tested): the n-gram and word scorers already capture what a small frozen sentence
   model knows about host words. Page-text embeddings (option 2) are untested.
+
+### 2026-10-30 — Tier C trained on three capture days; bundle added (cloud)
+- Capture ran from GitHub Actions (hourly schedule started about 6 h after the merge; it runs every few hours, not every hour, so
+  manual dispatches filled gaps). Data branch `tier-c-data`: phishing domains 936 (10-27), 1,763 (10-28), then 10-29; 8 feeds
+  (OpenPhish, PhishTank, PhishStats, Phishunt, Phishing.Database new + domains, Phishing Army, CERT Polska). `tier-c-train` run on 2026-10-30.
+- Results (`reports/tier_c.md`, 10 domain-grouped splits, 4,090 phishing / 130,360 legitimate domains, test side 818 / 26,072; median [min, max]):
+  tier C ROC-AUC 0.9585 [0.9527, 0.9635]; without domain age 0.9399; age alone 0.7326; shipped address model on the bare host 0.7770;
+  tier C + address score 0.9615. Recall at FPR 1% / 0.1%: 77.8 / 72.2 (cal-side thresholds: 77.6 at 0.7% FPR, 72.1 at 0.1%). Time check
+  (train on 10-27, test on 10-28 and 10-29): 0.9515, recall 75.3 at 1%. Captured within 2 h of first seen: 0.9607. Shuffled-label control
+  0.4578 (SE 0.018), not flagged, but split means range 0.27 to 0.65; cause not investigated. `has_cname` importance 0.2%. Nothing above 99%.
+- Gates (plan `plans/tier_c_plan.md`): ROC-AUC clear of the age baseline, at least 1,000 legitimate on the cal side (26,072), control within 0.05,
+  time check, no-age model above chance, no result above 99%: all met. Added `js/data/tier_c.json`, `tests/fixtures/tier_c_model_parity.json`;
+  `npm test` js 39 and the tier C pytest files pass.
+- Caveats: all legitimate domains are Tranco-listed (older, established), so false alarms on young legitimate sites are unmeasured and the
+  recall numbers may be optimistic; phishing and legitimate domains were found by different routes (feed vs Tranco), age is half the
+  signal; the address score comparison favours the address model (its training pool overlap unknown). Tier C only raises verdicts and is off by default.
+- Not done: Netlify deploy with the bundle and a live check of `/api/domain-check`; backend `checks.py` still uses rules; young-legitimate-site sample.
