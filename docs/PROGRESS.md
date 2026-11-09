@@ -1464,6 +1464,13 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Checked: `npm test` extension 88 pass; extension loaded in headless Chromium, popup and warning page in all five themes with no page errors; the URL check page still switches themes.
   Not checked: the banner on a live suspicious page (CSS-only change), Chrome (not Chromium), the e2e smoke test (cannot start in this container).
 
+### 2026-11-09 — Two live-site probe workflows fixed after the redesign and the tier C bundle (cloud)
+- Found while merging the open PRs: `Domain check probe (live site)` crashed in `scripts/domain_check_probe.py` (it joined `reasons` as strings;
+  the live function returns `{feature, contribution, text}` objects), and `Shared-host probe (live demo site)` timed out on `#skip`, a button the
+  redesigned URL check page no longer has (the result now renders in `#out`, not `#stage`).
+- Changed: the probe prints each reason's `text`; the shared-host probe reads `#out` and no longer clicks skip. Nothing shipped changes.
+- Not fixed: `.github/workflows/audit-probe.yml` uses the same old `#skip` / `#stage` selectors (it only runs by hand or when its own file changes).
+
 ### 2026-11-09 — AI check agreeing with the address model now gives dangerous (cloud)
 - Ritvik's URL check page: `https://secure-login.paypa1.com/signin/verify-account` scored 0.969 (suspicious cut-off 0.904, dangerous 0.980), the
   AI check said "Imitation" (PayPal), the verdict stayed Suspicious. Cause (reproduced with the page's own checker and a stub AI answer): `stepUp` in

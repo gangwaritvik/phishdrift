@@ -44,9 +44,7 @@ jobs:
             await p.fill("#url", u);
             await p.click("#go");
             await p.waitForTimeout(15000);
-            if (await p.isEnabled("#skip")) await p.click("#skip");
-            await p.waitForTimeout(2000);
-            const txt = (await p.innerText("#stage")).replace(/\s+/g, " ").slice(0, 1200);
+            const txt = (await p.innerText("#out")).replace(/\s+/g, " ").slice(0, 1200);
             console.log("== " + u + "\n" + txt + "\n");
             await p.close();
           }
