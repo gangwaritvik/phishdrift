@@ -1470,3 +1470,12 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   redesigned URL check page no longer has (the result now renders in `#out`, not `#stage`).
 - Changed: the probe prints each reason's `text`; the shared-host probe reads `#out` and no longer clicks skip. Nothing shipped changes.
 - Not fixed: `.github/workflows/audit-probe.yml` uses the same old `#skip` / `#stage` selectors (it only runs by hand or when its own file changes).
+
+### 2026-11-09 — AI check agreeing with the address model now gives dangerous (cloud)
+- Ritvik's URL check page: `https://secure-login.paypa1.com/signin/verify-account` scored 0.969 (suspicious cut-off 0.904, dangerous 0.980), the
+  AI check said "Imitation" (PayPal), the verdict stayed Suspicious. Cause (reproduced with the page's own checker and a stub AI answer): `stepUp` in
+  `extension/src/combine.js` raised an AI hit one step and allowed dangerous only when the page asks for credentials; the check page has no page, so
+  suspicious + AI hit stayed suspicious. This was deliberate (tested), because the AI check had no measured accuracy.
+- Changed: before the page is read, address model suspicious + AI check hit (brand or phishing) = dangerous (`agreed`), not on shared hosting. It counts as
+  address-only (`addressOnly`): the extension shows the banner until the page asks for credentials, then the warning page; a page that asks for nothing
+  stays suspicious. Late AI answers go through the same hold (`background.js`). Tests in `extension/test/combine.test.js`.

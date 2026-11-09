@@ -191,10 +191,22 @@ const REASON = "This address looks like it imitates PayPal, whose real site is p
 test("an LLM brand opinion raises safe to suspicious, and to dangerous only on a credential page", () => {
   const r = combine({ ...base, llm });
   assert.deepEqual([r.verdict, r.layer, r.reasons], [SUSPICIOUS, "llm", [REASON]]);
-  const sus = combine({ ...base, model: model(SUSPICIOUS, ["m"]), llm });
+  const sus = combine({ ...base, model: model(SUSPICIOUS, ["m"]), llm }, { asksCredentials: false });
   assert.deepEqual([sus.verdict, sus.reasons], [SUSPICIOUS, [REASON, "m"]]);
   const login = combine({ ...base, model: model(SUSPICIOUS, ["m"]), llm }, { asksCredentials: true });
   assert.deepEqual([login.verdict, login.layer], [DANGEROUS, "llm"]);
+});
+
+test("the address model and the AI check agreeing is dangerous before the page is read, and address-only", () => {
+  const r = combine({ ...base, model: model(SUSPICIOUS, ["m"]), llm });
+  assert.deepEqual([r.verdict, r.layer, r.agreed], [DANGEROUS, "llm", true]);
+  assert.equal(addressOnly(r), true); // the extension shows the banner until the page asks for credentials
+  // page read and it asks for nothing: back to suspicious (the address alone never blocks such a page)
+  assert.equal(combine({ ...base, model: model(SUSPICIOUS, ["m"]), llm }, { asksCredentials: false }).verdict, SUSPICIOUS);
+  // shared hosting, or the AI check alone on a clean address: still only suspicious
+  assert.equal(combine({ ...base, shared: true, model: model(SUSPICIOUS, ["m"]), llm }).verdict, SUSPICIOUS);
+  assert.equal(combine({ ...base, llm }).verdict, SUSPICIOUS);
+  assert.equal(combine({ ...base, model: model(SUSPICIOUS, ["m"]), llm: { ...llm, raise: false } }).verdict, SUSPICIOUS);
 });
 
 test("an LLM phishing opinion raises one step with its own reason", () => {
