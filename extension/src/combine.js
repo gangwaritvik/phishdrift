@@ -40,7 +40,9 @@ export const PICTURE_MIN_PROB = 0.5;
 
 // A dangerous verdict that rests on the address model alone (no list, domain check or
 // page agrees yet). The service worker shows it as suspicious until the page is read.
-export const addressOnly = (result) => result?.verdict === DANGEROUS && result.layer === "url-model";
+// The address model plus the AI check agreeing (combine.js `stepUp`) is also address-only: no page was read.
+export const addressOnly = (result) =>
+  result?.verdict === DANGEROUS && (result.layer === "url-model" || (result.layer === "llm" && result.agreed === true));
 
 // layers: {
 //   trusted: bool,               user pressed "trust this site"
@@ -70,17 +72,20 @@ export const llmReason = (llm) =>
     ? `An AI check of the address thinks it looks like a phishing site (${Math.round(llm.phishing * 100)}% likely).`
     : `This address looks like it imitates ${llm.brand}, whose real site is ${llm.brand_domain}.`;
 
-// One step up for an AI-check hit: safe to suspicious, suspicious to dangerous only if
-// the page asks for credentials. Never lowers a verdict, never acts on blocklisted, trusted,
-// allowlisted, short-link, local or unscored addresses.
+// One step up for an AI-check hit: safe to suspicious, suspicious to dangerous if the page asks for
+// credentials, or if the address model already called the address suspicious on its own and the page has
+// not been read yet (two independent layers agree; once the page is read and asks for nothing, the
+// "address alone never blocks" rule below wins). Never lowers a verdict, never acts on blocklisted,
+// trusted, allowlisted, short-link, local or unscored addresses.
 function stepUp(out, layers, page, reason, layer) {
   if (layers.trusted || layers.allow || layers.shortener) return out;
   if (["blocklist", "none", "local", "allowlist", "shortener", "user-trusted"].includes(out.layer)) return out;
-  const cap = page?.asksCredentials ? DANGEROUS : SUSPICIOUS;
+  const agree = page === null && !layers.shared && out.layer === "url-model" && out.verdict === SUSPICIOUS;
+  const cap = page?.asksCredentials || agree ? DANGEROUS : SUSPICIOUS;
   const verdict = Math.min(out.verdict + 1, Math.max(cap, out.verdict));
   const reasons = [...new Set([reason, ...out.reasons])];
   if (verdict <= out.verdict) return { ...out, reasons };
-  return { ...out, verdict, layer, reasons };
+  return { ...out, verdict, layer, reasons, ...(agree && verdict === DANGEROUS ? { agreed: true } : {}) };
 }
 
 // layers.llm says the address imitates a brand or looks like phishing on its own.
