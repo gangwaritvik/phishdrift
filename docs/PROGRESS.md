@@ -1391,3 +1391,15 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   recall numbers may be optimistic; phishing and legitimate domains were found by different routes (feed vs Tranco), age is half the
   signal; the address score comparison favours the address model (its training pool overlap unknown). Tier C only raises verdicts and is off by default.
 - Not done: Netlify deploy with the bundle and a live check of `/api/domain-check`; backend `checks.py` still uses rules; young-legitimate-site sample.
+
+### 2026-11-09 — URL check page redesigned: one animated screen, five themes, ripple theme switch (cloud)
+- Ritvik: "totally new frontend", "more themes", "build it, give a unique option to switch theme". Mockups in the project folder (`design/`).
+- Changed: `demo/index.html` and `demo/app.js` rewritten (old one-screen-per-layer scenes removed; `demo/check.js` and `demo/evidence.js` unchanged, so every verdict
+  and number is the checker's). The result is one screen: the address split into scheme / subdomain / owner (highlighted), the layers lighting up in order,
+  a score dial that fills and counts up, the verdict word, and clue cards (only clues that push toward phishing: the model's other clues are raw feature names).
+  Themes: Paper, Midnight, Pop, Clinic, Terminal (`data-theme`; `?theme=` in the address, saved in localStorage, dark preference starts on Midnight).
+  Theme switch ("lens"): five round swatches; the new theme ripples out from the swatch you click (View Transitions API, instant where unsupported or with
+  reduced motion); arrow keys move between themes.
+- Checked (headless Chromium against `python -m demo`): all five themes on a phishing-style, a look-alike, an allowlisted and a normal address; phone width; the ripple;
+  arrow keys. `npm test` extension passes. Not checked: Safari / Firefox ripple (falls back to an instant change), the hosted Netlify site, a real phone.
+- Not done: the extension popup, warning page and banner are not restyled (mockups exist); fonts load from Google Fonts, so offline they fall back to system fonts.
