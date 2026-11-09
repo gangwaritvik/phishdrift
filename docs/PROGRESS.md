@@ -1374,3 +1374,15 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Reading: with CharCNN, CatBoost/XGBoost/average and the source-adversarial scorer, four attempts to improve the hybrid on its URL text
   inputs have given nothing past the bar. Hypothesis (not tested): the n-gram and word scorers already capture what a small frozen sentence
   model knows about host words. Page-text embeddings (option 2) are untested.
+
+### 2026-11-09 — Why the tier C shuffled-label control spreads so wide (cloud)
+- Question (Ritvik, PR #77): control median AUC 0.458, split-to-split range 0.27 to 0.65. Rebuilt the tier C features from the
+  `tier-c-data` branch, cut at 2026-10-29 (134,450 domains, 4,090 phishing: the same corpus as PR #77) and reproduced the control
+  exactly (mean 0.4578, range 0.271-0.648). New `experiments/tier_c_control_spread.py` -> `reports/tier_c_control_spread.md`.
+- Measured: the same control scores against randomly permuted test labels give mean 0.501, SD 0.010 (the formula value), so ties,
+  the AUC code and the test size are not the cause. The real control has SD 0.084 (about 8 times larger). Weaker control models
+  spread more (30 trees SD 0.17, stumps SD 0.18), so it is not memorisation. Phishing rows are clustered (13.3% have an identical
+  feature vector in train, benign 3.5%) and differ from benign in many correlated features at once (single-feature AUCs 0.24-0.32).
+- Reading (inferred, consistent with the numbers): the control's noise is a function of those features; which way it leans where
+  the phishing rows sit sets the AUC for the whole split. It is not a leak (a leak pushes above 0.5; domain and URL overlap are hard failures).
+- Not tested: whether the mean below 0.5 is bias or chance; the 14-day corpus was not rerun (the data branch's own report gives 0.4938, range 0.32-0.64).
