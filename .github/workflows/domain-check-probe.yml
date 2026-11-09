@@ -9,7 +9,6 @@ jobs:
       fail-fast: false
       matrix:
         site:
-          - https://deploy-preview-77--loquacious-starship-3425f0.netlify.app
           - https://loquacious-starship-3425f0.netlify.app
     runs-on: ubuntu-24.04
     timeout-minutes: 20
