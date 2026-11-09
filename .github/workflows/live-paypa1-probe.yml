@@ -1,0 +1,37 @@
+name: Live paypa1.com probe
+# Manual: does the live URL check page (Netlify, production deploy of main) give Dangerous for a look-alike when the
+# real AI check agrees with the address model? Prints the page's own verdict text.
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    env:
+      SITE: https://loquacious-starship-3425f0.netlify.app
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Is the fix deployed
+        run: |
+          curl -sS -m 40 "$SITE/extension/src/combine.js" | grep -n "const agree" || echo "NOT DEPLOYED"
+      - name: Live page in a browser
+        run: |
+          mkdir /tmp/pw && cd /tmp/pw && npm init -y >/dev/null && npm i playwright@1.50.0 >/dev/null 2>&1 && npx playwright install --with-deps chromium >/dev/null 2>&1
+          cat > run.mjs <<'JS'
+          import { chromium } from "playwright";
+          const b = await chromium.launch();
+          for (const u of ["https://secure-login.paypa1.com/signin/verify-account", "https://paypa1.com/signin/verify-account", "https://myshop-handmade-pottery.com/about"]) {
+            const p = await b.newPage();
+            await p.goto(process.env.SITE + "/demo/index.html");
+            await p.waitForSelector("#go:not([disabled])", { timeout: 120000 });
+            await p.waitForTimeout(3000);
+            await p.fill("#url", u);
+            await p.click("#go");
+            await p.waitForTimeout(30000);
+            const txt = (await p.innerText("#out")).replace(/\s+/g, " ").slice(0, 1500);
+            console.log("== " + u + "\n" + txt + "\n");
+            await p.close();
+          }
+          await b.close();
+          JS
+          node run.mjs
