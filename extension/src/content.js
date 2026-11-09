@@ -115,14 +115,15 @@ function buildBanner(result) {
   const reasons = result.reasons.slice(0, 2);
   const style = document.createElement("style");
   style.textContent = `
-    .bar { all: initial; display: flex; gap: 12px; align-items: center; padding: 10px 16px;
-      background: #fef3c7; color: #451a03; border-bottom: 2px solid #d97706;
-      font: 14px/1.4 system-ui, sans-serif; box-sizing: border-box; width: 100%; }
+    .bar { all: initial; display: flex; gap: 14px; align-items: center; margin: 10px auto 0; max-width: min(960px, calc(100% - 24px));
+      padding: 12px 18px; background: #fff7e6; color: #3a2402; border: 1.5px solid #c9820a; border-left-width: 8px;
+      border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.22); font: 14px/1.45 system-ui, sans-serif; box-sizing: border-box; }
     .bar strong { font-weight: 600; }
     .bar ul { margin: 2px 0 0; padding-left: 18px; }
     .bar div { flex: 1; }
-    button { all: initial; cursor: pointer; padding: 4px 10px; border: 1px solid #92400e;
-      border-radius: 4px; color: #451a03; font: 13px system-ui, sans-serif; }`;
+    button { all: initial; cursor: pointer; padding: 7px 16px; border: 1.5px solid #3a2402; border-radius: 999px;
+      color: #3a2402; font: 600 13px system-ui, sans-serif; }
+    button:hover { background: #3a2402; color: #fff7e6; }`;
   const bar = document.createElement("div");
   bar.className = "bar";
   bar.setAttribute("role", "alert");
