@@ -39,8 +39,15 @@ def show(tag, o):
 
 r = requests.get(site + "/", timeout=30)
 print("site / HTTP", r.status_code)
-first = check("example.org")
-print("first call:", json.dumps(first)[:300])
+for _ in range(24):  # a fresh deploy can take ~10 minutes to build
+    first = check("example.org")
+    print("first call:", json.dumps(first)[:200])
+    if first.get("http") != 404:
+        break
+    time.sleep(30)
+for path in ("/api/expand", "/api/llm-check"):
+    o = requests.post(site + path, json={"url": "https://aka.ms/vscode", "domain": "example.org"}, timeout=30)
+    print(path, o.status_code, o.text[:120].replace("\n", " "))
 if first.get("http") != 200:
     sys.exit("endpoint not live")
 
