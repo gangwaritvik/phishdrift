@@ -61,7 +61,10 @@ def show(tag, o):
         "rdap_err",
         f.get("rdap_error"),
         "|",
-        "; ".join(o.get("reasons") or [])[:160],
+        "; ".join(
+            str(x.get("feature", x)) if isinstance(x, dict) else str(x)
+            for x in o.get("reasons") or []
+        )[:160],
         "| detail",
         o.get("detail"),
     )

@@ -1,0 +1,79 @@
+name: Tier C live gap (hosted check vs offline pipeline)
+# Manual. Polls the fresh phishing feeds like the hourly capture (nothing is pushed), scores the
+# captures offline with the shipped bundle, then asks the live Netlify function about the same
+# domains, plus older feed entries and legitimate domains. See scripts/tier_c_live_gap.py.
+on:
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/tier-c-live-gap.yml", "scripts/tier_c_live_gap.py", "js/bench/tier_c_scores.mjs"]
+permissions:
+  contents: read
+env:
+  SITE: https://loquacious-starship-3425f0.netlify.app
+jobs:
+  prep:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e .
+      - run: scripts/ci_data_branch.sh fetch
+      - name: Poll the feeds and capture the new domains (not pushed)
+        run: |
+          date -u +%Y-%m-%dT%H:%M:%SZ > since.txt
+          python -u -m collector capture-phishing
+      - run: node js/bench/tier_c_scores.mjs data/interim/domain_info scores.tsv
+      - run: python scripts/tier_c_live_gap.py prep --scores scores.tsv --since "$(cat since.txt)" --out cands.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cands
+          path: cands.json
+  probe:
+    needs: prep
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e .
+      - uses: actions/download-artifact@v4
+        with:
+          name: cands
+      - run: python scripts/tier_c_live_gap.py probe --site "$SITE" --cands cands.json --shard ${{ matrix.shard }} --shards 4 --out results_${{ matrix.shard }}.jsonl
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-${{ matrix.shard }}
+          path: results_${{ matrix.shard }}.jsonl
+  report:
+    needs: probe
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e .
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-*
+          merge-multiple: true
+      - run: python scripts/tier_c_live_gap.py report --results results_*.jsonl --out report.md | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: report
+          path: report.md
