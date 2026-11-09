@@ -1479,3 +1479,19 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Changed: before the page is read, address model suspicious + AI check hit (brand or phishing) = dangerous (`agreed`), not on shared hosting. It counts as
   address-only (`addressOnly`): the extension shows the banner until the page asks for credentials, then the warning page; a page that asks for nothing
   stays suspicious. Late AI answers go through the same hold (`background.js`). Tests in `extension/test/combine.test.js`.
+
+### 2026-11-09 — Extension uses all three tiers; real-Chrome check of the themes (cloud)
+- Ritvik: "is the theme update on extension" and "update my extension to all tiers". Tier C was already wired into the combiner
+  (PR #72/#77) but off until a popup field was filled. Now on by default: `tierC: true` and `tierCUrl` (the hosted
+  `/api/domain-check`) in `extension/src/config.js`, a popup switch, `settings.tierC` checked in `background.js`. Rules unchanged:
+  only suspicious, unlisted, non-shortener addresses are asked; only the registrable domain is sent; raise-only; no answer = no change.
+- New `extension/e2e/themes.mjs` and `.github/workflows/extension-themes.yml`: loads the built extension in Chrome (153, Chrome for
+  Testing, here and on a runner) and checks the popup and warning page in all five themes (the swatch ripple runs: 5 view transitions
+  started and finished; background differs per theme; choice saved and kept on reopen; arrow key), the banner on a live suspicious
+  page (still there 4 s later, top layer), tier C raising to the warning page with its reason, tier C hanging or erroring (page loads
+  in under 100 ms, banner stays), the default address (one POST, body `{"domain": ...}` only), nothing sent for a safe address or with the switch off.
+- Found by it and fixed: the theme swatches on the warning page were ovals (a generic `min-height: 44px` on `button`).
+- Results (measured, local): 8 of 8 pass in Chrome 153 here; `npm test` extension 89 pass. Live function (workflow run 42623808349 on
+  2026-11-09, GitHub runner): 6 of 6 legitimate domains answered safe, 6 phishing domains under 7 days old dangerous, 8 older ones safe;
+  median 0.3 s. The browser tests use stubs for the hosted check, so the extension talking to the real Netlify function is not tested here.
+- Not tested: a real browsing session, Chrome with the Web Store build, the banner colours (fixed, they do not follow the theme).

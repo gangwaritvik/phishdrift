@@ -1,0 +1,30 @@
+name: Extension themes and tier C (real Chrome)
+# Loads the built extension in Chrome for Testing (extension/e2e/themes.mjs): five themes with the ripple
+# switch on the popup and the warning page, the banner on a suspicious page, and the tier C domain check
+# (default address, domain only, fail-open, switch off). Local pages and stubs only; no real site is contacted.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["extension/**", ".github/workflows/extension-themes.yml"]
+jobs:
+  themes:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      # Chrome for Testing: branded Chrome 137+ ignores --load-extension, Chrome for Testing does not
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+        with: { chrome-version: stable }
+      - name: Build the extension
+        run: node extension/build.mjs
+      - name: Playwright (library only, the browser is the Chrome above)
+        run: mkdir /tmp/pw && cd /tmp/pw && npm init -y >/dev/null && npm i playwright@1.50.0 >/dev/null 2>&1
+      - name: Themes and tier C
+        run: |
+          "${{ steps.chrome.outputs.chrome-path }}" --version
+          CHROME="${{ steps.chrome.outputs.chrome-path }}" PLAYWRIGHT_MODULE=/tmp/pw/node_modules/playwright node extension/e2e/themes.mjs "$PWD/extension/dist" /tmp/themes-out | tee /tmp/themes.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: themes-screenshots, path: /tmp/themes-out }

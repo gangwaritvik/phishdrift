@@ -63,9 +63,11 @@ verdict from the domain's age (registry RDAP), DNS and TLS certificate. It needs
   to a public address it looked up itself (the same guard as `expand.mjs`). No page is fetched.
 - Netlify blocks more than 20 checks a minute from one IP address; each instance keeps an answer for an hour
   (`tier_c.serving` in `configs/models.yaml`) and gives up after `total_timeout_ms`.
-- In the extension popup, put `https://<your-site>.netlify.app/api/domain-check` in **Domain check address**.
-  Empty means off. Only the registrable domain is sent, and only for addresses the address model already finds
-  suspicious. The answer can raise suspicious to dangerous and add reasons; it never lowers a verdict or warns
-  on an address that looked safe.
+- The extension asks it by default (`tierC: true`, `tierCUrl` in `extension/src/config.js`; a different site's address
+  can go in the popup under **Domain check address**, and the box "Check the age and certificate of suspicious sites"
+  switches it off). Only the registrable domain is sent, and only for addresses the address model already finds
+  suspicious and the allowlist does not cover. The answer can raise suspicious to dangerous and add reasons; it never
+  lowers a verdict or warns on an address that looked safe. A slow, failed or refused answer is no evidence: the
+  verdict already shown stays, and the page is never held up.
 - Not tested on a real Netlify deploy (build image, function time limit, `rateLimit`); the logic is tested with a
   fake network in `js/test/domain_check.test.js`.
