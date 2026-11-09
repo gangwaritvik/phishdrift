@@ -1403,3 +1403,11 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Checked (headless Chromium against `python -m demo`): all five themes on a phishing-style, a look-alike, an allowlisted and a normal address; phone width; the ripple;
   arrow keys. `npm test` extension passes. Not checked: Safari / Firefox ripple (falls back to an instant change), the hosted Netlify site, a real phone.
 - Not done: the extension popup, warning page and banner are not restyled (mockups exist); fonts load from Google Fonts, so offline they fall back to system fonts.
+
+### 2026-11-09 — Extension popup and warning page in the five themes (cloud)
+- Ritvik: "yes" to restyling the extension in the same theme system. New `extension/src/theme.css` (the five themes, the lens, the ripple: moved out of `demo/index.html`) and
+  `extension/src/theme.js` (theme list, ripple switch, lens builder), used by the URL check page, the popup and the warning page. The theme is saved in `settings.theme`
+  (extension) or localStorage (page). Popup: verdict panel, reasons, AI-check switch, settings behind "Advanced settings", theme lens in the footer. Warning page: same tokens plus lens.
+  In-page banner: new look (rounded card, amber), fixed colours (it cannot read the theme without a storage call on every page).
+- Checked: `npm test` extension 88 pass; extension loaded in headless Chromium, popup and warning page in all five themes with no page errors; the URL check page still switches themes.
+  Not checked: the banner on a live suspicious page (CSS-only change), Chrome (not Chromium), the e2e smoke test (cannot start in this container).

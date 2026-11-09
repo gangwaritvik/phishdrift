@@ -1,6 +1,16 @@
+import { buildLens, setTheme, startTheme } from "./theme.js";
+
 const tabId = Number(new URLSearchParams(location.search).get("tab"));
 const send = (msg) => chrome.runtime.sendMessage({ ...msg, tabId });
 const $ = (id) => document.getElementById(id);
+
+// Theme (settings.theme), the same five as the URL check page.
+const { settings } = await chrome.storage.local.get("settings");
+buildLens($("lens"), async (theme) => {
+  const current = (await chrome.storage.local.get("settings")).settings ?? {};
+  await chrome.storage.local.set({ settings: { ...current, theme } });
+});
+setTheme(startTheme(settings?.theme), null);
 
 // Never history.back(): the previous entry can be the phishing page or a redirect to it. The service
 // worker sends the tab to the last safe address it saw on another site, or a new tab page.

@@ -1,3 +1,5 @@
+import { buildLens, setTheme, startTheme } from "./theme.js";
+
 const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 const send = (msg) => chrome.runtime.sendMessage({ ...msg, tabId: tab.id });
 const $ = (id) => document.getElementById(id);
@@ -14,7 +16,7 @@ if (!result) {
 } else {
   const [cls, text] = HEADLINES[result.verdict];
   $("headline").textContent = text;
-  $("headline").className = cls;
+  document.body.dataset.verdict = cls;
   $("site").textContent = result.domain ?? "";
   for (const reason of result.reasons) {
     const li = document.createElement("li");
@@ -37,6 +39,12 @@ $("report").addEventListener("click", async () => {
 
 // Opt-in switch for the backend's LLM brand check (settings.llmCheck, off by default).
 const { settings } = await chrome.storage.local.get("settings");
+// Theme (settings.theme): the same five as the URL check page.
+buildLens($("lens"), async (theme) => {
+  const current = (await chrome.storage.local.get("settings")).settings ?? {};
+  await chrome.storage.local.set({ settings: { ...current, theme } });
+});
+setTheme(startTheme(settings?.theme), null);
 $("llm").checked = settings?.llmCheck === true;
 $("llm").addEventListener("change", async () => {
   const current = (await chrome.storage.local.get("settings")).settings ?? {};

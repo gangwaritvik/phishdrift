@@ -2,6 +2,7 @@
 // address as one animated screen (demo/evidence.js supplies what each layer looked at).
 // Five themes; the switch ("lens") ripples the new theme out from the swatch you pick.
 
+import { buildLens, setTheme, startTheme } from "../extension/src/theme.js";
 import { checkUrl, loadChecker } from "./check.js";
 
 const root = new URL("../", import.meta.url);
@@ -13,13 +14,6 @@ const EXAMPLES = [
   ["Popular site the model alone flags", "https://web.whatsapp.com/"],
   ["Phishing style", "http://secure-login-verify-account.xyz/wp-admin/office365/index.php"],
   ["Look-alike", "https://secure-login.paypa1.com/signin/verify-account"],
-];
-const THEMES = [
-  ["paper", "Paper", "#F3EEE3", "#15130E"],
-  ["midnight", "Midnight", "#090C12", "#5EE6D0"],
-  ["pop", "Pop", "#FFD23F", "#3D5AFE"],
-  ["clinic", "Clinic", "#F4F7F9", "#0E7C86"],
-  ["terminal", "Terminal", "#050805", "#6CFF6C"],
 ];
 const WORD = { safe: "Looks safe", suspicious: "Suspicious", dangerous: "Dangerous" };
 const SUB = {
@@ -38,65 +32,24 @@ const ICON = {
 const svg = (inner, w = 16, sw = 3) => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-// --- theme lens -----------------------------------------------------------------------------
+// --- theme lens (extension/src/theme.js) ----------------------------------------------------
 
-function setTheme(id, from) {
-  const apply = () => {
-    document.documentElement.dataset.theme = id;
-    for (const b of document.querySelectorAll("#lens button")) {
-      b.setAttribute("aria-checked", String(b.dataset.id === id));
-      b.tabIndex = b.dataset.id === id ? 0 : -1;
-    }
-    try {
-      localStorage.setItem("phishdrift-theme", id);
-    } catch {
-      // storage can be blocked; the theme still changes
-    }
-  };
-  if (!document.startViewTransition || reduce.matches || !from) return apply();
-  const r = from.getBoundingClientRect();
-  const x = r.left + r.width / 2;
-  const y = r.top + r.height / 2;
-  const end = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
-  document.startViewTransition(apply).ready.then(() =>
-    document.documentElement.animate(
-      { clipPath: [`circle(0 at ${x}px ${y}px)`, `circle(${end}px at ${x}px ${y}px)`] },
-      { duration: 700, easing: "cubic-bezier(.4,0,.2,1)", pseudoElement: "::view-transition-new(root)" },
-    ),
-  );
-}
-
-function buildLens() {
-  const lens = $("lens");
-  for (const [id, name, a, b] of THEMES) {
-    const btn = Object.assign(document.createElement("button"), { type: "button", className: "swatch" });
-    btn.dataset.id = id;
-    btn.setAttribute("role", "radio");
-    btn.setAttribute("aria-label", `${name} theme`);
-    btn.style.setProperty("--a", a);
-    btn.style.setProperty("--b", b);
-    btn.innerHTML = `<span>${name}</span>`;
-    btn.addEventListener("click", () => setTheme(id, btn));
-    lens.append(btn);
+const saveTheme = (id) => {
+  try {
+    localStorage.setItem("phishdrift-theme", id);
+  } catch {
+    // storage can be blocked; the theme still changes
   }
-  lens.addEventListener("keydown", (e) => {
-    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
-    if (!step) return;
-    e.preventDefault();
-    const cur = THEMES.findIndex(([id]) => id === document.documentElement.dataset.theme);
-    const next = THEMES[(cur + step + THEMES.length) % THEMES.length][0];
-    setTheme(next, lens.querySelector(`[data-id=${next}]`));
-    lens.querySelector(`[data-id=${next}]`).focus();
-  });
+};
+function startLens() {
   let saved = null;
   try {
     saved = localStorage.getItem("phishdrift-theme");
   } catch {
     // no storage
   }
-  const asked = new URLSearchParams(location.search).get("theme");
-  const pick = [asked, saved].find((t) => THEMES.some(([id]) => id === t)) ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "midnight" : "paper");
-  setTheme(pick, null);
+  buildLens($("lens"), saveTheme);
+  setTheme(startTheme(new URLSearchParams(location.search).get("theme"), saved), null);
 }
 
 // --- result screen --------------------------------------------------------------------------
@@ -216,7 +169,7 @@ function animateDial(score, t, used) {
 }
 
 async function main() {
-  buildLens();
+  startLens();
   let checker;
   try {
     checker = await loadChecker({ base: new URL("../extension/src/", import.meta.url), read });
