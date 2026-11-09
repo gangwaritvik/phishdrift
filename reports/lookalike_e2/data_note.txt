@@ -1,0 +1,1 @@
+the staged cloud sample (84,938 pool URLs, a fifth of the PC pool, no time slice, no HTML; held-out source PhishStorm 20,000; 2,555 natural pages), 10 domain-grouped splits, so absolute numbers are not comparable with the 10-split tables of the PC pool

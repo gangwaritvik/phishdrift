@@ -20,9 +20,13 @@ import pandas as pd
 BENCH = Path(__file__).resolve().parents[1] / "js" / "bench" / "latency.mjs"
 
 
-def measure(runs: int) -> dict:
+def measure(runs: int, bundle: Path | None = None, parity: Path | None = None) -> dict:
+    extra = ["--bundle", str(bundle), "--parity", str(parity)] if bundle else []
     out = subprocess.run(
-        ["node", str(BENCH), "--runs", str(runs)], capture_output=True, text=True, check=True
+        ["node", str(BENCH), "--runs", str(runs), *extra],
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return json.loads(out.stdout)
 

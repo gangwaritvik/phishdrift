@@ -29,6 +29,7 @@ from experiments.tier_a import PARTS, _fmt, apply_fitted, assert_no_overlap, loa
 from features.lists import Lists, load_lists
 from features.registry import NAMES
 from models.hybrid import DEFAULT_SCORERS, HybridA
+from models.lookalike_aug import with_lookalikes
 from phishdrift.config import load_config
 
 log = logging.getLogger("hybrid_a")
@@ -37,7 +38,10 @@ log = logging.getLogger("hybrid_a")
 VARIANTS = {  # name -> (config block with the scorers or None, runs folder, report file)
     "hybrid": (None, "hybrid_a_runs", "hybrid_a"),
     "hybrid2": ("hybrid2", "hybrid2_runs", "hybrid2"),
+    # hybrid2 trained with the look-alike examples of models.lookalike_aug (E2); same scorers
+    "hybrid2_la": ("hybrid2", "hybrid2_la_runs", "hybrid2_la"),
 }
+LOOKALIKE = {"hybrid2_la"}
 
 
 def make_hybrid(cfg: dict, variant: str = "hybrid") -> HybridA:
@@ -75,6 +79,10 @@ def run_split(
     fitted = refit(train, lists)
     train, cal, test = (apply_fitted(f, fitted) for f in (train, cal, test))
     holdouts = {n: apply_fitted(h, fitted) for n, h in holdouts.items()}
+    if variant in LOOKALIKE:  # training rows only; cal, test and holdouts are untouched
+        taken = {d for f in (train, cal, test, *holdouts.values()) for d in f["domain"]}
+        train, aug = with_lookalikes(train, k, lists, fitted, taken)
+        log.info("split %d: %d look-alike rows added to %d training rows", k, len(aug), len(train))
     model = make_hybrid(cfg, variant).fit(
         train, train["label"].to_numpy(), train["weight"].to_numpy()
     )
@@ -161,7 +169,9 @@ def run(
     lists = lists or load_lists()
     per_split = reports / "tables" / VARIANTS[variant][1]
     per_split.mkdir(parents=True, exist_ok=True)
-    frames = {p: load_part(processed, p, lists) for p in PARTS}
+    # a staged sample may have no time slice
+    parts = [p for p in PARTS if (processed / f"meta_{p}.parquet").exists()]
+    frames = {p: load_part(processed, p, lists) for p in parts}
     pool = frames.pop("pool")
     splits = pd.read_parquet(processed / "splits.parquet")
     splits = pool[["uid"]].merge(splits, on="uid", how="left", validate="one_to_one")
