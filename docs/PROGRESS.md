@@ -1414,3 +1414,40 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
 - Not measured: temporal performance (no time slice in the sample), the full pool, HTML. Item 8 (deployment recommendation) needs the PC run.
 - Next: Ritvik runs `docs/LOOKALIKE_E2.md` on the PC; then compare against E0 on all 10 splits.
 - Open: whether the small, consistent held-out dip matters; whether transposition, `rnvv` and unlisted names need the E3 columns / a different approach.
+
+### 2026-10-30 — Tier C trained on three capture days; bundle added (cloud)
+- Capture ran from GitHub Actions (hourly schedule started about 6 h after the merge; it runs every few hours, not every hour, so
+  manual dispatches filled gaps). Data branch `tier-c-data`: phishing domains 936 (10-27), 1,763 (10-28), then 10-29; 8 feeds
+  (OpenPhish, PhishTank, PhishStats, Phishunt, Phishing.Database new + domains, Phishing Army, CERT Polska). `tier-c-train` run on 2026-10-30.
+- Results (`reports/tier_c.md`, 10 domain-grouped splits, 4,090 phishing / 130,360 legitimate domains, test side 818 / 26,072; median [min, max]):
+  tier C ROC-AUC 0.9585 [0.9527, 0.9635]; without domain age 0.9399; age alone 0.7326; shipped address model on the bare host 0.7770;
+  tier C + address score 0.9615. Recall at FPR 1% / 0.1%: 77.8 / 72.2 (cal-side thresholds: 77.6 at 0.7% FPR, 72.1 at 0.1%). Time check
+  (train on 10-27, test on 10-28 and 10-29): 0.9515, recall 75.3 at 1%. Captured within 2 h of first seen: 0.9607. Shuffled-label control
+  0.4578 (SE 0.018), not flagged, but split means range 0.27 to 0.65; cause not investigated. `has_cname` importance 0.2%. Nothing above 99%.
+- Gates (plan `plans/tier_c_plan.md`): ROC-AUC clear of the age baseline, at least 1,000 legitimate on the cal side (26,072), control within 0.05,
+  time check, no-age model above chance, no result above 99%: all met. Added `js/data/tier_c.json`, `tests/fixtures/tier_c_model_parity.json`;
+  `npm test` js 39 and the tier C pytest files pass.
+- Caveats: all legitimate domains are Tranco-listed (older, established), so false alarms on young legitimate sites are unmeasured and the
+  recall numbers may be optimistic; phishing and legitimate domains were found by different routes (feed vs Tranco), age is half the
+  signal; the address score comparison favours the address model (its training pool overlap unknown). Tier C only raises verdicts and is off by default.
+- Not done: Netlify deploy with the bundle and a live check of `/api/domain-check`; backend `checks.py` still uses rules; young-legitimate-site sample.
+
+### 2026-11-09 — URL check page redesigned: one animated screen, five themes, ripple theme switch (cloud)
+- Ritvik: "totally new frontend", "more themes", "build it, give a unique option to switch theme". Mockups in the project folder (`design/`).
+- Changed: `demo/index.html` and `demo/app.js` rewritten (old one-screen-per-layer scenes removed; `demo/check.js` and `demo/evidence.js` unchanged, so every verdict
+  and number is the checker's). The result is one screen: the address split into scheme / subdomain / owner (highlighted), the layers lighting up in order,
+  a score dial that fills and counts up, the verdict word, and clue cards (only clues that push toward phishing: the model's other clues are raw feature names).
+  Themes: Paper, Midnight, Pop, Clinic, Terminal (`data-theme`; `?theme=` in the address, saved in localStorage, dark preference starts on Midnight).
+  Theme switch ("lens"): five round swatches; the new theme ripples out from the swatch you click (View Transitions API, instant where unsupported or with
+  reduced motion); arrow keys move between themes.
+- Checked (headless Chromium against `python -m demo`): all five themes on a phishing-style, a look-alike, an allowlisted and a normal address; phone width; the ripple;
+  arrow keys. `npm test` extension passes. Not checked: Safari / Firefox ripple (falls back to an instant change), the hosted Netlify site, a real phone.
+- Not done: the extension popup, warning page and banner are not restyled (mockups exist); fonts load from Google Fonts, so offline they fall back to system fonts.
+
+### 2026-11-09 — Extension popup and warning page in the five themes (cloud)
+- Ritvik: "yes" to restyling the extension in the same theme system. New `extension/src/theme.css` (the five themes, the lens, the ripple: moved out of `demo/index.html`) and
+  `extension/src/theme.js` (theme list, ripple switch, lens builder), used by the URL check page, the popup and the warning page. The theme is saved in `settings.theme`
+  (extension) or localStorage (page). Popup: verdict panel, reasons, AI-check switch, settings behind "Advanced settings", theme lens in the footer. Warning page: same tokens plus lens.
+  In-page banner: new look (rounded card, amber), fixed colours (it cannot read the theme without a storage call on every page).
+- Checked: `npm test` extension 88 pass; extension loaded in headless Chromium, popup and warning page in all five themes with no page errors; the URL check page still switches themes.
+  Not checked: the banner on a live suspicious page (CSS-only change), Chrome (not Chromium), the e2e smoke test (cannot start in this container).
