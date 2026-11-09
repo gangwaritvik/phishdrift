@@ -591,9 +591,13 @@ chrome.webNavigation.onCommitted.addListener((details) => {
         if (!earlier) await rememberSafe(tabId, result); // a newer navigation; still a safe place to go back to
         return;
       }
-      if (earlier) return raiseTab(tabId, result); // late backend answer
-      if (doc.pageDone) return; // the page check won
       const shown = addressOnly(result) ? held(result) : result;
+      if (earlier) { // late backend or AI answer
+        await raiseTab(tabId, shown);
+        if (shown !== result && !doc.pageDone) holdForPage(tabId, url, result);
+        return;
+      }
+      if (doc.pageDone) return; // the page check won
       await applyResult(tabId, shown);
       await rememberSafe(tabId, shown);
       notifyTab(tabId, shown, "commit");

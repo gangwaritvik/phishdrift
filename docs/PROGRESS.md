@@ -1463,3 +1463,12 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   In-page banner: new look (rounded card, amber), fixed colours (it cannot read the theme without a storage call on every page).
 - Checked: `npm test` extension 88 pass; extension loaded in headless Chromium, popup and warning page in all five themes with no page errors; the URL check page still switches themes.
   Not checked: the banner on a live suspicious page (CSS-only change), Chrome (not Chromium), the e2e smoke test (cannot start in this container).
+
+### 2026-11-09 — AI check agreeing with the address model now gives dangerous (cloud)
+- Ritvik's URL check page: `https://secure-login.paypa1.com/signin/verify-account` scored 0.969 (suspicious cut-off 0.904, dangerous 0.980), the
+  AI check said "Imitation" (PayPal), the verdict stayed Suspicious. Cause (reproduced with the page's own checker and a stub AI answer): `stepUp` in
+  `extension/src/combine.js` raised an AI hit one step and allowed dangerous only when the page asks for credentials; the check page has no page, so
+  suspicious + AI hit stayed suspicious. This was deliberate (tested), because the AI check had no measured accuracy.
+- Changed: before the page is read, address model suspicious + AI check hit (brand or phishing) = dangerous (`agreed`), not on shared hosting. It counts as
+  address-only (`addressOnly`): the extension shows the banner until the page asks for credentials, then the warning page; a page that asks for nothing
+  stays suspicious. Late AI answers go through the same hold (`background.js`). Tests in `extension/test/combine.test.js`.
