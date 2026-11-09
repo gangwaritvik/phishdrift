@@ -389,8 +389,8 @@ export async function evaluate(url, { facts = null, html = null, origin = null }
     }
   }
   // Tier C (domain age, DNS, certificate): same gate as the backend's domain evidence, because it can
-  // only raise suspicious to dangerous. Off until settings.tierCUrl is set.
-  if (settings.tierCUrl && result.verdict === SUSPICIOUS && askable(layers) && !layers.allow && !layers.shortener) {
+  // only raise suspicious to dangerous. On by default (settings.tierC); a failure is no evidence.
+  if (settings.tierC && settings.tierCUrl && result.verdict === SUSPICIOUS && askable(layers) && !layers.allow && !layers.shortener) {
     const found = tierCLookup(layers.domainName, settings);
     if (found.pending) {
       waits.push(found.pending);

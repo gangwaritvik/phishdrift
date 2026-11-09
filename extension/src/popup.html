@@ -52,12 +52,15 @@
   <div class="sec muted">
     <label><input type="checkbox" id="llm"><span>Ask an AI about borderline sites (sends only the website name to the backend)</span></label>
   </div>
+  <div class="sec muted">
+    <label><input type="checkbox" id="tierC"><span>Check the age and certificate of suspicious sites (sends only the website name)</span></label>
+  </div>
   <details>
     <summary>Advanced settings</summary>
     <label class="muted">AI check address (empty = your backend)
       <input type="url" id="llmUrl" placeholder="https://your-site.netlify.app/llm-check">
     </label>
-    <label class="muted">Domain check address (empty = off)
+    <label class="muted">Domain check address (empty = the default one)
       <input type="url" id="tierCUrl" placeholder="https://your-site.netlify.app/api/domain-check">
     </label>
   </details>

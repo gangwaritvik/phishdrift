@@ -65,7 +65,15 @@ $("llmUrl").addEventListener("change", async () => {
   $("status").textContent = value ? "AI check address saved." : "AI check uses your backend again.";
 });
 
-// Address of the hosted domain check (settings.tierCUrl, domain age / DNS / certificate); empty = off.
+// Switch for the hosted domain check (settings.tierC, on by default).
+$("tierC").checked = settings?.tierC !== false;
+$("tierC").addEventListener("change", async () => {
+  const current = (await chrome.storage.local.get("settings")).settings ?? {};
+  await chrome.storage.local.set({ settings: { ...current, tierC: $("tierC").checked } });
+  $("status").textContent = $("tierC").checked ? "Domain check on. Only the site's domain is sent." : "Domain check off.";
+});
+
+// Address of the hosted domain check (settings.tierCUrl, domain age / DNS / certificate); empty = the default.
 $("tierCUrl").value = settings?.tierCUrl ?? "";
 $("tierCUrl").addEventListener("change", async () => {
   const value = $("tierCUrl").value.trim();
@@ -75,5 +83,5 @@ $("tierCUrl").addEventListener("change", async () => {
   }
   const current = (await chrome.storage.local.get("settings")).settings ?? {};
   await chrome.storage.local.set({ settings: { ...current, tierCUrl: value } });
-  $("status").textContent = value ? "Domain check on. Only the site's domain is sent." : "Domain check off.";
+  $("status").textContent = value ? "Domain check address saved." : "Domain check uses the default address again.";
 });
