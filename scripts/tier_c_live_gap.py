@@ -157,7 +157,13 @@ def report(a) -> None:
     out.append(
         "\nRefusal / failure reasons: "
         + json.dumps(
-            d[~d.checked].groupby(["group", "reason"], dropna=False).size().astype(int).to_dict(),
+            {
+                f"{g}/{r}": int(n)
+                for (g, r), n in d[~d.checked]
+                .groupby(["group", "reason"], dropna=False)
+                .size()
+                .items()
+            },
             default=str,
         )
     )
