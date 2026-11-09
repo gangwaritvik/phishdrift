@@ -6,7 +6,7 @@ on:
     paths: [".github/workflows/shared-host-probe.yml"]
 jobs:
   probe:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # ubuntu-latest became 26.04, where Playwright 1.50 cannot install its system packages
     strategy:
       fail-fast: false
       matrix:
