@@ -3,13 +3,17 @@ on:
   workflow_dispatch:
   push:
     paths: [".github/workflows/domain-check-probe.yml", "scripts/domain_check_probe.py"]
-env:
-  SITE: https://loquacious-starship-3425f0.netlify.app
 jobs:
   probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        site:
+          - https://deploy-preview-77--loquacious-starship-3425f0.netlify.app
+          - https://loquacious-starship-3425f0.netlify.app
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - run: pip install requests
-      - run: python scripts/domain_check_probe.py "$SITE"
+      - run: python scripts/domain_check_probe.py "${{ matrix.site }}"

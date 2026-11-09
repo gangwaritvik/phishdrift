@@ -39,7 +39,7 @@ def show(tag, o):
 
 r = requests.get(site + "/", timeout=30)
 print("site / HTTP", r.status_code)
-for _ in range(24):  # a fresh deploy can take ~10 minutes to build
+for _ in range(4):
     first = check("example.org")
     print("first call:", json.dumps(first)[:200])
     if first.get("http") != 404:
