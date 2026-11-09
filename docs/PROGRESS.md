@@ -1463,3 +1463,16 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   In-page banner: new look (rounded card, amber), fixed colours (it cannot read the theme without a storage call on every page).
 - Checked: `npm test` extension 88 pass; extension loaded in headless Chromium, popup and warning page in all five themes with no page errors; the URL check page still switches themes.
   Not checked: the banner on a live suspicious page (CSS-only change), Chrome (not Chromium), the e2e smoke test (cannot start in this container).
+
+### 2026-11-09 — Tier C domain check live on Netlify; first live probe (cloud)
+- Production deploys on Netlify had been "Skipped" since 2026-10-27 and the one for PR #77 failed, so `/api/domain-check` answered 404 (the other
+  functions answered). After Ritvik's redeploy it answers. New `scripts/domain_check_probe.py` + `.github/workflows/domain-check-probe.yml` (run from a
+  GitHub runner; Netlify previews are login-protected, so production only) post 12 legitimate domains and the first 40 hosts of the OpenPhish feed.
+- Results (run 42604076620, one sample, 2026-11-09 10:50 UTC): legitimate 12 of 12 checked, all safe (probability 0.0001-0.0098, median 0.58 s per call).
+  Phishing: of 40 hosts, 26 refused by design (24 hosting-platform hosts, 1 shortener, 1 more platform), 2 timed out at 9 s, 14 checked and all 14 came back
+  safe (probabilities 0.002-0.086 against the 0.117 suspicious cut-off). Seven of the 14 are older registrations (age 1,400-3,800 days, compromised sites,
+  which domain facts cannot catch) and five sit on TLDs with no registry RDAP server (.vn, .lk, .lu, .de, .et), so the age signal is missing there; the
+  youngest ones (38 and 69 days) scored 0.06-0.09, below the cut-off.
+- Reading: no false alarms on 12 well-known domains; 0 of 14 phishing domains caught on this sample. That is far below the offline recall (77.8% at 1% FPR) and
+  is not explained yet (guesses: the feed's current URLs are mostly older or compromised sites while training phishing was captured at first sight; missing RDAP
+  on many TLDs; small sample). Not measured: a larger fresh sample, young legitimate domains.
