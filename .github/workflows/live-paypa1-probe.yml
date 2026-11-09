@@ -3,6 +3,8 @@ name: Live paypa1.com probe
 # real AI check agrees with the address model? Prints the page's own verdict text.
 on:
   workflow_dispatch:
+  push:
+    paths: [".github/workflows/live-paypa1-probe.yml"]
 jobs:
   probe:
     runs-on: ubuntu-24.04
