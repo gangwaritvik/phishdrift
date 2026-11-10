@@ -19,11 +19,16 @@ jobs:
           echo "== fetch-page metadata address"; post fetch-page '{"url":"http://169.254.169.254/latest/meta-data/"}'
           echo "== fetch-page PDF"; post fetch-page '{"url":"https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"}'
           echo "== domain-check example.com"; post domain-check '{"domain":"example.com"}'
-      - name: Rate limit (14 quick fetches of one address; the function allows 10 a minute)
+      - name: Rate limit (60 fetches in a row, then 20 more after 65 s; the function allows 10 a minute)
         run: |
-          for i in $(seq 1 14); do
+          burst() { for i in $(seq 1 "$1"); do
             curl -sS -m 20 -o /dev/null -w '%{http_code} ' -X POST -H 'Content-Type: application/json' -d '{"url":"https://example.com/"}' "$SITE/api/fetch-page"
-          done; echo
+          done; echo; }
+          echo "-- burst of 60"; burst 60
+          echo "-- headers of one more answer"
+          curl -sS -m 20 -D - -o /dev/null -X POST -H 'Content-Type: application/json' -d '{"url":"https://example.com/"}' "$SITE/api/fetch-page" | grep -i -E '^(HTTP|x-nf|ratelimit|retry|x-ratelimit|server|cache)' || true
+          sleep 65
+          echo "-- burst of 20 in the next minute"; burst 20
       - name: Page files load
         run: |
           for f in demo/index.html js/data/tier_b_page.json js/data/tier_a_hybrid.json; do

@@ -6,7 +6,7 @@ import http from "node:http";
 import { gzipSync } from "node:zlib";
 import { test } from "node:test";
 
-import { fetchPage, handle, request } from "../../netlify/functions/fetch-page.mjs";
+import served, { RATE, fetchPage, handle, overLimit, request } from "../../netlify/functions/fetch-page.mjs";
 
 const html = (body = "<p>hello</p>") => ({ status: 200, location: null, contentType: "text/html; charset=utf-8", body: Buffer.from(body), truncated: false });
 const post = (body) => new Request("https://x.example/api/fetch-page", { method: "POST", body: typeof body === "string" ? body : JSON.stringify(body) });
@@ -149,4 +149,21 @@ test("request(): a slow server is cut off at the time limit", async () => {
     s.closeAllConnections();
     s.close();
   }
+});
+
+test("the per-address counter allows RATE.limit fetches a minute, then refuses until the minute has passed", () => {
+  const seen = new Map();
+  for (let i = 0; i < RATE.limit; i++) assert.equal(overLimit("1.2.3.4", 1000 + i, seen), false);
+  assert.equal(overLimit("1.2.3.4", 2000, seen), true);
+  assert.equal(overLimit("5.6.7.8", 2000, seen), false); // another address has its own count
+  assert.equal(overLimit("1.2.3.4", 1000 + RATE.window_s * 1000 + RATE.limit, seen), false);
+  assert.equal(seen.has("5.6.7.8"), true);
+  overLimit("9.9.9.9", 1000 + 10 * RATE.window_s * 1000, seen); // old addresses are dropped
+  assert.equal(seen.has("5.6.7.8"), false);
+});
+
+test("the served function answers 429 once an address is over the limit", async () => {
+  const call = () => served(new Request("https://x.example/api/fetch-page", { method: "POST", body: "not json", headers: { "x-nf-client-connection-ip": "203.0.113.7" } }));
+  for (let i = 0; i < RATE.limit; i++) assert.equal((await call()).status, 422);
+  assert.equal((await call()).status, 429);
 });

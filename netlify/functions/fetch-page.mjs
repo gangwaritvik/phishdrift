@@ -149,10 +149,28 @@ export async function handle(req, deps = {}) {
   return json(200, await fetchPage(url, deps));
 }
 
-export default (req) => handle(req);
+// At most RATE.limit fetches a minute from one address. Netlify's own rule (config below) did not stop 60 fetches in
+// 20 s on the live site, so this counter backs it up. It lives in the memory of one function instance, so it is
+// approximate: a second instance counts separately. `hits` maps an address to the times of its recent fetches.
+export const RATE = { limit: 10, window_s: 60 };
+const hits = new Map();
+export function overLimit(ip, t = Date.now(), seen = hits) {
+  const since = t - RATE.window_s * 1000;
+  for (const [key, times] of seen) if (times.every((x) => x <= since)) seen.delete(key);
+  const recent = (seen.get(ip) ?? []).filter((x) => x > since);
+  if (recent.length >= RATE.limit) return true;
+  seen.set(ip, [...recent, t]);
+  return false;
+}
+
+export default (req) => {
+  const ip = req.headers.get("x-nf-client-connection-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+  if (req.method === "POST" && overLimit(ip)) return json(429, { error: "rate_limited" });
+  return handle(req);
+};
 
 // Netlify reads this statically: at most 10 page fetches a minute from one IP address.
 export const config = {
   path: ["/api/fetch-page"],
-  rateLimit: { windowLimit: 10, windowSize: 60, aggregateBy: ["ip", "domain"] },
+  rateLimit: { windowLimit: RATE.limit, windowSize: RATE.window_s, aggregateBy: ["ip", "domain"] },
 };
