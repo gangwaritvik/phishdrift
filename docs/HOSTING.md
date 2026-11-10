@@ -71,3 +71,29 @@ verdict from the domain's age (registry RDAP), DNS and TLS certificate. It needs
   verdict already shown stays, and the page is never held up.
 - Not tested on a real Netlify deploy (build image, function time limit, `rateLimit`); the logic is tested with a
   fake network in `js/test/domain_check.test.js`.
+
+## The page fetch (tier B on the URL check page)
+
+A web page cannot read another site's HTML (CORS), so the model that reads a page (tier B) cannot run in the
+browser against a typed address by itself. `netlify/functions/fetch-page.mjs` answers `POST /api/fetch-page
+{"url": "https://..."}` with one plain GET of that address: `{ok, status, final, redirects, bytes, truncated, html,
+error}`. The page then scores the HTML with the same code and model file as the extension (`js/src/page.js`,
+`js/data/tier_b_page.json`) and shows the three tiers side by side under the verdict. Settings: `page_fetch` in
+`configs/backend.yaml` (exported by `python -m backend export-llm-js` to `js/data/page_fetch.json`).
+
+- Safe by construction: only http and https on ports 80 and 443; the first address and every redirect must be a
+  public address, checked when the connection is made (a DNS answer cannot change in between) and for addresses
+  written as IPs; 5 redirects, 9 seconds and 1.5 MB (after decompression) at most; no cookies are sent or kept; only
+  an HTML answer is returned; nothing on the page is run and no other file of it is fetched. Netlify blocks more than
+  10 fetches a minute from one IP address. It is one fetch of the address the visitor typed, not a crawl, so it does
+  not read robots.txt.
+- Privacy: unlike the extension (which sends only the domain), the full address reaches this function. Nothing is stored.
+- Limits that remain: a server can show this function a different page than a visitor (it sends an honest user agent
+  and does not hide); a page built by scripts arrives nearly empty and the page then says tier B could not read it and
+  only tier A counts; training used stored HTML, so a live fetch is not the same input. The page does not run the
+  extension's login-form rules (they need the live page) and does not fetch allowlisted, blocklisted or short-link
+  addresses (a short link is followed to its destination first, as before).
+- Tier C on the same page: `POST /api/domain-check` with the registrable domain, for every address the lists did not
+  decide (the extension asks only suspicious ones, so the page shows the score more often).
+- Not tested on a real Netlify deploy; the logic is tested with fakes and a local server in `js/test/fetch_page.test.js`
+  and `extension/test/demo.test.js`.

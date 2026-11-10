@@ -110,6 +110,7 @@ export async function checkDomain(domain, model, deps) {
     verdict: VERDICTS[scored.verdict],
     prob: scored.prob,
     calibrated: scored.calibrated,
+    thresholds: model.thresholds,
     reasons: scored.reasons,
     facts: {
       resolves: hostRec.dns.resolves,
