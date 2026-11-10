@@ -129,6 +129,11 @@ short_links:                     # online URL check page: netlify/functions/expa
   cache_ttl_s: 3600
   cache_max_entries: 5000
 
+page_fetch:                      # online URL check page: netlify/functions/fetch-page.mjs fetches one page for the page model (tier B)
+  timeout_s: 9                   # whole fetch, redirects included (the host stops a synchronous function at 10 s)
+  max_redirects: 5               # each hop is checked again: public address, port 80 or 443
+  max_body_bytes: 1500000        # read and kept, after decompression; the JSON answer must stay under the host's 6 MB limit
+
 rules:                           # heuristics, see backend/checks.py and reports/domain_rules.md
   very_young_domain_days: 7
   young_domain_days: 30

@@ -146,6 +146,15 @@ def short_links_js(sc: dict) -> dict:
     }
 
 
+def page_fetch_js(pc: dict) -> dict:
+    """Settings of netlify/functions/fetch-page.mjs (milliseconds where JavaScript wants them)."""
+    return {
+        "timeout_ms": int(pc["timeout_s"] * 1000),
+        "max_redirects": pc["max_redirects"],
+        "max_body_bytes": pc["max_body_bytes"],
+    }
+
+
 def export_llm_js(cfg: dict) -> dict[Path, str]:
     """File path -> text of the hosted functions' JavaScript settings and the LLM parity fixture."""
     lc = cfg["llm"]
@@ -155,6 +164,7 @@ def export_llm_js(cfg: dict) -> dict[Path, str]:
         root / "js" / "data" / "llm_check.json": dump(llm.js_config(lc)),
         root / "tests" / "fixtures" / "llm_parity.json": dump(llm.parity_cases(lc)),
         root / "js" / "data" / "short_links.json": dump(short_links_js(cfg["short_links"])),
+        root / "js" / "data" / "page_fetch.json": dump(page_fetch_js(cfg["page_fetch"])),
     }
 
 
@@ -217,7 +227,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     keygen.set_defaults(func=cmd_make_signing_key)
     export = sub.add_parser(
-        "export-llm-js", help="write js/data/{llm_check,short_links}.json and the LLM fixture"
+        "export-llm-js",
+        help="write js/data/{llm_check,short_links,page_fetch}.json and the LLM fixture",
     )
     export.set_defaults(func=cmd_export_llm_js)
     args = parser.parse_args(argv)

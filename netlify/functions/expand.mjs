@@ -50,7 +50,7 @@ export const isShortener = (url) => {
 };
 
 // dns.lookup that answers only with public addresses
-function safeLookup(hostname, options, callback) {
+export function safeLookup(hostname, options, callback) {
   dns.lookup(hostname, { ...options, all: true }, (err, addresses) => {
     if (err) return callback(err);
     const ok = addresses.filter((a) => isPublicIp(a.address));

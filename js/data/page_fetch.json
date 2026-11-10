@@ -1,0 +1,5 @@
+{
+ "timeout_ms": 9000,
+ "max_redirects": 5,
+ "max_body_bytes": 1500000
+}

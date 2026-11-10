@@ -128,3 +128,74 @@ test("addresses on this computer or the home network are not scored, as in the e
   assert.notEqual((await checkUrl(c, "http://8.8.8.8/login")).layer, "local");
 });
 
+
+// Tiers B and C: the page fetch and the domain check are supplied by the hosting site (fake answers here).
+const PAGE = `<html><head><title>Sign in to your account</title></head><body><h1>Sign in</h1>
+  <p>${"Please verify your account details to keep access to your mailbox. ".repeat(12)}</p>
+  <form action="https://collect.example.net/post" method="post"><input name="email"><input type="password" name="pw"><button>Sign in</button></form></body></html>`;
+const fetched = (over = {}) => async (url) => ({ ok: true, status: 200, final: url, redirects: [], bytes: 900, truncated: false, html: PAGE, error: null, ...over });
+const domainAnswer = (verdict) => async () => ({ checked: true, domain: "paypa1.com", verdict, prob: 0.6, calibrated: 0.6, thresholds: { suspicious: 0.117, dangerous: 0.422 }, reasons: [{ text: "The domain was registered 3 days ago." }], facts: { domain_age_days: 3 } });
+
+test("without the hosted functions the tiers say so and nothing changes", async () => {
+  const r = await checkUrl(await checker, "https://secure-login.paypa1.com/signin/verify-account");
+  assert.equal(r.tiers.a.state, "scored");
+  assert.equal(r.tiers.b.state, "off");
+  assert.equal(r.tiers.c.state, "off");
+  assert.equal(r.verdict, "suspicious");
+});
+
+test("tier B scores the fetched page; an unreadable or missing page leaves tier A in charge", async () => {
+  const c = { ...(await checker) };
+  const url = "https://secure-login.paypa1.com/signin/verify-account";
+  c.fetchPage = fetched();
+  const ok = await checkUrl(c, url);
+  assert.equal(ok.tiers.b.state, "scored");
+  assert.ok(ok.tiers.b.prob >= 0 && ok.tiers.b.prob <= 1 && ok.tiers.b.probPage >= 0 && ok.tiers.b.thresholds.suspicious > 0);
+  c.fetchPage = fetched({ html: "<html><body></body></html>" });
+  assert.equal((await checkUrl(c, url)).tiers.b.state, "unreadable");
+  c.fetchPage = fetched({ ok: false, error: "timeout", html: undefined });
+  const down = await checkUrl(c, url);
+  assert.deepEqual([down.tiers.b.state, down.tiers.b.error, down.verdict], ["unavailable", "timeout", "suspicious"]);
+  c.fetchPage = fetched({ status: 403 });
+  assert.equal((await checkUrl(c, url)).tiers.b.state, "unavailable");
+  c.fetchPage = async () => null;
+  assert.equal((await checkUrl(c, url)).tiers.b.state, "unreachable");
+});
+
+test("a page that redirects is read at the address it ended on", async () => {
+  const c = { ...(await checker), fetchPage: fetched({ final: "https://other.example/login" }) };
+  const r = await checkUrl(c, "https://secure-login.paypa1.com/signin/verify-account");
+  assert.equal(r.tiers.b.final, "https://other.example/login");
+  assert.ok(r.notes.some((n) => n.includes("https://other.example/login")));
+});
+
+test("tier C shows its score and can raise suspicious to dangerous, never anything else", async () => {
+  const c = { ...(await checker) };
+  const url = "https://secure-login.paypa1.com/signin/verify-account";
+  c.askTierC = domainAnswer("dangerous");
+  const bad = await checkUrl(c, url);
+  assert.equal(bad.tiers.c.state, "scored");
+  assert.equal(bad.tiers.c.facts.domain_age_days, 3);
+  assert.deepEqual([bad.verdict, bad.layer], ["dangerous", "tier-c"]);
+  c.askTierC = domainAnswer("safe");
+  assert.equal((await checkUrl(c, url)).verdict, "suspicious");
+  c.askTierC = async () => ({ checked: false, reason: "hosting_platform" });
+  assert.deepEqual([(await checkUrl(c, url)).tiers.c.state, (await checkUrl(c, url)).verdict], ["not_checked", "suspicious"]);
+  c.askTierC = async () => null;
+  assert.equal((await checkUrl(c, url)).tiers.c.state, "unreachable");
+});
+
+test("a safe address is not turned into a warning by a tier C answer", async () => {
+  const c = { ...(await checker), askTierC: domainAnswer("dangerous") };
+  const r = await checkUrl(c, "https://myshop-handmade-pottery.com/about");
+  assert.equal(r.tiers.c.state, "scored");
+  assert.equal(r.verdict, "safe");
+});
+
+test("allowlisted and blocklisted addresses are not fetched or looked up", async () => {
+  let calls = 0;
+  const spy = async () => { calls++; return null; };
+  const c = { ...(await checker), fetchPage: spy, askTierC: spy };
+  const r = await checkUrl(c, "web.whatsapp.com");
+  assert.deepEqual([r.tiers.b.state, r.tiers.c.state, calls], ["skipped", "skipped", 0]);
+});

@@ -127,6 +127,7 @@ function render(r) {
       ${r.reasons.length ? `<ul class="says">${r.reasons.slice(0, 3).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
       <div class="acts"><button type="button" class="btn" id="again">Check another link</button><button type="button" class="btn ghost" id="copy">Copy a report</button></div></div>
   </section>
+  ${tierCards(r)}
   ${clues.length ? `<section class="clues" aria-label="Biggest clues">${clues.map((c, k) => `<article class="card clue" style="--k:${k}"><div class="ck"><span class="ic">${svg(ICON.warn, 20, 2.2)}</span><span class="eyebrow">Points to phishing</span></div><h3>${esc(c.text)}</h3><div class="push"><span class="b"><i style="width:${Math.round(c.share * 100)}%"></i></span>${strength(c.share)}</div></article>`).join("")}</section>` : ""}
   ${notes.length ? `<div class="notes">${notes.map((n) => `<p>${esc(n)}</p>`).join("")}</div>` : ""}
   <div class="meta"><span>Model ${esc(model?.modelCreated?.slice?.(0, 10) ?? "")} · thresholds ${t.suspicious.toFixed(3)} / ${t.dangerous.toFixed(3)}</span><span>The AI check, when on, is sent the host name only, never the full link.</span></div>`;
@@ -144,6 +145,61 @@ function render(r) {
     }
   });
   if (score !== null) animateDial(score, t, Boolean(m?.used));
+}
+
+const FETCH_WHY = {
+  timeout: "the site took too long to answer",
+  not_html: "the address does not return a web page (a file or an image, for example)",
+  not_public_address: "the address leads to a private network, which is never fetched",
+  port_not_allowed: "only the standard web ports are fetched",
+  too_many_redirects: "the address redirects too many times",
+  bad_redirect: "the address redirects to something that is not a web address",
+  unsupported_encoding: "the site sends its page in a format this check can't read",
+  ENOTFOUND: "the site name does not exist",
+  ECONNREFUSED: "the site refused the connection",
+  ECONNRESET: "the site dropped the connection",
+};
+const NOT_CHECKED = {
+  ip_or_empty: "An IP address has no registration to look up.",
+  local_name: "A private network name has no registration to look up.",
+  no_public_suffix: "This name has no public registration to look up.",
+  shortener: "A link shortener says nothing about where it leads.",
+  hosting_platform: "This is a shared hosting platform, so its registration says nothing about one site on it.",
+  no_model: "The domain check has no model on this server.",
+  failed: "The lookup of the registry, DNS or certificate failed or timed out.",
+};
+const toneOf = (v) => ({ safe: "safe", suspicious: "warn", dangerous: "bad" })[v] ?? "skip";
+const score3 = (x) => (typeof x === "number" ? x.toFixed(3) : "n/a");
+const cuts = (t) => (t ? `suspicious from ${score3(t.suspicious)}${t.dangerous != null ? `, dangerous from ${score3(t.dangerous)}` : ""}` : "");
+
+// One card per tier: what it scored, against which cut-offs, or why it did not run.
+function tierCards(r) {
+  const t = r.tiers;
+  if (!t) return "";
+  const card = (k, name, what, head, tone, lines) =>
+    `<article class="card tier" style="--k:${k}"><div class="eyebrow">${name} · ${what}</div><h3 class="tv ${tone}">${esc(head)}</h3>${lines.filter(Boolean).map((l) => `<p>${esc(l)}</p>`).join("")}</article>`;
+  const A = t.a.state === "scored"
+    ? card(0, "Tier A", "Address", WORD[t.a.verdict], toneOf(t.a.verdict), [`Score ${score3(t.a.prob)}.`, cuts(t.a.thresholds)])
+    : card(0, "Tier A", "Address", "Not scored", "skip", ["A list or rule decided before the address model was needed."]);
+  const b = t.b;
+  const B = {
+    off: () => card(1, "Tier B", "Page", "Not available", "skip", ["Reading a page needs the hosted page fetch, which this server does not have. The extension reads the page itself."]),
+    skipped: () => card(1, "Tier B", "Page", "Not run", "skip", ["A list or rule had already decided, so the page was not fetched."]),
+    unreachable: () => card(1, "Tier B", "Page", "No answer", "skip", ["The page fetch did not answer, so only tier A counts."]),
+    unavailable: () => card(1, "Tier B", "Page", "Page not read", "skip", [`The page could not be fetched: ${b.error === "http_status" ? `the site answered with an error (HTTP ${b.status})` : FETCH_WHY[b.error] ?? b.error}.`, "Only tier A counts."]),
+    unreadable: () => card(1, "Tier B", "Page", "Page empty", "skip", ["The page came back empty or with too little readable text. It may be built by scripts, may show this check a blank page, or may be a bare login box.", "Only tier A counts."]),
+    scored: () => card(1, "Tier B", "Page", WORD[b.verdict], toneOf(b.verdict), [`Page score ${score3(b.prob)} (page model ${score3(b.probPage)}).`, cuts(b.thresholds), b.verdict !== "safe" && b.reasons[0], b.truncated ? "Only the first part of a very large page was read." : ""]),
+  }[b.state]();
+  const c = t.c;
+  const age = c.facts?.domain_age_days;
+  const C = {
+    off: () => card(2, "Tier C", "Domain", "Not available", "skip", ["The domain check is not on this server."]),
+    skipped: () => card(2, "Tier C", "Domain", "Not run", "skip", ["A list or rule had already decided."]),
+    unreachable: () => card(2, "Tier C", "Domain", "No answer", "skip", ["The domain check did not answer."]),
+    not_checked: () => card(2, "Tier C", "Domain", "Not checked", "skip", [NOT_CHECKED[c.reason] ?? c.reason, c.detail]),
+    scored: () => card(2, "Tier C", "Domain", WORD[c.verdict], toneOf(c.verdict), [`Score ${score3(c.prob)}.`, cuts(c.thresholds), c.verdict !== "safe" && c.reasons[0] ? c.reasons[0] : typeof age === "number" ? `Registered about ${age} days ago.` : "Registration age could not be read."]),
+  }[c.state]();
+  return `<section class="tiers" aria-label="Score of each tier">${A}${B}${C}</section>`;
 }
 
 let model = null; // set once the checker loads (for the model date in the footer)
@@ -178,6 +234,24 @@ async function main() {
     checker.askLlm = async (host) => {
       try {
         const res = await fetch("/api/llm-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ domain: host }) });
+        return res.ok ? await res.json() : null;
+      } catch {
+        return null;
+      }
+    };
+    // the hosted site fetches a page for the page model (tier B) and runs the domain check (tier C);
+    // on a server without those functions the answer is a 404 and the tier says it is not available
+    checker.fetchPage = async (url) => {
+      try {
+        const res = await fetch("/api/fetch-page", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+        return res.ok ? await res.json() : null;
+      } catch {
+        return null;
+      }
+    };
+    checker.askTierC = async (domain) => {
+      try {
+        const res = await fetch("/api/domain-check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ domain }) });
         return res.ok ? await res.json() : null;
       } catch {
         return null;

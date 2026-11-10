@@ -1,0 +1,21 @@
+name: Page-fetch probe
+on:
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/page-fetch-probe.yml", "netlify/functions/fetch-page.mjs", "js/bench/fetch_page_probe.mjs"]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      # legitimate pages only: a plain page, a redirect to https, a page built by scripts, a login page, a PDF,
+      # a very large page, then addresses the function must refuse (cloud metadata, local, odd port, no such name)
+      - run: >
+          node js/bench/fetch_page_probe.mjs
+          https://example.com/ http://github.com/ https://en.wikipedia.org/wiki/Phishing
+          https://github.com/login https://accounts.google.com/ https://www.reddit.com/
+          https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf
+          https://html.spec.whatwg.org/ http://169.254.169.254/latest/meta-data/ http://127.0.0.1/
+          https://example.com:8443/ https://no-such-site-phishdrift-probe.invalid/

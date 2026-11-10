@@ -85,6 +85,11 @@
   .says li { color: var(--mute); font-size: 15.5px; padding-left: 18px; position: relative; }
   .says li::before { content: ""; position: absolute; left: 0; top: .6em; width: 8px; height: 8px; border-radius: 50%; background: var(--tone); }
   .acts { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; animation: rise .5s 3.5s both; }
+  .tiers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+  .tier { padding: 20px 22px; animation: deal .6s both cubic-bezier(.2,.8,.2,1.15); animation-delay: calc(3.3s + var(--k) * .12s); }
+  .tier h3 { font: var(--dw) 22px/1.2 var(--display); margin: 10px 0 8px; }
+  .tier p { margin: 4px 0 0; font-size: 14.5px; color: var(--mute); }
+  .tv.safe { color: var(--safe); } .tv.warn { color: var(--warn); } .tv.bad { color: var(--bad); } .tv.skip { color: var(--mute); }
   .clues { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
   .clue { padding: 22px 22px 20px; animation: deal .6s both cubic-bezier(.2,.8,.2,1.15); animation-delay: calc(3.45s + var(--k) * .12s); }
   .ck { display: flex; justify-content: space-between; align-items: center; }
@@ -116,7 +121,7 @@
   @keyframes letter { from { opacity: 0; transform: translateY(55%) rotate(10deg); } to { opacity: 1; transform: none; } }
   @keyframes deal { from { opacity: 0; transform: translateY(46px) rotate(-4deg); } to { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) { * , *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition-duration: .01ms !important; } }
-  @media (max-width: 900px) { .clues { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stage { gap: 32px; padding: 32px 28px; } }
+  @media (max-width: 900px) { .tiers { grid-template-columns: 1fr; } .clues { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stage { gap: 32px; padding: 32px 28px; } }
   @media (max-width: 760px) {
     .wrap { padding: 0 16px; } .bar { flex-wrap: wrap; gap: 12px; } form.search { order: 3; flex-basis: 100%; } .lens { margin-left: auto; }
     .xray { padding: 20px 18px; } .xhead { flex-direction: column; align-items: flex-start; gap: 4px; }

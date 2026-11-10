@@ -2,8 +2,10 @@
 // blocklist, the tier A model, the combiner), in the order of layersFor() and
 // evaluate() in extension/src/background.js. Nothing is reimplemented: the modules are loaded from
 // `base`, a folder laid out like extension/dist (combine.js, lists.js, address.js and lib/).
-// Not applied: the page model (a web page cannot read another site's HTML), backend domain checks, the LLM check,
-// user trust and the remote config. A short link is followed by `c.expand` when the page has one
+// Tier B (the page model) and tier C (domain age, DNS, certificate) run when the page has the hosted functions
+// behind it: `c.fetchPage(url)` (netlify/functions/fetch-page.mjs; a web page cannot read another site's HTML
+// itself) and `c.askTierC(domain)` (netlify/functions/domain-check.mjs). Not applied: the backend's own domain
+// checks, the login-form rules (they need the live page), user trust and the remote config. A short link is followed by `c.expand` when the page has one
 // (the hosted function netlify/functions/expand.mjs) and its destination is checked instead.
 //
 // `read(path)` returns parsed JSON for a path relative to the repository root, or null when the
@@ -28,7 +30,7 @@ async function loadLists(read) {
 
 export async function loadChecker({ base, read }) {
   const mod = (path) => import(new URL(path, base).href);
-  const [combine, lists, address, hybrid, keys, pslMod, urlparts, explain, modelMod] = await Promise.all([
+  const [combine, lists, address, hybrid, keys, pslMod, urlparts, explain, modelMod, pageMod, domainMod] = await Promise.all([
     mod("combine.js"),
     mod("lists.js"),
     mod("address.js"),
@@ -38,6 +40,8 @@ export async function loadChecker({ base, read }) {
     mod("lib/urlparts.js"),
     mod("lib/explain.js"),
     mod("lib/model.js"),
+    mod("lib/page.js"),
+    mod("domain.js"),
   ]);
   const [bundle, psl, loaded, extra] = await Promise.all([
     read("js/data/tier_a_hybrid.json"),
@@ -54,6 +58,9 @@ export async function loadChecker({ base, read }) {
     shorteners: lists.withShorteners(model.lists.shorteners, extra),
   });
   return {
+    read,
+    pageMod,
+    domainMod,
     combine,
     address,
     hybrid,
@@ -86,6 +93,8 @@ const LAYER_WORD = {
   blocklist: "The blocklist decided.",
   "url-model": "The address model decided.",
   llm: "The AI check raised the verdict.",
+  "page-model": "The page model decided.",
+  "tier-c": "The domain check raised the verdict.",
   shortener: "A short link has nothing to judge until it is followed.",
   none: "Nothing to check.",
 };
@@ -156,8 +165,35 @@ function buildTrace(c, listed, layers, result, label, llm) {
 
   const short = result.layer === "shortener";
   trace.push({ id: "combine", tone: short ? "skip" : TONE[result.verdict], label: short ? "Short link" : label, detail: LAYER_WORD[result.layer] ?? "Combined the layers." });
-  trace.push({ id: "page", tone: "na", label: "Extension only", detail: "Reading login forms on the page and the backend's domain checks need the page itself. A web page can't fetch another site, so only the extension runs them." });
+  trace.push({ id: "page", tone: "na", label: "Extension only", detail: "Reading login forms on the live page needs the extension itself. This page can only fetch the page's HTML (tier B) and ask the domain check (tier C), shown under the verdict." });
   return trace;
+}
+
+// Tier B: the page itself, fetched by the hosted function and read by the extension's page model.
+// The page is scored at the address the fetch ended on (the extension scores the page it lands on).
+async function tierB(c, target) {
+  if (!c.fetchPage) return { state: "off" };
+  const got = await c.fetchPage(target);
+  if (!got) return { state: "unreachable" };
+  if (!got.ok) return { state: "unavailable", error: got.error ?? "failed", status: got.status ?? null, final: got.final ?? target };
+  if (got.status < 200 || got.status >= 300) return { state: "unavailable", error: "http_status", status: got.status, final: got.final };
+  c.pageModel ??= await c.read("js/data/tier_b_page.json").then((b) => (b ? c.pageMod.loadPage(b) : null));
+  if (!c.pageModel) return { state: "off" };
+  const scored = c.pageMod.scorePage(c.model, c.pageModel, got.final, got.html, { withReasons: true });
+  const info = { final: got.final, redirected: got.final !== target, bytes: got.bytes, truncated: got.truncated, thresholds: c.pageModel.thresholds };
+  if (!scored.hasHtml) return { state: "unreadable", ...info, probAddress: scored.probAddress };
+  return { state: "scored", ...info, scored, probAddress: scored.probAddress, prob: scored.blended, probPage: scored.probPage, verdict: LABELS[scored.verdict], reasons: scored.reasons.map((r) => r.text) };
+}
+
+// Tier C: the domain's age, DNS and certificate, from the hosted domain check (only the domain is sent).
+async function tierC(c, domain) {
+  if (!c.askTierC || !domain) return { state: "off" };
+  const json = await c.askTierC(domain);
+  if (!json || typeof json !== "object" || json.error) return { state: "unreachable" };
+  if (json.checked !== true) return { state: "not_checked", reason: json.reason ?? "failed", detail: json.detail ?? null };
+  const answer = c.domainMod.usableTierCAnswer(json);
+  if (!answer) return { state: "unreachable" };
+  return { state: "scored", answer, domain, prob: json.prob, calibrated: json.calibrated, thresholds: json.thresholds ?? null, verdict: json.verdict, reasons: answer.reasons.map((r) => r.text), facts: json.facts ?? null };
 }
 
 async function askLlm(c, target, layers) {
@@ -220,7 +256,14 @@ async function checkOne(c, input) {
   // borderline ones; here it is asked always so its answer can be seen).
   const llm = await askLlm(c, target, layers);
   if (llm.state === "answered" && !llm.error) layers.llm = { raise: llm.raise, kind: llm.kind, brand: llm.brand, brand_domain: llm.brand_domain, phishing: llm.phishing };
-  const result = c.combine.combine(layers);
+  // Tiers B and C, for the same addresses (the extension asks only borderline ones; here they are asked
+  // always so their scores can be seen). The combiner uses them as it does there: tier B can raise a
+  // verdict, tier C can raise suspicious to dangerous, neither lowers one.
+  const decided = layers.allow || layers.shortener || layers.blocked || layers.local;
+  const skipped = { state: "skipped" };
+  const [b, cTier] = decided ? [skipped, skipped] : await Promise.all([tierB(c, target), tierC(c, listed.domain)]);
+  if (cTier.state === "scored") layers.tierC = cTier.answer;
+  const result = c.combine.combine(layers, null, b.state === "scored" ? b.scored : null);
   let modelAlone = null;
   if (target.length <= c.address.MAX_URL_CHARS) {
     const s = c.hybrid.scoreUrl(c.model, target, { withReasons: true });
@@ -229,6 +272,7 @@ async function checkOne(c, input) {
   const notes = [...(result.notes ?? [])];
   if (layers.shortener) notes.push("This is a link shortener. The extension judges the page it redirects to; this page does not follow the link.");
   if (layers.shared) notes.push("This domain hosts many separate sites: the allowlist applies only to an exact site name that is widely used, and only the full address is matched against the blocklist.");
+  if (b.redirected) notes.push(`The page sent the visitor on to ${b.final}. The page check read that page.`);
   const verdict = LABELS[result.verdict];
   return {
     url: target,
@@ -243,6 +287,7 @@ async function checkOne(c, input) {
     blocked: listed.blocked,
     modelAlone,
     thresholds: c.info.thresholds,
+    tiers: { a: layers.model ? { state: "scored", prob: layers.model.prob, verdict: LABELS[layers.model.verdict], thresholds: c.info.thresholds } : skipped, b, c: cTier },
     evidence: { ...(await buildEvidence(c, target, listed, layers, result)), llm },
     trace: buildTrace(c, listed, layers, result, VERDICT_WORD[verdict], llm),
   };

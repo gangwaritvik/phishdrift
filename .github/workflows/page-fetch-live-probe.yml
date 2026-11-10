@@ -1,0 +1,31 @@
+name: Page-fetch live probe (live site)
+on:
+  workflow_dispatch:
+    inputs:
+      site:
+        description: Site address (the live site; Netlify deploy previews answer 401 to a runner)
+        default: https://loquacious-starship-3425f0.netlify.app
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      SITE: ${{ inputs.site || 'https://loquacious-starship-3425f0.netlify.app' }}
+    steps:
+      - name: Fetch a plain page, refusals, the domain check
+        run: |
+          post() { curl -sS -m 20 -w '\n  HTTP %{http_code} in %{time_total}s\n' -X POST -H 'Content-Type: application/json' -d "$2" "$SITE/api/$1" | cut -c1-300; }
+          echo "== fetch-page example.com"; post fetch-page '{"url":"https://example.com/"}'
+          echo "== fetch-page 127.0.0.1"; post fetch-page '{"url":"http://127.0.0.1/"}'
+          echo "== fetch-page metadata address"; post fetch-page '{"url":"http://169.254.169.254/latest/meta-data/"}'
+          echo "== fetch-page PDF"; post fetch-page '{"url":"https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf"}'
+          echo "== domain-check example.com"; post domain-check '{"domain":"example.com"}'
+      - name: Rate limit (14 quick fetches of one address; the function allows 10 a minute)
+        run: |
+          for i in $(seq 1 14); do
+            curl -sS -m 20 -o /dev/null -w '%{http_code} ' -X POST -H 'Content-Type: application/json' -d '{"url":"https://example.com/"}' "$SITE/api/fetch-page"
+          done; echo
+      - name: Page files load
+        run: |
+          for f in demo/index.html js/data/tier_b_page.json js/data/tier_a_hybrid.json; do
+            curl -sS -m 30 -o /dev/null -w "$f %{http_code} %{size_download} bytes\n" "$SITE/$f"
+          done
