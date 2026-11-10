@@ -1495,3 +1495,20 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   2026-11-09, GitHub runner): 6 of 6 legitimate domains answered safe, 6 phishing domains under 7 days old dangerous, 8 older ones safe;
   median 0.3 s. The browser tests use stubs for the hosted check, so the extension talking to the real Netlify function is not tested here.
 - Not tested: a real browsing session, Chrome with the Web Store build, the banner colours (fixed, they do not follow the theme).
+
+### 2026-11-10 — URL check page runs all three tiers (cloud, PR #85)
+- Ritvik: "implement tier c on web + 2nd option" (a server-side page fetch for tier B instead of a paste box). Plain server GET approved
+  despite the "sandboxed headless browser" rule in CLAUDE.md (no scripts run, no cookies, one address the visitor typed).
+- Changed: `netlify/functions/fetch-page.mjs` (public addresses only at every hop, ports 80/443, 5 redirects, 9 s, 1.5 MB after
+  decompression, HTML only, 10 fetches a minute per IP; settings `page_fetch` in `configs/backend.yaml` -> `js/data/page_fetch.json`),
+  `demo/check.js` (tier B: page model on the fetched HTML at the address the fetch ended on; tier C: `/api/domain-check` for every
+  address the lists did not decide; same combiner), `demo/app.js` + `demo/index.html` (three tier cards with score and cut-offs; empty,
+  failed or 403 pages say so and only tier A counts), `js/src/domain_check.js` (answer now carries its thresholds), `docs/HOSTING.md`.
+- Measured: `js` 53 and `extension` 95 node tests pass, ruff clean; page rendered in headless Chromium (desktop, 390 px) with stubbed
+  answers. Live fetches from a GitHub runner (`.github/workflows/page-fetch-probe.yml`, run 42780101751, legitimate sites only): plain pages,
+  an http->https redirect and a 511 KB page fetched and read by the page model (all safe); `accounts.google.com` (946 KB, script-built)
+  fetched but "could not read" (falls back to tier A); `reddit.com` answered HTTP 403 with a block page (the site shows "page not read");
+  a PDF refused as not HTML; a 1.5 MB cap hit on the HTML spec (read from the first 1.5 MB); cloud-metadata address, 127.0.0.1, port 8443
+  and a name that does not exist all refused.
+- Not measured: a real Netlify deploy (rate limit, time limit); how tier B scores live-fetched phishing pages (none fetched on purpose;
+  training used stored HTML; cloaking is a known limit); the extension's login-form rules are still extension-only.
