@@ -32,8 +32,39 @@ function describe(r) {
   return { stage: "read", status: a.status, http: r.status, bytes: r.bytes, scripts, title, noscript: /<noscript/i.test(r.html), visible };
 }
 
+const urls = process.argv.slice(2);
+
+// With SITE set (the live demo site), also ask its /api/fetch-page for every address, as the URL check page
+// does, and say which card the page would show. Paced under the function's 10 fetches a minute per address.
+if (process.env.SITE) {
+  const tally = {};
+  for (const url of urls) {
+    let line;
+    try {
+      const res = await fetch(`${process.env.SITE}/api/fetch-page`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(20000) });
+      const r = res.ok ? await res.json() : null;
+      let card;
+      if (!r) card = `no answer (function HTTP ${res.status})`;
+      else if (!r.ok) card = `Page not read (${r.error}${r.status ? ` HTTP ${r.status}` : ""})`;
+      else if (r.status < 200 || r.status >= 300) card = `Page not read (HTTP ${r.status})`;
+      else {
+        const a = analyzeHtml(r.final, r.html, model.lists);
+        card = a.status === "ok" ? "scored" : `Page empty (${a.status}, ${r.bytes} bytes)`;
+      }
+      line = card;
+    } catch (e) {
+      line = `no answer (${e.message})`;
+    }
+    const key = line.replace(/\(.*$/, "").trim();
+    tally[key] = (tally[key] ?? 0) + 1;
+    console.log(`LIVE ${url}\n  ${line}`);
+    await new Promise((r) => setTimeout(r, 7000));
+  }
+  console.log("\nLIVE SUMMARY n=" + urls.length, JSON.stringify(tally));
+}
+
 const rows = [];
-for (const url of process.argv.slice(2)) {
+for (const url of urls) {
   const honest = describe(await fetchPage(url));
   const browser = describe(await fetchPage(url, { requestFn: browserRequest }));
   rows.push({ url, honest, browser });

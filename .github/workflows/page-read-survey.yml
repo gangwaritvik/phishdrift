@@ -6,7 +6,9 @@ on:
 jobs:
   survey:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    env:
+      SITE: https://loquacious-starship-3425f0.netlify.app
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
