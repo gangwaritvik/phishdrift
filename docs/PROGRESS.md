@@ -1512,3 +1512,16 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   and a name that does not exist all refused.
 - Not measured: a real Netlify deploy (rate limit, time limit); how tier B scores live-fetched phishing pages (none fetched on purpose;
   training used stored HTML; cloaking is a known limit); the extension's login-form rules are still extension-only.
+
+### 2026-11-12 — Why tier B says "Page empty" on the URL check page (cloud)
+- Ritvik: tier B fails on most sites. Measured 36 popular legitimate homepages (`js/bench/page_read_survey.mjs`, workflow
+  `page-read-survey.yml`, GitHub runner) two ways: with the hosted function's own fetch code, and by asking the live
+  `/api/fetch-page` on the Netlify site (paced under its 10 a minute limit).
+- Results (live site): 24 of 36 scored (67%), 7 "Page not read" (HTTP 403 from the site: stackoverflow, ebay, paypal, adobe, medium,
+  reddit, plus cnn not_html 403), 5 "Page empty" (imdb 202 robot-check, amazon 142 characters, google 117, youtube 0 characters from
+  870 KB of scripts, netflix 0 characters in the first 1.5 MB). Same split in the local pass. A browser user agent instead of the
+  honest one changes nothing overall (25 vs 24 ok; some sites better each way), so the user agent is not the cause.
+- Cause: the page is one plain GET from a datacenter address and nothing runs. Sites either refuse it, send a robot-check or
+  cut-down page, or build the page with scripts. The threshold (200 readable characters) only decides 2 of the 36 (amazon, google).
+- Changed: the "Page empty" card now says which of these it was (`demo/check.js` `whatWasThere`, `demo/app.js` `emptyWhy`); no scoring change.
+- Not done: reading pages that need scripts (needs a rendering browser behind the function).
