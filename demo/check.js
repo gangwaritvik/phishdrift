@@ -30,7 +30,7 @@ async function loadLists(read) {
 
 export async function loadChecker({ base, read }) {
   const mod = (path) => import(new URL(path, base).href);
-  const [combine, lists, address, hybrid, keys, pslMod, urlparts, explain, modelMod, pageMod, domainMod] = await Promise.all([
+  const [combine, lists, address, hybrid, keys, pslMod, urlparts, explain, modelMod, pageMod, domainMod, htmlMod] = await Promise.all([
     mod("combine.js"),
     mod("lists.js"),
     mod("address.js"),
@@ -42,6 +42,7 @@ export async function loadChecker({ base, read }) {
     mod("lib/model.js"),
     mod("lib/page.js"),
     mod("domain.js"),
+    mod("lib/html_features.js"),
   ]);
   const [bundle, psl, loaded, extra] = await Promise.all([
     read("js/data/tier_a_hybrid.json"),
@@ -61,6 +62,7 @@ export async function loadChecker({ base, read }) {
     read,
     pageMod,
     domainMod,
+    htmlMod,
     combine,
     address,
     hybrid,
@@ -169,6 +171,16 @@ function buildTrace(c, listed, layers, result, label, llm) {
   return trace;
 }
 
+// What the fetched page held, for the "Page empty" card: why the parser stopped (short = under 200 readable
+// characters, junk = an error or parked page, empty), the readable characters it saw, and the scripts.
+function whatWasThere(c, got) {
+  const { analyzeHtml } = c.htmlMod;
+  const lists = c.model.lists;
+  const why = analyzeHtml(got.final, got.html, lists).status;
+  const chars = analyzeHtml(got.final, got.html, lists, null, { minVisibleChars: 0 }).values?.visible_text_len ?? null;
+  return { why, chars, scripts: (got.html.match(/<script\b/gi) ?? []).length, http: got.status };
+}
+
 // Tier B: the page itself, fetched by the hosted function and read by the extension's page model.
 // The page is scored at the address the fetch ended on (the extension scores the page it lands on).
 async function tierB(c, target) {
@@ -181,7 +193,7 @@ async function tierB(c, target) {
   if (!c.pageModel) return { state: "off" };
   const scored = c.pageMod.scorePage(c.model, c.pageModel, got.final, got.html, { withReasons: true });
   const info = { final: got.final, redirected: got.final !== target, bytes: got.bytes, truncated: got.truncated, thresholds: c.pageModel.thresholds };
-  if (!scored.hasHtml) return { state: "unreadable", ...info, probAddress: scored.probAddress };
+  if (!scored.hasHtml) return { state: "unreadable", ...info, probAddress: scored.probAddress, seen: whatWasThere(c, got) };
   return { state: "scored", ...info, scored, probAddress: scored.probAddress, prob: scored.blended, probPage: scored.probPage, verdict: LABELS[scored.verdict], reasons: scored.reasons.map((r) => r.text) };
 }
 

@@ -152,7 +152,14 @@ test("tier B scores the fetched page; an unreadable or missing page leaves tier 
   assert.equal(ok.tiers.b.state, "scored");
   assert.ok(ok.tiers.b.prob >= 0 && ok.tiers.b.prob <= 1 && ok.tiers.b.probPage >= 0 && ok.tiers.b.thresholds.suspicious > 0);
   c.fetchPage = fetched({ html: "<html><body></body></html>" });
-  assert.equal((await checkUrl(c, url)).tiers.b.state, "unreadable");
+  const empty = await checkUrl(c, url);
+  assert.equal(empty.tiers.b.state, "unreadable");
+  assert.equal(empty.tiers.b.seen.why, "short");
+  c.fetchPage = fetched({ html: "  " });
+  assert.equal((await checkUrl(c, url)).tiers.b.seen.why, "empty");
+  c.fetchPage = fetched({ html: `<html><head><title>App</title></head><body><div id=root></div>${"<script src=a.js></script>".repeat(4)}</body></html>` });
+  const shell = await checkUrl(c, url);
+  assert.deepEqual([shell.tiers.b.state, shell.tiers.b.seen.why, shell.tiers.b.seen.chars, shell.tiers.b.seen.scripts], ["unreadable", "short", 0, 4]);
   c.fetchPage = fetched({ ok: false, error: "timeout", html: undefined });
   const down = await checkUrl(c, url);
   assert.deepEqual([down.tiers.b.state, down.tiers.b.error, down.verdict], ["unavailable", "timeout", "suspicious"]);

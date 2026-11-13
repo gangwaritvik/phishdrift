@@ -172,6 +172,16 @@ const toneOf = (v) => ({ safe: "safe", suspicious: "warn", dangerous: "bad" })[v
 const score3 = (x) => (typeof x === "number" ? x.toFixed(3) : "n/a");
 const cuts = (t) => (t ? `suspicious from ${score3(t.suspicious)}${t.dangerous != null ? `, dangerous from ${score3(t.dangerous)}` : ""}` : "");
 
+// Plain words for why the fetched page could not be read (numbers from demo/check.js whatWasThere).
+function emptyWhy(seen) {
+  if (!seen) return "The page came back empty or with too little readable text.";
+  const { why, chars, scripts } = seen;
+  if (why === "junk") return "The page looks like an error, parked or blocked page, not the site's own page.";
+  if (why === "empty") return "The site sent back an empty page.";
+  if (!chars && scripts >= 3) return `The page has no text of its own: it is built by ${scripts} scripts, and this check fetches the page without running them.`;
+  return `Only ${chars ?? 0} readable characters came back (the page model needs 200). Some sites send a stripped-down or robot-check page to servers; the browser extension reads the page you actually see.`;
+}
+
 // One card per tier: what it scored, against which cut-offs, or why it did not run.
 function tierCards(r) {
   const t = r.tiers;
@@ -187,7 +197,7 @@ function tierCards(r) {
     skipped: () => card(1, "Tier B", "Page", "Not run", "skip", ["A list or rule had already decided, so the page was not fetched."]),
     unreachable: () => card(1, "Tier B", "Page", "No answer", "skip", ["The page fetch did not answer, so only tier A counts."]),
     unavailable: () => card(1, "Tier B", "Page", "Page not read", "skip", [`The page could not be fetched: ${b.error === "http_status" ? `the site answered with an error (HTTP ${b.status})` : FETCH_WHY[b.error] ?? b.error}.`, "Only tier A counts."]),
-    unreadable: () => card(1, "Tier B", "Page", "Page empty", "skip", ["The page came back empty or with too little readable text. It may be built by scripts, may show this check a blank page, or may be a bare login box.", "Only tier A counts."]),
+    unreadable: () => card(1, "Tier B", "Page", "Page empty", "skip", [emptyWhy(b.seen), "Only tier A counts."]),
     scored: () => card(1, "Tier B", "Page", WORD[b.verdict], toneOf(b.verdict), [`Page score ${score3(b.prob)} (page model ${score3(b.probPage)}).`, cuts(b.thresholds), b.verdict !== "safe" && b.reasons[0], b.truncated ? "Only the first part of a very large page was read." : ""]),
   }[b.state]();
   const c = t.c;
