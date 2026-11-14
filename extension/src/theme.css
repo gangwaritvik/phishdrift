@@ -17,3 +17,8 @@ body[data-verdict=dangerous] { --tone: var(--bad); --stage: var(--stage-bad); }
 .lens button:hover span, .lens button:focus-visible span { opacity: 1; transform: translate(-50%, 0); }
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
 ::view-transition-old(root) { z-index: 1; } ::view-transition-new(root) { z-index: 2; }
+.lens[hidden] { display: none; }
+.tmenu { position: relative; flex: none; }
+.tmenu-btn { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; cursor: pointer; border-radius: 50%; border: max(var(--bw), 1px) solid var(--line); background: var(--card); color: var(--fg); }
+.tmenu .lens { position: absolute; right: 0; top: calc(100% + 8px); z-index: 10; }
+.foot .tmenu .lens { top: auto; bottom: calc(100% + 8px); }
