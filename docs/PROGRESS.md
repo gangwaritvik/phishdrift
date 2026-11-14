@@ -1525,3 +1525,18 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   cut-down page, or build the page with scripts. The threshold (200 readable characters) only decides 2 of the 36 (amazon, google).
 - Changed: the "Page empty" card now says which of these it was (`demo/check.js` `whatWasThere`, `demo/app.js` `emptyWhy`); no scoring change.
 - Not done: reading pages that need scripts (needs a rendering browser behind the function).
+
+### 2026-11-14 — Tier C retrained on 18 capture days (cloud)
+- Ritvik: stop capture and run the final retrain for the 2026-11-16 presentation. `tier-c-train.yml` run 43538964219 (manual, main).
+  Replaced `js/data/tier_c.json`, `tests/fixtures/tier_c_model_parity.json`, `reports/tier_c.md` and `reports/tables/tier_c_*.csv` with that run's
+  `results/` from the `tier-c-data` branch.
+- Results (`reports/tier_c.md`, 10 domain-grouped splits, 21,522 phishing / 232,435 legitimate domains, test side 4,305 / 46,487; median [min, max]):
+  tier C ROC-AUC 0.9677 [0.9656, 0.9687] (3-day run 0.9585); recall at FPR 1% / 0.1% 81.2 / 73.5 (3-day 77.8 / 72.2), not granularity-limited
+  (464 and 46 false positives allowed on the cal side). Without domain age 0.9452, recall 68.4 / 43.8; age alone 0.7345; shipped address model on
+  the bare host 0.7865; tier C + address score 0.9702. Time check (train on the older 10 days, test on the newest 8, 63,766 domains): 0.9594, recall 79.6
+  at 1%. Captured within 2 h: 0.9690. Shuffled-label control mean 0.4901, not flagged, but split means still range from 0.34 to 0.68 (cause not
+  investigated). `has_cname` importance 0.2%. Nothing above 99%. New thresholds: suspicious 0.2385, dangerous 0.6760.
+- Caveats unchanged: legitimate domains are all Tranco-listed (young legitimate sites are unmeasured, so false alarms there are unknown); phishing
+  and legitimate domains were found by different routes and age is more than half of the signal (the no-age model is the lower figure); hosting-platform
+  phishing is out of scope; Netlify function tested with a fake network only, no live check yet.
+- Not done: Netlify deploy and live `/api/domain-check` check; scheduled capture workflows still enabled (no tool here to disable them).
