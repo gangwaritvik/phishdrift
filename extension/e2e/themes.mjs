@@ -132,6 +132,7 @@ await record("popup-themes", async () => {
   await page.goto(`chrome-extension://${extId}/popup.html`);
   await sleep(500);
   const seenBg = {};
+  await page.click(".tmenu-btn"); // the swatches sit behind the three-bar button
   for (const id of THEMES) {
     await page.click(`.lens button[data-id=${id}]`);
     await sleep(1100); // the ripple lasts 700 ms
@@ -178,6 +179,7 @@ await record("warning-page-themes", async () => {
   await sleep(800);
   const reasons = await page.evaluate(() => [...document.querySelectorAll("#reasons li")].map((l) => l.textContent));
   const seenBg = {};
+  await page.click(".tmenu-btn"); // the swatches sit behind the three-bar button
   for (const id of THEMES) {
     await page.click(`.lens button[data-id=${id}]`);
     await sleep(1100);

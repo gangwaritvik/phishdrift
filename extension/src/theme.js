@@ -37,7 +37,21 @@ export function setTheme(id, from, save) {
 }
 
 // Fills `lens` (a div with class "lens") with the swatches; `save(id)` stores the choice.
+// The swatches sit in a small menu behind a three-bar button (closed until clicked; Escape or a click elsewhere closes it).
 export function buildLens(lens, save) {
+  const menu = document.createElement("div");
+  menu.className = "tmenu";
+  const toggle = Object.assign(document.createElement("button"), { type: "button", className: "tmenu-btn" });
+  toggle.setAttribute("aria-label", "Theme menu");
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.innerHTML = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+  const open = (on) => { lens.hidden = !on; toggle.setAttribute("aria-expanded", String(on)); };
+  lens.replaceWith(menu);
+  menu.append(toggle, lens);
+  open(false);
+  toggle.addEventListener("click", () => open(lens.hidden));
+  document.addEventListener("click", (e) => { if (!menu.contains(e.target)) open(false); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { open(false); toggle.focus(); } });
   lens.setAttribute("role", "radiogroup");
   lens.setAttribute("aria-label", "Theme");
   for (const [id, name, a, b] of THEMES) {
