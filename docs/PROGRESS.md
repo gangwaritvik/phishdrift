@@ -1540,3 +1540,18 @@ Append an entry at the end of every task. Newest at the bottom. Keep entries sho
   and legitimate domains were found by different routes and age is more than half of the signal (the no-age model is the lower figure); hosting-platform
   phishing is out of scope; Netlify function tested with a fake network only, no live check yet.
 - Not done: Netlify deploy and live `/api/domain-check` check; scheduled capture workflows still enabled (no tool here to disable them).
+
+### 2026-11-15 — All three tiers through the real combiner on a live sample (cloud)
+- Ritvik: can the full system be measured now. No stored set has A, B and C for the same address (phishing HTML is not stored; tier C
+  captures are per host; natural legitimate pages have no capture), so `js/bench/combined_live.mjs` + `.github/workflows/combined-live.yml`
+  take a fresh live sample on a GitHub runner: 700 feed phishing addresses (PhishTank, Phishunt, PhishStats, Phishing.Database) and 562
+  natural legitimate addresses (one per domain), fetch the page (one plain GET), run the hosted domain check, and the extension's
+  `combine.js` for A, A+B, A+C, A+B+C. Analysis `experiments/combined_live.py` -> `reports/combined_live.md`; rows on `tier-c-data`
+  (`results/combined_live/rows.csv`). Note: `/mnt/project-files/phishdrift/mentor/combined_three_tier_measurement.md`.
+- Results (allowlist off, blocklist off): A+B+C warns 71.1% of phishing (A alone 69.0%) and 1.1% of legitimate (6/562; A alone 0.4%);
+  dangerous 42.6% phishing / 0.7% legitimate (A alone 46.1% / 0%: the address-only rule moves some dangerous to suspicious). Tier C only
+  lifted 8 of 700 phishing to dangerous (0 legitimate). Newest 41 phishing domains: A+B+C 68.3% vs A 58.5%.
+- Not measured: recall at 0.1% FPR (562 legitimate cannot support it); young legitimate sites; phishing is mostly older than first-seen
+  (median domain age 402 days); only 177 of 700 phishing pages were readable. Possible overlap of older phishing with the A/B training pool not checked.
+- Process: plain GET of phishing pages from an ephemeral runner (not a sandboxed headless browser; no HTML kept). OpenPhish was polled
+  once at 19:32 UTC in a discarded first run (terms: one poll per 12 h).
