@@ -1,0 +1,33 @@
+name: Combined three-tier live measurement
+# Runs js/bench/combined_live.mjs: fresh feed phishing addresses and natural legitimate addresses, each through the
+# tier A address model, the tier B page model (page fetched live, one plain GET) and the tier C domain check (live
+# RDAP / DNS / TLS), then the extension's combiner. Rows go to results/combined_live/ on the data branch.
+on:
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/combined-live.yml", "js/bench/combined_live.mjs"]
+permissions:
+  contents: write
+concurrency:
+  group: combined-live
+  cancel-in-progress: false
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node extension/build.mjs
+      - run: node js/bench/combined_live.mjs --out out/combined_live --phish 700 --legit 600
+      - run: |
+          date -u +%Y-%m-%dT%H:%MZ > out/combined_live/run_at.txt
+          wc -l out/combined_live/rows.csv
+      - if: always()
+        run: |
+          mkdir -p out/results/combined_live
+          cp -r out/combined_live/. out/results/combined_live/
+          scripts/ci_data_branch.sh results out/results "combined live measurement"
