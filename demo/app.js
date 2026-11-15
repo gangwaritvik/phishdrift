@@ -76,6 +76,20 @@ function clueCards(m) {
   return up.map((i) => ({ text: i.label, share: i.delta / up[0].delta }));
 }
 
+// Which tier said a reason, from the texts each tier returned (the combiner passes them through
+// unchanged); a reason no tier returned came from the AI check or the blocklist.
+const TIER_TAG = { a: "Tier A", b: "Tier B", c: "Tier C" };
+function reasonTag(r, text) {
+  const hit = Object.keys(TIER_TAG).filter((k) => r.tiers?.[k]?.reasons?.includes(text)).map((k) => TIER_TAG[k]);
+  return hit.length ? hit.join(" + ") : { llm: "AI check", blocklist: "Blocklist" }[r.layer] ?? null;
+}
+// "Flagged by": every tier whose own verdict is above safe, plus the AI check or the blocklist when they decided.
+function flaggedBy(r) {
+  const who = Object.keys(TIER_TAG).filter((k) => ["suspicious", "dangerous"].includes(r.tiers?.[k]?.verdict)).map((k) => TIER_TAG[k]);
+  const other = { llm: "the AI check", blocklist: "the blocklist" }[r.layer];
+  return other ? [...who, other] : who;
+}
+
 function render(r) {
   const verdict = ["safe", "suspicious", "dangerous"].includes(r.verdict) ? r.verdict : null;
   document.body.dataset.verdict = verdict ?? "safe";
@@ -95,6 +109,10 @@ function render(r) {
       return `<div class="node ${esc(n.tone)}" style="--k:${k}" title="${esc(n.detail)}"><i>${svg(ICON[kind])}</i><b>${NODE[n.id]}</b><span>${esc(n.label)}</span></div>`;
     })
     .join("");
+  const tiers = tierCards(r);
+  const stCell = (x) => `<div class="st ${esc(x.tone)}"><i>${svg(ICON[{ safe: "ok", warn: "bang", bad: "x" }[x.tone] ?? "dash"], 14)}</i><div><b>${esc(x.name)}</b><span>${esc(x.text)}</span></div></div>`;
+  const subtiers = tiers.rows.length ? `<div class="subtiers"><span class="eyebrow">Address model · Tier A, B and C</span><div class="stgrid">${tiers.rows.map(stCell).join("")}</div></div>` : "";
+  const flagged = verdict === "safe" ? [] : flaggedBy(r);
   const clues = clueCards(m);
   const strength = (s) => (s > 0.66 ? "strong" : s > 0.33 ? "medium" : "small");
   const dial = score === null ? "" : (() => {
@@ -106,7 +124,7 @@ function render(r) {
       <circle class="track" cx="100" cy="100" r="86" fill="none" stroke-width="14" stroke-linecap="round" stroke-dasharray="405.26 540.35" transform="rotate(135 100 100)"/>
       <circle class="arc" id="arc" cx="100" cy="100" r="86" fill="none" stroke-width="14" stroke-linecap="round" stroke-dasharray="405.26 540.35" stroke-dashoffset="405.26" transform="rotate(135 100 100)"/>
       ${tick(t.suspicious)}${tick(t.dangerous)}</svg>
-      <div class="dc"><span class="num" id="num">0.000</span><span class="eyebrow">${m?.used ? "risk score" : "model alone, not used"}</span></div></div>
+      <div class="dc"><span class="num" id="num">0.000</span><span class="eyebrow">${m?.used ? (["page-model", "tier-c", "llm"].includes(r.layer) ? "address score" : "risk score") : "model alone, not used"}</span></div></div>
       <div class="dlab"><span>suspicious ${t.suspicious.toFixed(3)}</span><span>dangerous ${t.dangerous.toFixed(3)}</span></div></div>`;
   })();
   const notes = [...(r.notes ?? [])];
@@ -118,16 +136,18 @@ function render(r) {
     <div class="url${r.url.length > 70 ? " long" : ""}"><span class="beam" aria-hidden="true"></span>${anatomy(r)}</div>
     <div class="legend"><span class="lchip"><span class="sw"></span>Owner: ${esc(r.domain ?? "unknown")}</span></div>
     <div class="relay"><span class="rfill" aria-hidden="true"></span>${relay}</div>
+    ${subtiers}
   </section>
   <section class="card stage${score === null ? " nodial" : ""}">
     ${dial}
     <div class="vt"><div class="eyebrow">Verdict</div>
       <h1 class="word" aria-label="${WORD[verdict]}">${word}</h1>
       <p class="say">${esc(verdict === "safe" && r.layer === "allowlist" ? "A widely used site on the allowlist, so the address model is not consulted." : SUB[verdict])}</p>
-      ${r.reasons.length ? `<ul class="says">${r.reasons.slice(0, 3).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      ${flagged.length ? `<p class="raised">Flagged by <b>${esc(flagged.join(" + "))}</b></p>` : ""}
+      ${r.reasons.length ? `<ul class="says">${r.reasons.slice(0, 3).map((x) => `<li>${reasonTag(r, x) ? `<em class="tag">${esc(reasonTag(r, x))}</em> ` : ""}${esc(x)}</li>`).join("")}</ul>` : ""}
       <div class="acts"><button type="button" class="btn" id="again">Check another link</button><button type="button" class="btn ghost" id="copy">Copy a report</button></div></div>
   </section>
-  ${tierCards(r)}
+  ${tiers.html}
   ${clues.length ? `<section class="clues" aria-label="Biggest clues">${clues.map((c, k) => `<article class="card clue" style="--k:${k}"><div class="ck"><span class="ic">${svg(ICON.warn, 20, 2.2)}</span><span class="eyebrow">Points to phishing</span></div><h3>${esc(c.text)}</h3><div class="push"><span class="b"><i style="width:${Math.round(c.share * 100)}%"></i></span>${strength(c.share)}</div></article>`).join("")}</section>` : ""}
   ${notes.length ? `<div class="notes">${notes.map((n) => `<p>${esc(n)}</p>`).join("")}</div>` : ""}
   <div class="meta"><span>Model ${esc(model?.modelCreated?.slice?.(0, 10) ?? "")} · thresholds ${t.suspicious.toFixed(3)} / ${t.dangerous.toFixed(3)}</span><span>The AI check, when on, is sent the host name only, never the full link.</span></div>`;
@@ -185,11 +205,14 @@ function emptyWhy(seen) {
 // One card per tier: what it scored, against which cut-offs, or why it did not run.
 function tierCards(r) {
   const t = r.tiers;
-  if (!t) return "";
-  const card = (k, name, what, head, tone, lines) =>
-    `<article class="card tier" style="--k:${k}"><div class="eyebrow">${name} · ${what}</div><h3 class="tv ${tone}">${esc(head)}</h3>${lines.filter(Boolean).map((l) => `<p>${esc(l)}</p>`).join("")}</article>`;
+  if (!t) return { html: "", rows: [] };
+  const rows = [];
+  const card = (k, name, what, head, tone, lines, score = null) => {
+    rows.push({ name: `${name} · ${what}`, tone, text: score === null ? head : `${head} · ${score3(score)}` });
+    return `<article class="card tier" style="--k:${k}"><div class="eyebrow">${name} · ${what}</div><h3 class="tv ${tone}">${esc(head)}</h3>${lines.filter(Boolean).map((l) => `<p>${esc(l)}</p>`).join("")}</article>`;
+  };
   const A = t.a.state === "scored"
-    ? card(0, "Tier A", "Address", WORD[t.a.verdict], toneOf(t.a.verdict), [`Score ${score3(t.a.prob)}.`, cuts(t.a.thresholds)])
+    ? card(0, "Tier A", "Address", WORD[t.a.verdict], toneOf(t.a.verdict), [`Score ${score3(t.a.prob)}.`, cuts(t.a.thresholds)], t.a.prob)
     : card(0, "Tier A", "Address", "Not scored", "skip", ["A list or rule decided before the address model was needed."]);
   const b = t.b;
   const B = {
@@ -198,7 +221,7 @@ function tierCards(r) {
     unreachable: () => card(1, "Tier B", "Page", "No answer", "skip", ["The page fetch did not answer, so only tier A counts."]),
     unavailable: () => card(1, "Tier B", "Page", "Page not read", "skip", [`The page could not be fetched: ${b.error === "http_status" ? `the site answered with an error (HTTP ${b.status})` : FETCH_WHY[b.error] ?? b.error}.`, "Only tier A counts."]),
     unreadable: () => card(1, "Tier B", "Page", "Page empty", "skip", [emptyWhy(b.seen), "Only tier A counts."]),
-    scored: () => card(1, "Tier B", "Page", WORD[b.verdict], toneOf(b.verdict), [`Page score ${score3(b.prob)} (page model ${score3(b.probPage)}).`, cuts(b.thresholds), b.verdict !== "safe" && b.reasons[0], b.truncated ? "Only the first part of a very large page was read." : ""]),
+    scored: () => card(1, "Tier B", "Page", WORD[b.verdict], toneOf(b.verdict), [`Page score ${score3(b.prob)} (page model ${score3(b.probPage)}).`, cuts(b.thresholds), b.verdict !== "safe" && b.reasons[0], b.truncated ? "Only the first part of a very large page was read." : ""], b.prob),
   }[b.state]();
   const c = t.c;
   const age = c.facts?.domain_age_days;
@@ -207,9 +230,9 @@ function tierCards(r) {
     skipped: () => card(2, "Tier C", "Domain", "Not run", "skip", ["A list or rule had already decided."]),
     unreachable: () => card(2, "Tier C", "Domain", "No answer", "skip", ["The domain check did not answer."]),
     not_checked: () => card(2, "Tier C", "Domain", "Not checked", "skip", [NOT_CHECKED[c.reason] ?? c.reason, c.detail]),
-    scored: () => card(2, "Tier C", "Domain", WORD[c.verdict], toneOf(c.verdict), [`Score ${score3(c.prob)}.`, cuts(c.thresholds), c.verdict !== "safe" && c.reasons[0] ? c.reasons[0] : typeof age === "number" ? `Registered about ${age} days ago.` : "Registration age could not be read."]),
+    scored: () => card(2, "Tier C", "Domain", WORD[c.verdict], toneOf(c.verdict), [`Score ${score3(c.prob)}.`, cuts(c.thresholds), c.verdict !== "safe" && c.reasons[0] ? c.reasons[0] : typeof age === "number" ? `Registered about ${age} days ago.` : "Registration age could not be read."], c.prob),
   }[c.state]();
-  return `<section class="tiers" aria-label="Score of each tier">${A}${B}${C}</section>`;
+  return { html: `<section class="tiers" aria-label="Score of each tier">${A}${B}${C}</section>`, rows };
 }
 
 let model = null; // set once the checker loads (for the model date in the footer)
