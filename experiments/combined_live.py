@@ -23,7 +23,15 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
     d = 1 + z * z / n
     c = p + z * z / (2 * n)
     h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
-    return ((c - h) / d, (c + h) / d)
+    return (max(0.0, (c - h) / d), min(1.0, (c + h) / d))
+
+
+def auc(y, s) -> float:
+    r = pd.Series(s).rank().values
+    y = pd.Series(y).values
+    n1 = int(y.sum())
+    n0 = len(y) - n1
+    return (r[y == 1].sum() - n1 * (n1 + 1) / 2) / (n1 * n0)
 
 
 def cell(k: int, n: int) -> str:
@@ -61,6 +69,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rows", required=True)
     ap.add_argument("--out", default="reports/combined_live.md")
+    ap.add_argument("--first-seen", help="CSV domain,first_seen of phishing domains captured by the tier C capture (data branch)")
+    ap.add_argument("--cutoff", default="2026-11-15", help="phishing first seen on or after this date is new to every model (tier C's last retrain used captures up to 2026-11-14)")
     args = ap.parse_args()
     df = pd.read_csv(args.rows)
     for col in ["fetch_ok", "shared", "allow", "shortener", "redirected_cross_domain", "asks_credentials"]:
@@ -90,6 +100,37 @@ def main() -> None:
         L += ["Phishing by feed: " + ", ".join(f"{k} {v}" for k, v in ph.source.value_counts().items()), ""]
     L += ["Tier C states, phishing: " + ", ".join(f"{k} {v}" for k, v in ph.c_state.value_counts().items()), "", "Tier C states, legitimate: " + ", ".join(f"{k} {v}" for k, v in lg.c_state.value_counts().items()), ""]
     L += ["Fetch errors, phishing: " + ", ".join(f"{k or 'none'} {v}" for k, v in ph.fetch_error.fillna("none").value_counts().head(8).items()), "", "Fetch errors, legitimate: " + ", ".join(f"{k or 'none'} {v}" for k, v in lg.fetch_error.fillna("none").value_counts().head(8).items()), ""]
+
+    L += ["## Each tier alone on the same rows (ROC-AUC, not a combiner result)", "", "| tier | rows | phishing | ROC-AUC |", "|---|---|---|---|"]
+    for col, name in [("addr_prob", "A address model"), ("page_prob_raw", "B page model (pages it could read)"), ("c_prob", "C domain check (domains it answered)")]:
+        x = df[df[col].notna() & (df[col] != "")]
+        L.append(f"| {name} | {len(x)} | {int(x.label.sum())} | {auc(x.label.values, x[col].astype(float).values):.4f} |")
+    L.append("")
+    if args.first_seen:
+        fs = pd.read_csv(args.first_seen)
+        fs["first_seen"] = pd.to_datetime(fs.first_seen, utc=True, format="ISO8601")
+        cut = pd.Timestamp(args.cutoff, tz="UTC")
+        m = df.merge(fs, on="domain", how="left")
+        m["group"] = "legitimate (natural pages)"
+        m.loc[m.label == 1, "group"] = "phishing, not in the tier C capture (older or other source)"
+        m.loc[(m.label == 1) & m.first_seen.notna() & (m.first_seen < cut), "group"] = f"phishing, captured at first sight before {args.cutoff} (tier C trained on these domains)"
+        m.loc[(m.label == 1) & (m.first_seen >= cut), "group"] = f"phishing, first seen on or after {args.cutoff} (new to every model)"
+        L += ["## By group (allowlist off)", "", "Tier C's final retrain used captures up to 2026-11-14, so only the last group is unseen by all three models; the middle group inflates tier C. The address and page models were trained on a pool built before the capture started (2026-10-27).", "",
+              "| group | n | page read | A warned | A dangerous | A+B+C warned | A+B+C dangerous | tier C alone: dangerous | median domain age (days) |", "|---|---|---|---|---|---|---|---|---|"]
+        for g, sub in m.groupby("group"):
+            n = len(sub)
+            L.append(f"| {g} | {n} | {int((sub.page_state == 'scored').sum())} | {cell(int((sub.v_A_off != 'safe').sum()), n)} | {cell(int((sub.v_A_off == 'dangerous').sum()), n)} | {cell(int((sub.v_ABC_off != 'safe').sum()), n)} | {cell(int((sub.v_ABC_off == 'dangerous').sum()), n)} | {cell(int((sub.c_verdict == 'dangerous').sum()), n)} | {sub.c_age_days.median():.0f} |")
+        L.append("")
+    if "source" in df:
+        L += ["## Phishing by feed (allowlist off)", "", "| feed | n | page fetched | A warned | A+B+C warned |", "|---|---|---|---|---|"]
+        for g, sub in ph.groupby("source"):
+            n = len(sub)
+            L.append(f"| {g} | {n} | {int(sub.fetch_ok.sum())} | {cell(int((sub.v_A_off != 'safe').sum()), n)} | {cell(int((sub.v_ABC_off != 'safe').sum()), n)} |")
+        L.append("")
+    L += ["## Legitimate addresses that got a warning with all tiers (allowlist off)", "", "| address | A | A+B+C | page asks for credentials |", "|---|---|---|---|"]
+    for _, r in lg[lg.v_ABC_off != "safe"].iterrows():
+        L.append(f"| {str(r.url)[:90]} | {r.v_A_off} | {r.v_ABC_off} | {r.asks_credentials} |")
+    L.append("")
 
     full = df[(df.page_state == "scored") & (df.c_state == "scored")]
     for mode, title in [("off", "allowlist off (the models' own behaviour, as the evaluation rules require)"), ("on", "allowlist on (as shipped)")]:
