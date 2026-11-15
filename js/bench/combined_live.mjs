@@ -82,25 +82,55 @@ async function sample(c) {
     ];
     return stub.map((s) => ({ ...s, domain: s.url.split("/")[2] }));
   }
+  // OpenPhish is left out of this run: its terms ask for one poll per 12 h and the capture workflow already polls it.
+  const gh = "https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master";
   const feeds = [
-    ["openphish", "https://openphish.com/feed.txt"],
-    ["phishing_database_new", "https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-NEW-today.txt"],
+    ["phishing_database_new", () => feed(`${gh}/phishing-links-NEW-today.txt`)],
+    ["phishunt", () => feed("https://phishunt.io/feed.txt")],
+    ["phishstats", async () => {
+      const urls = [];
+      for (let p = 0; p < 5; p++) {
+        const res = await fetch(`https://api.phishstats.info/api/phishing?_sort=-id&_size=100&_p=${p}`, { signal: AbortSignal.timeout(30_000) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        urls.push(...(await res.json()).map((r) => r.url).filter((u) => /^https?:\/\//i.test(u)));
+      }
+      return urls;
+    }],
+    ["phishtank", async () => {
+      const res = await fetch("http://data.phishtank.com/data/online-valid.csv", { signal: AbortSignal.timeout(120_000), headers: { "User-Agent": "phishdrift-research" } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.text()).split(/\r?\n/).map((l) => /^\d+,"?(https?:\/\/.*?)"?,https?:\/\/(www\.)?phishtank/.exec(l)?.[1]).filter(Boolean);
+    }],
+    // older entries (active, but listing time unknown): used only to top up
+    ["phishing_database_active", () => feed(`${gh}/phishing-links-ACTIVE.txt`, 120_000)],
   ];
   const perFeed = [];
-  for (const [source, url] of feeds) {
+  for (const [source, get] of feeds) {
     try {
-      const urls = await feed(url);
+      const urls = await get();
       console.error(`feed ${source}: ${urls.length} addresses`);
-      perFeed.push(urls.map((u) => ({ url: u, label: 1, source })));
+      perFeed.push({ source, urls });
     } catch (e) {
       console.error(`feed ${source} failed: ${e.message}`);
     }
   }
-  // half from each feed that answered, then one per domain across both
-  const share = Math.ceil(N_PHISH / Math.max(perFeed.length, 1));
+  // fresh feeds first (up to a quarter of the target each), then the older list fills the rest; one per domain overall
   let phish = [];
-  for (const items of perFeed) phish.push(...(await pick(items, share)));
-  phish = await pick(phish, N_PHISH);
+  const taken = new Set();
+  const fillFrom = async (f, n) => {
+    const got = await pick(f.urls.map((u) => ({ url: u, label: 1, source: f.source })), n + taken.size * 0 + 400);
+    let k = 0;
+    for (const it of got) {
+      if (taken.has(it.domain) || k >= n) continue;
+      taken.add(it.domain);
+      phish.push(it);
+      k++;
+    }
+  };
+  for (const f of perFeed.filter((x) => x.source !== "phishing_database_active")) await fillFrom(f, Math.ceil(N_PHISH / 3));
+  const active = perFeed.find((x) => x.source === "phishing_database_active");
+  if (active && phish.length < N_PHISH) await fillFrom(active, N_PHISH - phish.length);
+  phish = phish.slice(0, N_PHISH);
   const csv = readFileSync(new URL("configs/eval/ood_urls.csv", root), "utf8").split(/\r?\n/).slice(1).filter(Boolean);
   const natural = csv.map((l) => l.split(",")).filter((p) => p[2] === "True").map((p) => ({ url: p[0], label: 0, source: "natural" }));
   const legit = await pick(natural, N_LEGIT);
