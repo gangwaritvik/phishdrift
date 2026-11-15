@@ -299,7 +299,7 @@ async function checkOne(c, input) {
     blocked: listed.blocked,
     modelAlone,
     thresholds: c.info.thresholds,
-    tiers: { a: layers.model ? { state: "scored", prob: layers.model.prob, verdict: LABELS[layers.model.verdict], thresholds: c.info.thresholds } : skipped, b, c: cTier },
+    tiers: { a: layers.model ? { state: "scored", prob: layers.model.prob, verdict: LABELS[layers.model.verdict], thresholds: c.info.thresholds, reasons: layers.model.reasons.map((x) => x.text) } : skipped, b, c: cTier },
     evidence: { ...(await buildEvidence(c, target, listed, layers, result)), llm },
     trace: buildTrace(c, listed, layers, result, VERDICT_WORD[verdict], llm),
   };
