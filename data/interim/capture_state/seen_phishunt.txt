@@ -1546,3 +1546,7 @@ icloud-findmy-live.info
 t4-kraken.com
 googlemaccount.com
 icloud-maps-locate.app
+gls-errsp.com
+hsbcpersonalbanking.com
+ingdirect-gestionservicio.com
+argocts.com
